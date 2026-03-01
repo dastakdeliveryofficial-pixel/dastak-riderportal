@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rider Portal Pakistan | Pro Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -10,7 +10,6 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
         .sidebar-link { transition: all 0.3s ease; }
         .sidebar-link:hover, .sidebar-link.active { background: #4f46e5; color: white; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); }
         .fade-in { animation: fadeIn 0.4s ease-out; }
@@ -19,31 +18,86 @@
         .status-pending { background: #fef3c7; color: #92400e; }
         .status-approved { background: #d1fae5; color: #065f46; }
         .status-rejected { background: #fee2e2; color: #991b1b; }
-        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
-        .ai-processing { background: linear-gradient(90deg, #4f46e5, #7c3aed, #4f46e5); background-size: 200% 100%; animation: gradient-shift 2s ease infinite; }
-        @keyframes gradient-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
+        
+        /* Mobile Sidebar - Fixed */
+        #sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            z-index: 50;
+        }
+        #sidebar.open {
+            transform: translateX(0);
+        }
+        #sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 40;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        #sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Desktop: always show sidebar */
+        @media (min-width: 1024px) {
+            #sidebar {
+                position: relative;
+                transform: translateX(0) !important;
+            }
+            #sidebar-overlay {
+                display: none !important;
+            }
+            .mobile-only {
+                display: none !important;
+            }
+            main {
+                margin-left: 0 !important;
+            }
+        }
+        
+        /* Mobile: hide sidebar by default */
+        @media (max-width: 1023px) {
+            #sidebar {
+                box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+            }
+        }
     </style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
 
+    <!-- Mobile Overlay -->
+    <div id="sidebar-overlay" onclick="app.toggleSidebar()"></div>
+
     <!-- Sidebar -->
-    <aside class="w-64 bg-white shadow-xl z-20 flex flex-col h-full transition-all duration-300" id="sidebar">
-        <div class="p-6 border-b border-gray-100 flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
-                <i class="fas fa-motorcycle"></i>
+    <aside id="sidebar" class="bg-white flex flex-col h-full">
+        <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+                    <i class="fas fa-motorcycle"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-gray-800 leading-tight">Rider Portal</h1>
+                    <p class="text-xs text-gray-500">Pakistan Pro Edition</p>
+                </div>
             </div>
-            <div>
-                <h1 class="font-bold text-lg text-gray-800 leading-tight">Rider Portal</h1>
-                <p class="text-xs text-gray-500">Pakistan Pro Edition</p>
-            </div>
+            <button onclick="app.toggleSidebar()" class="mobile-only p-2 text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-xl"></i>
+            </button>
         </div>
 
-        <nav class="flex-1 overflow-y-auto p-4 space-y-2" id="nav-menu">
-            <!-- Dynamic Menu Items injected by JS -->
-        </nav>
+        <nav class="flex-1 overflow-y-auto p-4 space-y-2" id="nav-menu"></nav>
 
         <div class="p-4 border-t border-gray-100">
             <div class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
@@ -60,41 +114,39 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 flex flex-col h-full relative overflow-hidden">
+    <main class="flex-1 flex flex-col h-full relative w-full min-w-0">
         <!-- Top Header -->
-        <header class="bg-white shadow-sm z-10 px-8 py-4 flex justify-between items-center">
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800" id="page-title">Dashboard</h2>
-                <p class="text-sm text-gray-500" id="current-date">Loading date...</p>
+        <header class="bg-white shadow-sm z-20 px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <button onclick="app.toggleSidebar()" class="mobile-only p-2 -ml-2 text-gray-600 hover:text-indigo-600 transition-colors">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800" id="page-title">Dashboard</h2>
+                    <p class="text-xs text-gray-500" id="current-date">Loading date...</p>
+                </div>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
                 <button class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
-                    <i class="fas fa-bell text-xl"></i>
+                    <i class="fas fa-bell text-lg"></i>
                     <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                 </button>
-                <div class="h-8 w-px bg-gray-200"></div>
-                <button onclick="app.toggleShift()" id="shift-btn" class="px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors">
-                    <i class="fas fa-play mr-2"></i> Start Shift
+                <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
+                    <i class="fas fa-play mr-1"></i><span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Start</span>
                 </button>
             </div>
         </header>
 
         <!-- Scrollable Content Area -->
-        <div class="flex-1 overflow-y-auto p-8 bg-gray-50 relative" id="main-container">
-            <!-- Views will be injected here -->
-        </div>
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 relative" id="main-container"></div>
     </main>
 
     <!-- Modals -->
-    <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content">
-            <!-- Modal Content -->
-        </div>
+    <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
     </div>
 
     <script>
-        // --- Application Logic ---
-
         const app = {
             data: {
                 currentUser: null,
@@ -109,14 +161,8 @@
                     { id: 1, title: 'Eid Bonus Policy', content: 'All riders delivering 50+ orders this week get a Rs. 2000 bonus.', date: '2023-10-25', priority: 'high' }
                 ],
                 currentShift: null,
-                commissionSettings: {
-                    defaultRate: 10, // 10% default
-                    adminRates: {
-                        'Type 1': 10,
-                        'Type 2': 12,
-                        'Type 3': 15
-                    }
-                }
+                commissionSettings: { defaultRate: 10 },
+                sidebarOpen: false
             },
 
             init() {
@@ -127,6 +173,9 @@
                 } else {
                     this.showLogin();
                 }
+                window.addEventListener('resize', () => {
+                    if (window.innerWidth >= 1024) this.closeSidebar();
+                });
             },
 
             loadData() {
@@ -152,13 +201,32 @@
                 document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-PK', options);
             },
 
-            // --- Authentication ---
-            
+            toggleSidebar() {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                this.data.sidebarOpen = !this.data.sidebarOpen;
+                
+                if (this.data.sidebarOpen) {
+                    sidebar.classList.add('open');
+                    overlay.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    this.closeSidebar();
+                }
+            },
+
+            closeSidebar() {
+                document.getElementById('sidebar').classList.remove('open');
+                document.getElementById('sidebar-overlay').classList.remove('active');
+                document.body.style.overflow = '';
+                this.data.sidebarOpen = false;
+            },
+
             showLogin() {
                 const container = document.getElementById('main-container');
                 container.innerHTML = `
-                    <div class="min-h-full flex items-center justify-center fade-in">
-                        <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
+                    <div class="min-h-full flex items-center justify-center fade-in py-8">
+                        <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md border border-gray-100 mx-4">
                             <div class="text-center mb-8">
                                 <div class="w-16 h-16 bg-indigo-600 rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
                                     <i class="fas fa-motorcycle"></i>
@@ -169,11 +237,11 @@
                             <form onsubmit="app.handleLogin(event)" class="space-y-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                                    <input type="email" id="login-email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="rider@example.com" required>
+                                    <input type="email" id="login-email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="rider@example.com" required>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                    <input type="password" id="login-pass" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="••••••••" required>
+                                    <input type="password" id="login-pass" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" required>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
@@ -193,8 +261,8 @@
                             </div>
                             <div class="mt-6 text-center text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
                                 <p class="font-semibold mb-1">Demo Accounts:</p>
-                                <p>Admin: admin@portal.com / admin123</p>
-                                <p>Rider: ali@portal.com / rider123</p>
+                                <p class="text-xs">Admin: admin@portal.com / admin123</p>
+                                <p class="text-xs">Rider: ali@portal.com / rider123</p>
                             </div>
                         </div>
                     </div>
@@ -206,8 +274,8 @@
             showSignup() {
                 const container = document.getElementById('main-container');
                 container.innerHTML = `
-                    <div class="min-h-full flex items-center justify-center fade-in">
-                        <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
+                    <div class="min-h-full flex items-center justify-center fade-in py-8">
+                        <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md border border-gray-100 mx-4">
                             <div class="text-center mb-8">
                                 <div class="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-4 shadow-lg shadow-green-200">
                                     <i class="fas fa-user-plus"></i>
@@ -271,20 +339,14 @@
                 const zone = document.getElementById('signup-zone').value;
                 const vehicle = document.getElementById('signup-vehicle').value;
 
-                // Check if email exists
                 if (this.data.users.find(u => u.email === email)) {
-                    alert('Email already registered! Please use a different email.');
+                    alert('Email already registered!');
                     return;
                 }
 
                 const newRider = {
                     id: 'r' + Date.now(),
-                    name,
-                    email,
-                    password,
-                    phone,
-                    zone,
-                    vehicle,
+                    name, email, password, phone, zone, vehicle,
                     role: 'rider',
                     joinDate: new Date().toISOString().split('T')[0],
                     salaryBase: 15000,
@@ -321,8 +383,6 @@
                 location.reload();
             },
 
-            // --- Navigation & Rendering ---
-
             renderSidebar() {
                 const nav = document.getElementById('nav-menu');
                 const isAdmin = this.data.currentUser.role === 'admin';
@@ -348,7 +408,7 @@
                 nav.innerHTML = menuItems.map(item => `
                     <button onclick="app.navigate('${item.id}')" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50" id="nav-${item.id}">
                         <i class="fas ${item.icon} w-5 text-center"></i>
-                        ${item.label}
+                        <span class="truncate">${item.label}</span>
                     </button>
                 `).join('');
                 
@@ -358,6 +418,10 @@
             },
 
             navigate(viewId) {
+                if (window.innerWidth < 1024) {
+                    this.closeSidebar();
+                }
+
                 document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active', 'bg-indigo-600', 'text-white'));
                 const activeBtn = document.getElementById(`nav-${viewId}`);
                 if(activeBtn) activeBtn.classList.add('active');
@@ -386,10 +450,8 @@
                 }
             },
 
-            // --- RIDER VIEWS ---
-
             renderRiderDashboard() {
-                document.getElementById('page-title').textContent = 'Rider Dashboard';
+                document.getElementById('page-title').textContent = 'Dashboard';
                 const container = document.getElementById('main-container');
                 
                 const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
@@ -398,79 +460,57 @@
                 const pendingOnline = myReports.flatMap(r => r.onlinePayments).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
 
                 container.innerHTML = `
-                    <div class="space-y-6 fade-in">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Today's Earnings</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">Rs. ${todayReport ? todayReport.totalEarnings.toLocaleString() : '0'}</h3>
-                                    </div>
-                                    <div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet"></i></div>
-                                </div>
+                    <div class="space-y-6 fade-in pb-20">
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Today's Earnings</p>
+                                <h3 class="text-lg font-bold text-gray-800 mt-1">Rs. ${todayReport ? todayReport.totalEarnings.toLocaleString() : '0'}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Pending Online</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">Rs. ${pendingOnline.toLocaleString()}</h3>
-                                    </div>
-                                    <div class="p-2 bg-orange-100 rounded-lg text-orange-600"><i class="fas fa-clock"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Pending Online</p>
+                                <h3 class="text-lg font-bold text-gray-800 mt-1">Rs. ${pendingOnline.toLocaleString()}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Total Deliveries</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">${myReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0)}</h3>
-                                    </div>
-                                    <div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Total Deliveries</p>
+                                <h3 class="text-lg font-bold text-gray-800 mt-1">${myReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0)}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Commission Rate</p>
-                                        <h3 class="text-2xl font-bold text-purple-600 mt-1">${this.data.currentUser.commissionRate || 10}%</h3>
-                                    </div>
-                                    <div class="p-2 bg-purple-100 rounded-lg text-purple-600"><i class="fas fa-percentage"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Commission Rate</p>
+                                <h3 class="text-lg font-bold text-purple-600 mt-1">${this.data.currentUser.commissionRate || 10}%</h3>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
-                                <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <button onclick="app.navigate('rider-report')" class="p-4 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-left group">
-                                        <i class="fas fa-plus-circle text-2xl mb-2 group-hover:scale-110 transition-transform block"></i>
-                                        <span class="font-semibold">Submit Daily Report</span>
-                                    </button>
-                                    <button onclick="app.toggleShift()" class="p-4 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors text-left group">
-                                        <i class="fas fa-play-circle text-2xl mb-2 group-hover:scale-110 transition-transform block"></i>
-                                        <span class="font-semibold">Start Shift</span>
-                                    </button>
-                                    <button onclick="app.navigate('rider-payments')" class="p-4 rounded-xl bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors text-left group">
-                                        <i class="fas fa-hand-holding-usd text-2xl mb-2 group-hover:scale-110 transition-transform block"></i>
-                                        <span class="font-semibold">Update Online Cash</span>
-                                    </button>
-                                    <button class="p-4 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-left group">
-                                        <i class="fas fa-camera text-2xl mb-2 group-hover:scale-110 transition-transform block"></i>
-                                        <span class="font-semibold">Upload Delivery Proof</span>
-                                    </button>
-                                </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-base mb-4">Quick Actions</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button onclick="app.navigate('rider-report')" class="p-3 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-left">
+                                    <i class="fas fa-plus-circle text-xl mb-2 block"></i>
+                                    <span class="font-semibold text-sm">Submit Daily Report</span>
+                                </button>
+                                <button onclick="app.toggleShift()" class="p-3 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors text-left">
+                                    <i class="fas fa-play-circle text-xl mb-2 block"></i>
+                                    <span class="font-semibold text-sm">Start Shift</span>
+                                </button>
+                                <button onclick="app.navigate('rider-payments')" class="p-3 rounded-xl bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors text-left">
+                                    <i class="fas fa-hand-holding-usd text-xl mb-2 block"></i>
+                                    <span class="font-semibold text-sm">Update Online Cash</span>
+                                </button>
+                                <button class="p-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-left">
+                                    <i class="fas fa-camera text-xl mb-2 block"></i>
+                                    <span class="font-semibold text-sm">Upload Delivery Proof</span>
+                                </button>
                             </div>
+                        </div>
 
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 class="font-bold text-lg mb-4">Announcements</h3>
-                                <div class="space-y-4">
-                                    ${this.data.announcements.map(a => `
-                                        <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500' : 'border-indigo-500'} pl-4 py-1">
-                                            <h4 class="font-semibold text-sm">${a.title}</h4>
-                                            <p class="text-xs text-gray-500 mt-1">${a.content}</p>
-                                        </div>
-                                    `).join('')}
-                                </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-base mb-4">Announcements</h3>
+                            <div class="space-y-3">
+                                ${this.data.announcements.map(a => `
+                                    <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500' : 'border-indigo-500'} pl-4 py-1">
+                                        <h4 class="font-semibold text-sm">${a.title}</h4>
+                                        <p class="text-xs text-gray-500 mt-1">${a.content}</p>
+                                    </div>
+                                `).join('')}
                             </div>
                         </div>
                     </div>
@@ -483,79 +523,75 @@
                 const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
                 
                 container.innerHTML = `
-                    <div class="max-w-4xl mx-auto fade-in">
-                        <form onsubmit="app.submitReport(event)" class="space-y-6">
-                            <!-- Header Info -->
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div class="max-w-4xl mx-auto fade-in pb-20">
+                        <form onsubmit="app.submitReport(event)" class="space-y-4">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
                                 <div>
                                     <h3 class="font-bold text-lg">Daily Report</h3>
                                     <p class="text-sm text-gray-500">${new Date().toLocaleDateString()}</p>
                                 </div>
-                                <div class="text-right">
-                                    <div class="mb-2">
-                                        <span class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-medium">Your Commission: ${userCommission}%</span>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-medium">Your Commission: ${userCommission}%</span>
+                                    <div class="text-right">
+                                        <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
+                                        <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-right w-32" placeholder="0.00" required onchange="app.calculateTotals()">
                                     </div>
-                                    <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
-                                    <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-right w-32" placeholder="0.00" required onchange="app.calculateTotals()">
                                 </div>
                             </div>
 
-                            <!-- Orders Section with Commission -->
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-bold text-gray-800">Order Details</h3>
-                                    <div class="flex gap-2">
-                                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">Commission: ${userCommission}%</span>
-                                        <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Editable Rates</span>
-                                    </div>
+                                    <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">Commission: ${userCommission}%</span>
                                 </div>
-                                <div class="space-y-4" id="orders-container">
+                                <div class="space-y-4">
                                     ${[1, 2, 3].map(i => `
-                                        <div class="grid grid-cols-12 gap-4 items-end bg-gray-50 p-3 rounded-lg">
-                                            <div class="col-span-3">
-                                                <label class="block text-xs text-gray-500 mb-1">Order Type ${i}</label>
-                                                <input type="text" value="Standard Delivery ${i}" class="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm" readonly>
+                                        <div class="bg-gray-50 p-3 rounded-lg">
+                                            <div class="grid grid-cols-2 gap-3 mb-2">
+                                                <div class="col-span-2">
+                                                    <label class="block text-xs text-gray-500 mb-1">Order Type ${i}</label>
+                                                    <input type="text" value="Standard Delivery ${i}" class="w-full bg-white border border-gray-200 rounded px-3 py-2 text-sm" readonly>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-500 mb-1">Qty</label>
+                                                    <input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label>
+                                                    <input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()">
+                                                </div>
                                             </div>
-                                            <div class="col-span-2">
-                                                <label class="block text-xs text-gray-500 mb-1">Qty</label>
-                                                <input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" onchange="app.calculateTotals()">
-                                            </div>
-                                            <div class="col-span-2">
-                                                <label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label>
-                                                <input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" onchange="app.calculateTotals()">
-                                            </div>
-                                            <div class="col-span-2">
-                                                <label class="block text-xs text-gray-500 mb-1">Gross Total</label>
-                                                <div class="bg-gray-200 rounded px-3 py-2 text-right font-semibold text-gray-700 text-sm" id="order-gross-${i}">Rs 0.00</div>
-                                            </div>
-                                            <div class="col-span-3">
-                                                <label class="block text-xs text-purple-600 mb-1">Your Commission (${userCommission}%)</label>
-                                                <div class="bg-purple-100 rounded px-3 py-2 text-right font-bold text-purple-700" id="order-commission-${i}">Rs 0.00</div>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div class="bg-gray-200 rounded px-3 py-2 text-center">
+                                                    <span class="text-xs text-gray-500">Gross:</span>
+                                                    <span class="font-semibold text-gray-700 block" id="order-gross-${i}">Rs 0.00</span>
+                                                </div>
+                                                <div class="bg-purple-100 rounded px-3 py-2 text-center">
+                                                    <span class="text-xs text-purple-600">Commission:</span>
+                                                    <span class="font-bold text-purple-700 block" id="order-commission-${i}">Rs 0.00</span>
+                                                </div>
                                             </div>
                                         </div>
                                     `).join('')}
                                 </div>
                                 <div class="mt-4 pt-4 border-t border-gray-100">
                                     <div class="flex justify-between items-center mb-2">
-                                        <span class="text-gray-600 font-medium">Total Gross Amount</span>
+                                        <span class="text-gray-600 font-medium">Total Gross</span>
                                         <span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0.00</span>
                                     </div>
                                     <div class="flex justify-between items-center">
-                                        <span class="text-purple-600 font-medium">Total Commission Earned</span>
+                                        <span class="text-purple-600 font-medium">Total Commission</span>
                                         <span class="text-xl font-bold text-purple-600" id="grand-commission-total">Rs 0.00</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Online Payments -->
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-bold text-gray-800">Online Collections</h3>
                                     <button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add Entry</button>
                                 </div>
-                                <div id="online-payments-list" class="space-y-3">
-                                    <!-- Dynamic Rows -->
-                                </div>
+                                <div id="online-payments-list" class="space-y-3"></div>
                                 <div class="mt-4 grid grid-cols-2 gap-4">
                                     <div class="bg-orange-50 p-3 rounded-lg border border-orange-200">
                                         <p class="text-xs text-orange-600 font-medium">Total Pending</p>
@@ -568,40 +604,37 @@
                                 </div>
                             </div>
 
-                            <!-- Expenses -->
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                 <h3 class="font-bold text-gray-800 mb-4">Expenses</h3>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="grid grid-cols-3 gap-3">
                                     <div>
-                                        <label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label>
+                                        <label class="block text-xs text-gray-500 mb-1">Fuel</label>
                                         <input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-500 mb-1">Food (Rs)</label>
+                                        <label class="block text-xs text-gray-500 mb-1">Food</label>
                                         <input type="number" id="exp-food" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
                                     </div>
                                     <div>
-                                        <label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label>
+                                        <label class="block text-xs text-gray-500 mb-1">Maintenance</label>
                                         <input type="number" id="exp-maint" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Delivery Proof -->
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                 <h3 class="font-bold text-gray-800 mb-4">Delivery Proof</h3>
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
                                     <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
                                     <div id="proof-preview-area">
                                         <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
-                                        <p class="text-sm text-gray-500">Click to upload photo of cash/orders</p>
+                                        <p class="text-sm text-gray-500">Click to upload photo</p>
                                     </div>
                                     <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
                                 </div>
                             </div>
 
-                            <!-- Calculation Summary -->
-                            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-xl shadow-lg">
+                            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 rounded-xl shadow-lg">
                                 <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
                                 <div class="space-y-2 text-sm">
                                     <div class="flex justify-between"><span>Opening Balance</span><span id="sum-opening">Rs 0</span></div>
@@ -615,9 +648,9 @@
                                 </div>
                             </div>
 
-                            <div class="flex gap-4">
+                            <div class="flex flex-col sm:flex-row gap-3">
                                 <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">Submit Report</button>
-                                <button type="button" class="px-6 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition-colors">Save Draft</button>
+                                <button type="button" class="px-6 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition-colors py-3">Save Draft</button>
                             </div>
                         </form>
                     </div>
@@ -628,22 +661,24 @@
             addOnlinePaymentRow() {
                 const container = document.getElementById('online-payments-list');
                 const div = document.createElement('div');
-                div.className = 'grid grid-cols-12 gap-3 items-center bg-gray-50 p-2 rounded border border-gray-200';
+                div.className = 'bg-gray-50 p-3 rounded-lg';
                 div.innerHTML = `
-                    <div class="col-span-4">
-                        <input type="text" placeholder="Customer Name" class="w-full bg-transparent text-sm outline-none" required>
-                    </div>
-                    <div class="col-span-3">
-                        <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none online-amt" onchange="app.calculateTotals()" required>
-                    </div>
-                    <div class="col-span-3">
-                        <select class="w-full bg-transparent text-sm outline-none online-status" onchange="app.calculateTotals()">
-                            <option value="pending">Pending</option>
-                            <option value="received">Received</option>
-                        </select>
-                    </div>
-                    <div class="col-span-2 text-right">
-                        <button type="button" onclick="this.parentElement.parentElement.remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                    <div class="grid grid-cols-12 gap-2">
+                        <div class="col-span-5">
+                            <input type="text" placeholder="Customer Name" class="w-full bg-transparent text-sm border-b border-gray-300 focus:border-indigo-500 outline-none py-1" required>
+                        </div>
+                        <div class="col-span-4">
+                            <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm border-b border-gray-300 focus:border-indigo-500 outline-none py-1 online-amt" onchange="app.calculateTotals()" required>
+                        </div>
+                        <div class="col-span-2">
+                            <select class="w-full bg-transparent text-sm outline-none online-status" onchange="app.calculateTotals()">
+                                <option value="pending">Pending</option>
+                                <option value="received">Received</option>
+                            </select>
+                        </div>
+                        <div class="col-span-1 text-right">
+                            <button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                        </div>
                     </div>
                 `;
                 container.appendChild(div);
@@ -652,7 +687,6 @@
             calculateTotals() {
                 const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
                 
-                // Orders with Commission
                 let grossTotal = 0;
                 let commissionTotal = 0;
                 
@@ -672,14 +706,12 @@
                 document.getElementById('grand-gross-total').textContent = `Rs ${grossTotal.toLocaleString()}`;
                 document.getElementById('grand-commission-total').textContent = `Rs ${commissionTotal.toLocaleString()}`;
 
-                // Online Payments - Calculate Pending vs Received
                 let onlinePending = 0;
                 let onlineReceived = 0;
                 
-                document.querySelectorAll('#online-payments-list > div').forEach(row => {
-                    const amt = parseFloat(row.querySelector('.online-amt').value) || 0;
-                    const status = row.querySelector('.online-status').value;
-                    
+                document.querySelectorAll('.online-amt').forEach((input, idx) => {
+                    const amt = parseFloat(input.value) || 0;
+                    const status = document.querySelectorAll('.online-status')[idx].value;
                     if (status === 'pending') onlinePending += amt;
                     else onlineReceived += amt;
                 });
@@ -687,7 +719,6 @@
                 document.getElementById('online-pending-display').textContent = `Rs ${onlinePending.toLocaleString()}`;
                 document.getElementById('online-received-display').textContent = `Rs ${onlineReceived.toLocaleString()}`;
 
-                // Expenses
                 const fuel = parseFloat(document.getElementById('exp-fuel').value) || 0;
                 const food = parseFloat(document.getElementById('exp-food').value) || 0;
                 const maint = parseFloat(document.getElementById('exp-maint').value) || 0;
@@ -696,7 +727,6 @@
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
                 const final = opening + commissionTotal - onlineReceived - expensesTotal;
 
-                // Update Summary UI
                 document.getElementById('sum-opening').textContent = `Rs ${opening.toLocaleString()}`;
                 document.getElementById('sum-commission').textContent = `Rs ${commissionTotal.toLocaleString()}`;
                 document.getElementById('sum-online').textContent = `Rs ${onlineReceived.toLocaleString()}`;
@@ -723,21 +753,16 @@
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
                 const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
                 
-                // Collect Orders with commission
                 const orders = [1, 2, 3].map(i => {
                     const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
                     const rate = parseFloat(document.getElementById(`order-rate-${i}`).value) || 0;
                     const gross = qty * rate;
                     return {
-                        type: `Type ${i}`,
-                        qty: qty,
-                        rate: rate,
-                        gross: gross,
+                        type: `Type ${i}`, qty, rate, gross,
                         commission: gross * (userCommission / 100)
                     };
                 }).filter(o => o.qty > 0);
 
-                // Collect Online Payments
                 const onlinePayments = [];
                 document.querySelectorAll('#online-payments-list > div').forEach(row => {
                     const inputs = row.querySelectorAll('input, select');
@@ -748,7 +773,6 @@
                     });
                 });
 
-                // Collect Expenses
                 const expenses = [
                     { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
                     { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
@@ -768,13 +792,8 @@
                     date: new Date().toISOString().split('T')[0],
                     createdAt: new Date().toISOString(),
                     openingBalance: opening,
-                    orders: orders,
-                    onlinePayments: onlinePayments,
-                    expenses: expenses,
-                    totalGross: totalGross,
-                    totalCommission: totalCommission,
-                    totalExpenses: totalExpenses,
-                    finalAmount: finalAmount,
+                    orders, onlinePayments, expenses,
+                    totalGross, totalCommission, totalExpenses, finalAmount,
                     status: 'pending',
                     proofImage: document.getElementById('proof-preview-img').src || null,
                     shiftDuration: '8h 30m',
@@ -792,8 +811,7 @@
                 const container = document.getElementById('main-container');
                 const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
 
-                let html = `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">`;
-                html += `<table class="w-full text-left border-collapse">
+                let html = `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in pb-20"><div class="overflow-x-auto"><table class="w-full text-left border-collapse min-w-[600px]">
                     <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
                         <tr>
                             <th class="p-4 font-semibold">Date</th>
@@ -825,7 +843,7 @@
                         </tr>`;
                     });
                 }
-                html += `</tbody></table></div>`;
+                html += `</tbody></table></div></div>`;
                 container.innerHTML = html;
             },
 
@@ -893,7 +911,7 @@
                             </div>
                         </div>
                         
-                        ${report.proofImage ? `<div class="mt-4"><p class="text-xs text-gray-500 mb-1">Proof Image</p><img src="${report.proofImage}" class="rounded-lg border max-h-60 object-cover"></div>` : ''}
+                        ${report.proofImage ? `<div class="mt-4"><p class="text-xs text-gray-500 mb-1">Proof Image</p><img src="${report.proofImage}" class="rounded-lg border max-h-60 object-cover w-full"></div>` : ''}
                     </div>
                 `;
                 
@@ -920,66 +938,68 @@
                 const totalReceived = allPayments.filter(p => p.status === 'received').reduce((a,b) => a + b.amount, 0);
 
                 container.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 fade-in">
-                        <div class="bg-orange-50 p-6 rounded-xl shadow-sm border border-orange-200">
-                            <div class="flex items-center gap-3 mb-2">
-                                <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
-                                    <i class="fas fa-clock text-xl"></i>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-orange-600 font-medium">Total Pending</p>
-                                    <h3 class="text-3xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
-                                </div>
-                            </div>
-                            <p class="text-xs text-orange-500 mt-2">Awaiting admin confirmation</p>
-                        </div>
-                        <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
-                            <div class="flex items-center gap-3 mb-2">
-                                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-                                    <i class="fas fa-check-circle text-xl"></i>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-green-600 font-medium">Total Received</p>
-                                    <h3 class="text-3xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
+                    <div class="space-y-6 pb-20 fade-in">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-orange-50 p-6 rounded-xl shadow-sm border border-orange-200">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+                                        <i class="fas fa-clock text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-orange-600 font-medium">Total Pending</p>
+                                        <h3 class="text-2xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
+                                    </div>
                                 </div>
                             </div>
-                            <p class="text-xs text-green-500 mt-2">Confirmed by admin</p>
+                            <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                                        <i class="fas fa-check-circle text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-green-600 font-medium">Total Received</p>
+                                        <h3 class="text-2xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">
-                        <table class="w-full text-left">
-                            <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                                <tr>
-                                    <th class="p-4">Date</th>
-                                    <th class="p-4">Customer</th>
-                                    <th class="p-4">Amount</th>
-                                    <th class="p-4">Status</th>
-                                    <th class="p-4">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 text-sm">
-                                ${allPayments.length === 0 ? '<tr><td colspan="5" class="p-8 text-center text-gray-500">No online payments recorded.</td></tr>' : 
-                                    allPayments.map(p => `
-                                    <tr>
-                                        <td class="p-4">${new Date(p.date).toLocaleDateString()}</td>
-                                        <td class="p-4">${p.detail}</td>
-                                        <td class="p-4">Rs ${p.amount.toLocaleString()}</td>
-                                        <td class="p-4">
-                                            <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'received' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">
-                                                ${p.status.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td class="p-4">
-                                            ${p.status === 'pending' ? 
-                                                `<button onclick="app.updatePaymentStatus('${p.reportId}', ${p.idx}, 'received')" class="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Mark Received</button>` : 
-                                                `<button onclick="app.updatePaymentStatus('${p.reportId}', ${p.idx}, 'pending')" class="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded hover:bg-gray-300">Undo</button>`
-                                            }
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left min-w-[500px]">
+                                    <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+                                        <tr>
+                                            <th class="p-4">Date</th>
+                                            <th class="p-4">Customer</th>
+                                            <th class="p-4">Amount</th>
+                                            <th class="p-4">Status</th>
+                                            <th class="p-4">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 text-sm">
+                                        ${allPayments.length === 0 ? '<tr><td colspan="5" class="p-8 text-center text-gray-500">No online payments recorded.</td></tr>' : 
+                                            allPayments.map(p => `
+                                            <tr>
+                                                <td class="p-4">${new Date(p.date).toLocaleDateString()}</td>
+                                                <td class="p-4">${p.detail}</td>
+                                                <td class="p-4">Rs ${p.amount.toLocaleString()}</td>
+                                                <td class="p-4">
+                                                    <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'received' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">
+                                                        ${p.status.toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td class="p-4">
+                                                    ${p.status === 'pending' ? 
+                                                        `<button onclick="app.updatePaymentStatus('${p.reportId}', ${p.idx}, 'received')" class="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Mark Received</button>` : 
+                                                        `<button onclick="app.updatePaymentStatus('${p.reportId}', ${p.idx}, 'pending')" class="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded hover:bg-gray-300">Undo</button>`
+                                                    }
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 `;
             },
@@ -1006,10 +1026,10 @@
                 const netSalary = baseSalary + totalCommission - deductions;
 
                 container.innerHTML = `
-                    <div class="max-w-3xl mx-auto space-y-6 fade-in">
-                        <div class="bg-gradient-to-r from-indigo-600 to-blue-500 text-white p-8 rounded-2xl shadow-lg">
+                    <div class="max-w-3xl mx-auto space-y-6 pb-20 fade-in">
+                        <div class="bg-gradient-to-r from-indigo-600 to-blue-500 text-white p-6 rounded-2xl shadow-lg">
                             <p class="text-indigo-100 font-medium mb-1">Net Salary (Oct 2023)</p>
-                            <h2 class="text-4xl font-bold mb-6">Rs ${netSalary.toLocaleString()}</h2>
+                            <h2 class="text-3xl font-bold mb-6">Rs ${netSalary.toLocaleString()}</h2>
                             <div class="grid grid-cols-3 gap-4 text-center divide-x divide-indigo-400/30">
                                 <div>
                                     <p class="text-xs text-indigo-200 uppercase">Base Salary</p>
@@ -1043,13 +1063,6 @@
                                     </div>
                                     <span class="font-bold">${this.data.currentUser.commissionRate || 10}%</span>
                                 </div>
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-times-circle"></i></div>
-                                        <span class="font-medium">Late Reports</span>
-                                    </div>
-                                    <span class="font-bold text-red-600">1 (Penalty Rs 500)</span>
-                                </div>
                             </div>
                             <button class="w-full mt-6 border border-indigo-600 text-indigo-600 py-2 rounded-lg font-semibold hover:bg-indigo-50 transition-colors">
                                 Download Payslip PDF
@@ -1058,8 +1071,6 @@
                     </div>
                 `;
             },
-
-            // --- ADMIN VIEWS ---
 
             renderAdminDashboard() {
                 document.getElementById('page-title').textContent = 'Admin Dashboard';
@@ -1071,94 +1082,50 @@
                     .filter(r => r.date === new Date().toISOString().split('T')[0] && r.status === 'approved')
                     .reduce((acc, r) => acc + r.finalAmount, 0);
 
-                // Calculate all online payments
                 const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments);
                 const totalOnlinePending = allOnlinePayments.filter(p => p.status === 'pending').reduce((a,b) => a + b.amount, 0);
 
                 container.innerHTML = `
-                    <div class="space-y-6 fade-in">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Total Riders</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">${totalRiders}</h3>
-                                    </div>
-                                    <div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-users"></i></div>
-                                </div>
+                    <div class="space-y-6 pb-20 fade-in">
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Total Riders</p>
+                                <h3 class="text-xl font-bold text-gray-800 mt-1">${totalRiders}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Pending Approvals</p>
-                                        <h3 class="text-2xl font-bold text-orange-600 mt-1">${pendingReports}</h3>
-                                    </div>
-                                    <div class="p-2 bg-orange-100 rounded-lg text-orange-600"><i class="fas fa-clock"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Pending Approvals</p>
+                                <h3 class="text-xl font-bold text-orange-600 mt-1">${pendingReports}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Today's Collection</p>
-                                        <h3 class="text-2xl font-bold text-green-600 mt-1">Rs ${todayCollection.toLocaleString()}</h3>
-                                    </div>
-                                    <div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Today's Collection</p>
+                                <h3 class="text-xl font-bold text-green-600 mt-1">Rs ${todayCollection.toLocaleString()}</h3>
                             </div>
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-sm text-gray-500 font-medium">Online Pending</p>
-                                        <h3 class="text-2xl font-bold text-red-600 mt-1">Rs ${totalOnlinePending.toLocaleString()}</h3>
-                                    </div>
-                                    <div class="p-2 bg-red-100 rounded-lg text-red-600"><i class="fas fa-credit-card"></i></div>
-                                </div>
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p class="text-xs text-gray-500 font-medium">Online Pending</p>
+                                <h3 class="text-xl font-bold text-red-600 mt-1">Rs ${totalOnlinePending.toLocaleString()}</h3>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 class="font-bold text-lg mb-4">Pending Reports for Review</h3>
-                                <div class="space-y-3">
-                                    ${this.data.reports.filter(r => r.status === 'pending').slice(0, 5).map(r => `
-                                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                            <div class="flex items-center gap-3">
-                                                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold">${r.riderName.charAt(0)}</div>
-                                                <div>
-                                                    <p class="font-semibold text-sm">${r.riderName}</p>
-                                                    <p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()} • Rs ${r.finalAmount.toLocaleString()}</p>
-                                                </div>
-                                            </div>
-                                            <div class="flex gap-2">
-                                                <button onclick="app.updateReportStatus('${r.id}', 'approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button>
-                                                <button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button>
-                                                <button onclick="app.viewReportDetails('${r.id}')" class="p-2 text-blue-600 hover:bg-blue-100 rounded"><i class="fas fa-eye"></i></button>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-lg mb-4">Pending Reports for Review</h3>
+                            <div class="space-y-3">
+                                ${this.data.reports.filter(r => r.status === 'pending').slice(0, 5).map(r => `
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold">${r.riderName.charAt(0)}</div>
+                                            <div>
+                                                <p class="font-semibold text-sm">${r.riderName}</p>
+                                                <p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()} • Rs ${r.finalAmount.toLocaleString()}</p>
                                             </div>
                                         </div>
-                                    `).join('')}
-                                    ${this.data.reports.filter(r => r.status === 'pending').length === 0 ? '<p class="text-gray-500 text-center py-4">No pending reports.</p>' : ''}
-                                </div>
-                            </div>
-
-                            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 class="font-bold text-lg mb-4">Top Performers (This Month)</h3>
-                                <div class="space-y-4">
-                                    ${this.data.users.filter(u => u.role === 'rider').slice(0,3).map((r, i) => `
-                                        <div class="flex items-center gap-4">
-                                            <div class="font-bold text-gray-400 w-4">#${i+1}</div>
-                                            <img src="https://ui-avatars.com/api/?name=${r.name}&background=random" class="w-10 h-10 rounded-full">
-                                            <div class="flex-1">
-                                                <div class="flex justify-between mb-1">
-                                                    <span class="font-semibold text-sm">${r.name}</span>
-                                                    <span class="text-xs font-bold text-indigo-600">${120 - (i*15)} Orders</span>
-                                                </div>
-                                                <div class="w-full bg-gray-200 rounded-full h-2">
-                                                    <div class="bg-indigo-600 h-2 rounded-full" style="width: ${95 - (i*20)}%"></div>
-                                                </div>
-                                            </div>
+                                        <div class="flex gap-2">
+                                            <button onclick="app.updateReportStatus('${r.id}', 'approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button>
+                                            <button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button>
+                                            <button onclick="app.viewReportDetails('${r.id}')" class="p-2 text-blue-600 hover:bg-blue-100 rounded"><i class="fas fa-eye"></i></button>
                                         </div>
-                                    `).join('')}
-                                </div>
+                                    </div>
+                                `).join('')}
+                                ${this.data.reports.filter(r => r.status === 'pending').length === 0 ? '<p class="text-gray-500 text-center py-4">No pending reports.</p>' : ''}
                             </div>
                         </div>
                     </div>
@@ -1171,53 +1138,51 @@
                 const riders = this.data.users.filter(u => u.role === 'rider');
 
                 container.innerHTML = `
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in pb-20">
                         <div class="p-4 border-b border-gray-100 flex justify-between items-center">
                             <h3 class="font-bold text-lg">All Riders</h3>
                             <button onclick="app.showSignup()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
                                 <i class="fas fa-plus mr-2"></i>Add Rider
                             </button>
                         </div>
-                        <table class="w-full text-left">
-                            <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                                <tr>
-                                    <th class="p-4">Rider</th>
-                                    <th class="p-4">Zone</th>
-                                    <th class="p-4">Commission</th>
-                                    <th class="p-4">Vehicle</th>
-                                    <th class="p-4">Status</th>
-                                    <th class="p-4">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 text-sm">
-                                ${riders.map(r => {
-                                    return `
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left min-w-[600px]">
+                                <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
                                     <tr>
-                                        <td class="p-4">
-                                            <div class="flex items-center gap-3">
-                                                <img src="https://ui-avatars.com/api/?name=${r.name}&background=random" class="w-8 h-8 rounded-full">
-                                                <div>
-                                                    <p class="font-semibold text-gray-800">${r.name}</p>
-                                                    <p class="text-xs text-gray-500">${r.phone}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="p-4"><span class="px-2 py-1 bg-gray-100 rounded text-xs font-medium">${r.zone}</span></td>
-                                        <td class="p-4">
-                                            <span class="text-purple-600 font-bold">${r.commissionRate || 10}%</span>
-                                            <button onclick="app.editCommission('${r.id}')" class="ml-2 text-xs text-gray-400 hover:text-indigo-600"><i class="fas fa-edit"></i></button>
-                                        </td>
-                                        <td class="p-4 text-xs text-gray-600">${r.vehicle || 'N/A'}</td>
-                                        <td class="p-4"><span class="w-2 h-2 rounded-full bg-green-500 inline-block mr-1"></span> Active</td>
-                                        <td class="p-4">
-                                            <button class="text-gray-400 hover:text-indigo-600 mr-2"><i class="fas fa-edit"></i></button>
-                                            <button class="text-gray-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
-                                        </td>
+                                        <th class="p-4">Rider</th>
+                                        <th class="p-4">Zone</th>
+                                        <th class="p-4">Commission</th>
+                                        <th class="p-4">Vehicle</th>
+                                        <th class="p-4">Actions</th>
                                     </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 text-sm">
+                                    ${riders.map(r => `
+                                        <tr>
+                                            <td class="p-4">
+                                                <div class="flex items-center gap-3">
+                                                    <img src="https://ui-avatars.com/api/?name=${r.name}&background=random" class="w-8 h-8 rounded-full">
+                                                    <div>
+                                                        <p class="font-semibold text-gray-800">${r.name}</p>
+                                                        <p class="text-xs text-gray-500">${r.phone}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="p-4"><span class="px-2 py-1 bg-gray-100 rounded text-xs font-medium">${r.zone}</span></td>
+                                            <td class="p-4">
+                                                <span class="text-purple-600 font-bold">${r.commissionRate || 10}%</span>
+                                                <button onclick="app.editCommission('${r.id}')" class="ml-2 text-xs text-gray-400 hover:text-indigo-600"><i class="fas fa-edit"></i></button>
+                                            </td>
+                                            <td class="p-4 text-xs text-gray-600">${r.vehicle || 'N/A'}</td>
+                                            <td class="p-4">
+                                                <button class="text-gray-400 hover:text-indigo-600 mr-2"><i class="fas fa-edit"></i></button>
+                                                <button class="text-gray-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 `;
             },
@@ -1240,8 +1205,8 @@
                 const container = document.getElementById('main-container');
                 
                 container.innerHTML = `
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">
-                        <div class="p-4 border-b border-gray-100 flex gap-4">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in pb-20">
+                        <div class="p-4 border-b border-gray-100 flex gap-2 overflow-x-auto">
                             <select class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                                 <option>All Zones</option>
                                 <option>North</option>
@@ -1252,40 +1217,44 @@
                                 <option>Pending</option>
                                 <option>Approved</option>
                             </select>
-                            <button class="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"><i class="fas fa-file-excel mr-2"></i>Export Excel</button>
+                            <button class="ml-auto bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 whitespace-nowrap">
+                                <i class="fas fa-file-excel mr-2"></i>Export
+                            </button>
                         </div>
-                        <table class="w-full text-left">
-                            <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                                <tr>
-                                    <th class="p-4"><input type="checkbox" class="rounded"></th>
-                                    <th class="p-4">Rider</th>
-                                    <th class="p-4">Date</th>
-                                    <th class="p-4">Commission</th>
-                                    <th class="p-4">Amount</th>
-                                    <th class="p-4">Status</th>
-                                    <th class="p-4 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 text-sm">
-                                ${this.data.reports.map(r => `
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left min-w-[700px]">
+                                <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
                                     <tr>
-                                        <td class="p-4"><input type="checkbox" class="rounded"></td>
-                                        <td class="p-4 font-medium">${r.riderName}</td>
-                                        <td class="p-4 text-gray-500">${new Date(r.date).toLocaleDateString()}</td>
-                                        <td class="p-4 text-purple-600">Rs ${r.totalCommission.toLocaleString()} (${r.commissionRate}%)</td>
-                                        <td class="p-4 font-bold">Rs ${r.finalAmount.toLocaleString()}</td>
-                                        <td class="p-4"><span class="status-badge status-${r.status}">${r.status}</span></td>
-                                        <td class="p-4 text-right">
-                                            <button onclick="app.viewReportDetails('${r.id}')" class="text-indigo-600 hover:underline mr-3">View</button>
-                                            ${r.status === 'pending' ? `
-                                                <button onclick="app.updateReportStatus('${r.id}', 'approved')" class="text-green-600 hover:underline mr-3">Approve</button>
-                                                <button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="text-red-600 hover:underline">Reject</button>
-                                            ` : ''}
-                                        </td>
+                                        <th class="p-4"><input type="checkbox" class="rounded"></th>
+                                        <th class="p-4">Rider</th>
+                                        <th class="p-4">Date</th>
+                                        <th class="p-4">Commission</th>
+                                        <th class="p-4">Amount</th>
+                                        <th class="p-4">Status</th>
+                                        <th class="p-4 text-right">Actions</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 text-sm">
+                                    ${this.data.reports.map(r => `
+                                        <tr>
+                                            <td class="p-4"><input type="checkbox" class="rounded"></td>
+                                            <td class="p-4 font-medium">${r.riderName}</td>
+                                            <td class="p-4 text-gray-500">${new Date(r.date).toLocaleDateString()}</td>
+                                            <td class="p-4 text-purple-600">Rs ${r.totalCommission.toLocaleString()} (${r.commissionRate}%)</td>
+                                            <td class="p-4 font-bold">Rs ${r.finalAmount.toLocaleString()}</td>
+                                            <td class="p-4"><span class="status-badge status-${r.status}">${r.status}</span></td>
+                                            <td class="p-4 text-right">
+                                                <button onclick="app.viewReportDetails('${r.id}')" class="text-indigo-600 hover:underline mr-3">View</button>
+                                                ${r.status === 'pending' ? `
+                                                    <button onclick="app.updateReportStatus('${r.id}', 'approved')" class="text-green-600 hover:underline mr-3">Approve</button>
+                                                    <button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="text-red-600 hover:underline">Reject</button>
+                                                ` : ''}
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 `;
             },
@@ -1294,7 +1263,6 @@
                 document.getElementById('page-title').textContent = 'All Online Payments';
                 const container = document.getElementById('main-container');
                 
-                // Get all online payments from all reports
                 let allPayments = [];
                 this.data.reports.forEach(r => {
                     r.onlinePayments.forEach((p, idx) => {
@@ -1315,49 +1283,23 @@
                 const totalReceived = allPayments.filter(p => p.status === 'received').reduce((a,b) => a + b.amount, 0);
 
                 container.innerHTML = `
-                    <div class="space-y-6 fade-in">
-                        <!-- Summary Cards -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="space-y-6 pb-20 fade-in">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div class="bg-orange-50 p-6 rounded-xl shadow-sm border border-orange-200">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
-                                        <i class="fas fa-clock text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <p class="text-sm text-orange-600 font-medium">Total Pending</p>
-                                        <h3 class="text-2xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
-                                    </div>
-                                </div>
-                                <p class="text-xs text-orange-500 mt-2">Awaiting confirmation</p>
+                                <p class="text-sm text-orange-600 font-medium">Total Pending</p>
+                                <h3 class="text-2xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
                             </div>
                             <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-                                        <i class="fas fa-check-circle text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <p class="text-sm text-green-600 font-medium">Total Received</p>
-                                        <h3 class="text-2xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
-                                    </div>
-                                </div>
-                                <p class="text-xs text-green-500 mt-2">Confirmed payments</p>
+                                <p class="text-sm text-green-600 font-medium">Total Received</p>
+                                <h3 class="text-2xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
                             </div>
                             <div class="bg-blue-50 p-6 rounded-xl shadow-sm border border-blue-200">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                                        <i class="fas fa-calculator text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <p class="text-sm text-blue-600 font-medium">Grand Total</p>
-                                        <h3 class="text-2xl font-bold text-blue-700">Rs ${(totalPending + totalReceived).toLocaleString()}</h3>
-                                    </div>
-                                </div>
-                                <p class="text-xs text-blue-500 mt-2">All online payments</p>
+                                <p class="text-sm text-blue-600 font-medium">Grand Total</p>
+                                <h3 class="text-2xl font-bold text-blue-700">Rs ${(totalPending + totalReceived).toLocaleString()}</h3>
                             </div>
                         </div>
 
-                        <!-- Filters -->
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-4">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-2 overflow-x-auto">
                             <select id="filter-payment-status" onchange="app.filterOnlinePayments()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                                 <option value="all">All Status</option>
                                 <option value="pending">Pending</option>
@@ -1367,49 +1309,50 @@
                                 <option value="all">All Riders</option>
                                 ${this.data.users.filter(u => u.role === 'rider').map(r => `<option value="${r.id}">${r.name}</option>`).join('')}
                             </select>
-                            <button onclick="app.bulkMarkReceived()" class="ml-auto bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
-                                <i class="fas fa-check-double mr-2"></i>Bulk Mark Received
+                            <button onclick="app.bulkMarkReceived()" class="ml-auto bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
+                                <i class="fas fa-check-double mr-2"></i>Bulk Mark
                             </button>
                         </div>
 
-                        <!-- Payments Table -->
                         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                            <table class="w-full text-left">
-                                <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                                    <tr>
-                                        <th class="p-4"><input type="checkbox" id="select-all-payments" onchange="app.toggleSelectAllPayments()"></th>
-                                        <th class="p-4">Rider</th>
-                                        <th class="p-4">Date</th>
-                                        <th class="p-4">Customer</th>
-                                        <th class="p-4">Amount</th>
-                                        <th class="p-4">Status</th>
-                                        <th class="p-4 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100 text-sm" id="online-payments-tbody">
-                                    ${allPayments.map(p => `
-                                        <tr data-rider="${p.riderId}" data-status="${p.status}">
-                                            <td class="p-4"><input type="checkbox" class="payment-checkbox" data-report="${p.reportId}" data-idx="${p.idx}"></td>
-                                            <td class="p-4 font-medium">${p.riderName}</td>
-                                            <td class="p-4 text-gray-500">${new Date(p.date).toLocaleDateString()}</td>
-                                            <td class="p-4">${p.detail}</td>
-                                            <td class="p-4 font-bold">Rs ${p.amount.toLocaleString()}</td>
-                                            <td class="p-4">
-                                                <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'received' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">
-                                                    ${p.status.toUpperCase()}
-                                                </span>
-                                            </td>
-                                            <td class="p-4 text-right">
-                                                ${p.status === 'pending' ? 
-                                                    `<button onclick="app.adminMarkReceived('${p.reportId}', ${p.idx})" class="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">Mark Received</button>` :
-                                                    `<button onclick="app.adminMarkPending('${p.reportId}', ${p.idx})" class="text-xs bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600">Mark Pending</button>`
-                                                }
-                                            </td>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left min-w-[600px]">
+                                    <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+                                        <tr>
+                                            <th class="p-4"><input type="checkbox" id="select-all-payments" onchange="app.toggleSelectAllPayments()"></th>
+                                            <th class="p-4">Rider</th>
+                                            <th class="p-4">Date</th>
+                                            <th class="p-4">Customer</th>
+                                            <th class="p-4">Amount</th>
+                                            <th class="p-4">Status</th>
+                                            <th class="p-4 text-right">Action</th>
                                         </tr>
-                                    `).join('')}
-                                    ${allPayments.length === 0 ? '<tr><td colspan="7" class="p-8 text-center text-gray-500">No online payments found.</td></tr>' : ''}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 text-sm" id="online-payments-tbody">
+                                        ${allPayments.map(p => `
+                                            <tr data-rider="${p.riderId}" data-status="${p.status}">
+                                                <td class="p-4"><input type="checkbox" class="payment-checkbox" data-report="${p.reportId}" data-idx="${p.idx}"></td>
+                                                <td class="p-4 font-medium">${p.riderName}</td>
+                                                <td class="p-4 text-gray-500">${new Date(p.date).toLocaleDateString()}</td>
+                                                <td class="p-4">${p.detail}</td>
+                                                <td class="p-4 font-bold">Rs ${p.amount.toLocaleString()}</td>
+                                                <td class="p-4">
+                                                    <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'received' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">
+                                                        ${p.status.toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td class="p-4 text-right">
+                                                    ${p.status === 'pending' ? 
+                                                        `<button onclick="app.adminMarkReceived('${p.reportId}', ${p.idx})" class="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">Mark Received</button>` :
+                                                        `<button onclick="app.adminMarkPending('${p.reportId}', ${p.idx})" class="text-xs bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600">Mark Pending</button>`
+                                                    }
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                        ${allPayments.length === 0 ? '<tr><td colspan="7" class="p-8 text-center text-gray-500">No online payments found.</td></tr>' : ''}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1452,7 +1395,7 @@
                 checkboxes.forEach(cb => {
                     const reportId = cb.getAttribute('data-report');
                     const idx = parseInt(cb.getAttribute('data-idx'));
-                    const report = this.data.reports.find(r => r.id === reportId);
+                    const report = this.data.reports.find(x => x.id === reportId);
                     if (report && report.onlinePayments[idx]) {
                         report.onlinePayments[idx].status = 'received';
                     }
@@ -1486,56 +1429,52 @@
                 const container = document.getElementById('main-container');
                 
                 container.innerHTML = `
-                    <div class="max-w-4xl mx-auto space-y-6 fade-in">
+                    <div class="max-w-4xl mx-auto space-y-6 pb-20 fade-in">
                         <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 rounded-xl shadow-lg">
                             <h3 class="text-xl font-bold mb-2"><i class="fas fa-robot mr-2"></i>AI Customer Message Parser</h3>
-                            <p class="text-purple-100">Paste customer messages in natural language (English/Urdu mix supported). The AI will extract items, quantities, weights, and preferences.</p>
+                            <p class="text-purple-100 text-sm">Paste customer messages in natural language. The AI will extract items, quantities, weights, and preferences.</p>
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <!-- Input Section -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h4 class="font-bold text-gray-800 mb-4">Customer Message</h4>
-                                <textarea id="ai-input" rows="8" class="w-full border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Example: Bhai mujhe 2 kg aloo chahiye, 1 dozen ande, double roti 4 pieces, aur 1.5 liter coke. Jaldi bhejo please!"></textarea>
+                                <textarea id="ai-input" rows="6" class="w-full border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Example: Bhai mujhe 2 kg aloo chahiye, 1 dozen ande, double roti 4 pieces, aur 1.5 liter coke. Jaldi bhejo please!"></textarea>
                                 <button onclick="app.parseMessage()" id="parse-btn" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
                                     <i class="fas fa-magic mr-2"></i>Parse Message
                                 </button>
                                 
-                                <div class="mt-4 p-4 bg-gray-50 rounded-lg">
-                                    <p class="text-xs font-semibold text-gray-500 mb-2">EXAMPLES TO TRY:</p>
+                                <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-xs font-semibold text-gray-500 mb-2">EXAMPLES:</p>
                                     <ul class="text-xs text-gray-600 space-y-1">
                                         <li>• "2 kg aloo, 1 dozen ande, double roti 4"</li>
-                                        <li>• "Bhai 3 liter oil bhejo aur 500gm cheeni"</li>
+                                        <li>• "3 liter oil, 500gm cheeni"</li>
                                         <li>• "Single bread 2, double bread 3, 1 kg gosht"</li>
-                                        <li>• "4 pack biscuits, 2.5 kg chawal, 6 bottle water 1.5L"</li>
                                     </ul>
                                 </div>
                             </div>
 
-                            <!-- Output Section -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h4 class="font-bold text-gray-800 mb-4">Parsed Order List</h4>
-                                <div id="ai-output" class="space-y-2 min-h-[200px]">
-                                    <div class="text-center text-gray-400 py-12">
-                                        <i class="fas fa-robot text-4xl mb-3"></i>
-                                        <p>AI will generate the order list here</p>
+                                <div id="ai-output" class="space-y-2 min-h-[150px]">
+                                    <div class="text-center text-gray-400 py-8">
+                                        <i class="fas fa-robot text-3xl mb-2"></i>
+                                        <p class="text-sm">AI will generate the order list here</p>
                                     </div>
                                 </div>
                                 <div id="ai-actions" class="hidden mt-4 pt-4 border-t border-gray-100 flex gap-2">
-                                    <button onclick="app.copyOrderList()" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200">
-                                        <i class="fas fa-copy mr-2"></i>Copy
+                                    <button onclick="app.copyOrderList()" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 text-sm">
+                                        <i class="fas fa-copy mr-1"></i>Copy
                                     </button>
-                                    <button onclick="app.saveOrderList()" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
-                                        <i class="fas fa-save mr-2"></i>Save Order
+                                    <button onclick="app.saveOrderList()" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 text-sm">
+                                        <i class="fas fa-save mr-1"></i>Save
                                     </button>
-                                    <button onclick="app.printOrderList()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">
-                                        <i class="fas fa-print mr-2"></i>Print
+                                    <button onclick="app.printOrderList()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 text-sm">
+                                        <i class="fas fa-print mr-1"></i>Print
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Saved Orders History -->
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <h4 class="font-bold text-gray-800 mb-4">Recent Parsed Orders</h4>
                             <div id="saved-orders-list" class="space-y-2">
@@ -1544,6 +1483,7 @@
                         </div>
                     </div>
                 `;
+                this.loadSavedOrders();
             },
 
             parseMessage() {
@@ -1557,32 +1497,24 @@
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
                 btn.disabled = true;
 
-                // Simulate AI processing
                 setTimeout(() => {
                     const parsedItems = this.aiParseLogic(input);
                     this.displayParsedItems(parsedItems);
                     btn.innerHTML = '<i class="fas fa-magic mr-2"></i>Parse Message';
                     btn.disabled = false;
-                }, 1500);
+                }, 1000);
             },
 
             aiParseLogic(message) {
                 const items = [];
                 const lowerMsg = message.toLowerCase();
                 
-                // Enhanced patterns for Pakistani grocery items
                 const patterns = [
-                    // Weight patterns: "2 kg aloo", "2kg aloo", "2 kilo aloo"
                     { regex: /(\d+\.?\d*)\s*(kg|kilo|kilogram|kgs)\s+(\w+)/g, type: 'weight', unit: 'kg' },
-                    // Dozen patterns: "1 dozen ande", "2 dozen eggs"
                     { regex: /(\d+)\s*(dozen)\s+(\w+)/g, type: 'dozen', unit: 'dozen' },
-                    // Liter patterns: "1.5 liter coke", "2 l oil"
                     { regex: /(\d+\.?\d*)\s*(liter|litre|l|ltr)\s+(\w+)/g, type: 'volume', unit: 'L' },
-                    // Piece patterns with descriptors: "4 double roti", "2 single bread", "6 pack biscuits"
                     { regex: /(\d+)\s*(single|double|pack|bottle|can)?\s*(\w+)/g, type: 'piece', unit: 'pcs' },
-                    // Gram patterns: "500gm cheeni", "250 g namak"
                     { regex: /(\d+)\s*(gm|g|gram)\s+(\w+)/g, type: 'weight', unit: 'g' },
-                    // Simple number + item: "4 ande", "2 bread"
                     { regex: /(\d+)\s+(\w+)/g, type: 'piece', unit: 'pcs' }
                 ];
 
@@ -1596,7 +1528,7 @@
                         const itemName = match[3];
                         
                         const key = `${itemName}-${qty}-${descriptor}`;
-                        if (!seen.has(key)) {
+                        if (!seen.has(key) && itemName.length > 1) {
                             seen.add(key);
                             items.push({
                                 name: this.capitalizeFirst(itemName),
@@ -1610,7 +1542,6 @@
                     }
                 });
 
-                // Remove duplicates and sub-matches
                 return items.filter((item, index, self) => 
                     index === self.findIndex((t) => t.name === item.name && t.quantity === item.quantity)
                 );
@@ -1627,8 +1558,8 @@
                 if (items.length === 0) {
                     output.innerHTML = `
                         <div class="text-center text-orange-500 py-8">
-                            <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
-                            <p>Could not parse items. Try simplifying your message.</p>
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p class="text-sm">Could not parse items. Try simplifying your message.</p>
                         </div>
                     `;
                     actions.classList.add('hidden');
@@ -1642,7 +1573,7 @@
                                 <div class="flex items-center gap-3">
                                     <span class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold">${idx + 1}</span>
                                     <div>
-                                        <p class="font-semibold text-gray-800">
+                                        <p class="font-semibold text-gray-800 text-sm">
                                             ${item.descriptor ? item.descriptor + ' ' : ''}${item.name}
                                         </p>
                                         <p class="text-xs text-gray-500">${item.original}</p>
@@ -1650,7 +1581,6 @@
                                 </div>
                                 <div class="text-right">
                                     <p class="font-bold text-indigo-600">${item.quantity} ${item.unit}</p>
-                                    <p class="text-xs text-gray-400">${item.type}</p>
                                 </div>
                             </div>
                         `).join('')}
@@ -1690,8 +1620,10 @@
             },
 
             loadSavedOrders() {
-                const saved = JSON.parse(localStorage.getItem('aiParsedOrders') || '[]');
                 const container = document.getElementById('saved-orders-list');
+                if (!container) return;
+                
+                const saved = JSON.parse(localStorage.getItem('aiParsedOrders') || '[]');
                 
                 if (saved.length === 0) {
                     container.innerHTML = '<p class="text-gray-500 text-sm">No saved orders yet.</p>';
@@ -1741,7 +1673,7 @@
                 document.getElementById('page-title').textContent = 'Attendance Records';
                 const container = document.getElementById('main-container');
                 container.innerHTML = `
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 fade-in">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 fade-in pb-20">
                         <h3 class="font-bold text-lg mb-4">Attendance Management</h3>
                         <p class="text-gray-500">Feature coming soon: Track rider check-ins, shift durations, and absences.</p>
                     </div>
@@ -1753,7 +1685,7 @@
                 const container = document.getElementById('main-container');
                 
                 container.innerHTML = `
-                    <div class="space-y-6 fade-in">
+                    <div class="space-y-6 pb-20 fade-in">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 class="font-bold text-lg mb-4">Weekly Revenue Trend</h3>
@@ -1768,7 +1700,7 @@
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <h3 class="font-bold text-lg mb-4">Peak Hours Analysis</h3>
                             <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
-                                [Heatmap Visualization Placeholder - Busy Hours: 1PM - 3PM & 7PM - 9PM]
+                                [Heatmap Visualization Placeholder]
                             </div>
                         </div>
                     </div>
@@ -1820,13 +1752,13 @@
                 const btn = document.getElementById('shift-btn');
                 if (!this.data.currentShift) {
                     this.data.currentShift = { start: new Date(), isActive: true };
-                    btn.innerHTML = '<i class="fas fa-pause mr-2"></i> End Shift';
-                    btn.className = "px-4 py-2 rounded-full text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors";
+                    btn.innerHTML = '<i class="fas fa-pause mr-1"></i><span class="hidden sm:inline">End Shift</span><span class="sm:hidden">End</span>';
+                    btn.className = "px-3 lg:px-4 py-2 rounded-full text-xs lg:text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors whitespace-nowrap";
                     alert("Shift Started! Location tracking active.");
                 } else {
                     this.data.currentShift = null;
-                    btn.innerHTML = '<i class="fas fa-play mr-2"></i> Start Shift';
-                    btn.className = "px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors";
+                    btn.innerHTML = '<i class="fas fa-play mr-1"></i><span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Start</span>';
+                    btn.className = "px-3 lg:px-4 py-2 rounded-full text-xs lg:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap";
                     alert("Shift Ended. Great job today!");
                 }
             },
@@ -1845,7 +1777,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             app.init();
         });
-
     </script>
 </body>
 </html>
