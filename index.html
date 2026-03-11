@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rider Portal Pakistan | Pro Edition</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -93,16 +99,26 @@
     </div>
 
     <script>
-        // --- Application Logic ---
+        // 🔥 FIREBASE CONFIGURATION - YEH AAPKO FIREBASE CONSOLE SE MILENGE
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "dastak-rider-portal.firebaseapp.com",
+            projectId: "dastak-rider-portal",
+            storageBucket: "dastak-rider-portal.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
 
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- Application Logic ---
         const app = {
             data: {
                 currentUser: null,
-                users: [
-                    { id: 'admin1', name: 'System Admin', email: 'admin@portal.com', password: 'admin123', role: 'admin', phone: '03001234567', zone: 'All' },
-                    { id: 'r1', name: 'Ali Khan', email: 'ali@portal.com', password: 'rider123', role: 'rider', phone: '03001111111', zone: 'North', vehicle: 'Honda 125 - LEA-123', joinDate: '2023-01-15', salaryBase: 15000, commissionRate: 10 },
-                    { id: 'r2', name: 'Ahmed Raza', email: 'ahmed@portal.com', password: 'rider123', role: 'rider', phone: '03002222222', zone: 'South', vehicle: 'Yamaha YBR - KHI-456', joinDate: '2023-03-10', salaryBase: 15000, commissionRate: 12 }
-                ],
+                users: [],
                 reports: [],
                 attendance: [],
                 announcements: [
@@ -110,7 +126,7 @@
                 ],
                 currentShift: null,
                 commissionSettings: {
-                    defaultRate: 10, // 10% default
+                    defaultRate: 10,
                     adminRates: {
                         'Type 1': 10,
                         'Type 2': 12,
@@ -119,32 +135,44 @@
                 }
             },
 
-            init() {
-                this.loadData();
+            async init() {
                 this.updateDate();
-                if (this.data.currentUser) {
-                    this.showDashboard();
-                } else {
-                    this.showLogin();
+                
+                // Check if user is already logged in
+                auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        // User is signed in, get user data from Firestore
+                        await this.loadUserData(user.uid);
+                        document.getElementById('sidebar').classList.remove('hidden');
+                        document.querySelector('header').classList.remove('hidden');
+                        this.showDashboard();
+                    } else {
+                        // No user signed in
+                        this.showLogin();
+                    }
+                });
+            },
+
+            async loadUserData(uid) {
+                try {
+                    const userDoc = await db.collection('users').doc(uid).get();
+                    if (userDoc.exists) {
+                        this.data.currentUser = { id: uid, ...userDoc.data() };
+                    }
+                    // Load reports from Firestore
+                    await this.loadReportsFromFirebase();
+                } catch (error) {
+                    console.error("Error loading user data:", error);
                 }
             },
 
-            loadData() {
-                const saved = localStorage.getItem('riderPortalData_v3');
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    this.data.reports = parsed.reports || [];
-                    this.data.attendance = parsed.attendance || [];
-                    this.data.users = parsed.users || this.data.users;
+            async loadReportsFromFirebase() {
+                try {
+                    const reportsSnapshot = await db.collection('reports').orderBy('createdAt', 'desc').get();
+                    this.data.reports = reportsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                } catch (error) {
+                    console.error("Error loading reports:", error);
                 }
-            },
-
-            saveData() {
-                localStorage.setItem('riderPortalData_v3', JSON.stringify({
-                    reports: this.data.reports,
-                    attendance: this.data.attendance,
-                    users: this.data.users
-                }));
             },
 
             updateDate() {
@@ -175,13 +203,6 @@
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
                                     <input type="password" id="login-pass" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="••••••••" required>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                                    <select id="login-role" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                                        <option value="rider">Rider</option>
-                                        <option value="admin">Administrator</option>
-                                    </select>
-                                </div>
                                 <button type="submit" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200">
                                     Sign In
                                 </button>
@@ -192,9 +213,8 @@
                                 </p>
                             </div>
                             <div class="mt-6 text-center text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-                                <p class="font-semibold mb-1">Demo Accounts:</p>
-                                <p>Admin: admin@portal.com / admin123</p>
-                                <p>Rider: ali@portal.com / rider123</p>
+                                <p class="font-semibold mb-1">Firebase Connected ✅</p>
+                                <p>Data will be saved permanently</p>
                             </div>
                         </div>
                     </div>
@@ -262,7 +282,7 @@
                 `;
             },
 
-            handleSignup(e) {
+            async handleSignup(e) {
                 e.preventDefault();
                 const name = document.getElementById('signup-name').value;
                 const email = document.getElementById('signup-email').value;
@@ -271,52 +291,47 @@
                 const zone = document.getElementById('signup-zone').value;
                 const vehicle = document.getElementById('signup-vehicle').value;
 
-                // Check if email exists
-                if (this.data.users.find(u => u.email === email)) {
-                    alert('Email already registered! Please use a different email.');
-                    return;
+                try {
+                    // Create user in Firebase Auth
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+
+                    // Save user data to Firestore
+                    await db.collection('users').doc(user.uid).set({
+                        name: name,
+                        email: email,
+                        phone: phone,
+                        zone: zone,
+                        vehicle: vehicle,
+                        role: 'rider',
+                        joinDate: new Date().toISOString().split('T')[0],
+                        salaryBase: 15000,
+                        commissionRate: 10,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    alert('Account created successfully! Please sign in.');
+                    this.showLogin();
+                } catch (error) {
+                    alert('Error: ' + error.message);
                 }
-
-                const newRider = {
-                    id: 'r' + Date.now(),
-                    name,
-                    email,
-                    password,
-                    phone,
-                    zone,
-                    vehicle,
-                    role: 'rider',
-                    joinDate: new Date().toISOString().split('T')[0],
-                    salaryBase: 15000,
-                    commissionRate: this.data.commissionSettings.defaultRate
-                };
-
-                this.data.users.push(newRider);
-                this.saveData();
-                alert('Account created successfully! Please sign in.');
-                this.showLogin();
-                document.getElementById('login-email').value = email;
             },
 
-            handleLogin(e) {
+            async handleLogin(e) {
                 e.preventDefault();
                 const email = document.getElementById('login-email').value;
                 const pass = document.getElementById('login-pass').value;
-                const role = document.getElementById('login-role').value;
 
-                const user = this.data.users.find(u => u.email === email && u.password === pass && u.role === role);
-                
-                if (user) {
-                    this.data.currentUser = user;
-                    document.getElementById('sidebar').classList.remove('hidden');
-                    document.querySelector('header').classList.remove('hidden');
-                    this.showDashboard();
-                } else {
-                    alert('Invalid credentials! Please use demo accounts provided below.');
+                try {
+                    await auth.signInWithEmailAndPassword(email, pass);
+                    // Auth state listener will handle the rest
+                } catch (error) {
+                    alert('Invalid credentials: ' + error.message);
                 }
             },
 
-            logout() {
+            async logout() {
+                await auth.signOut();
                 this.data.currentUser = null;
                 location.reload();
             },
@@ -394,8 +409,8 @@
                 
                 const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
                 const todayReport = myReports.find(r => r.date === new Date().toISOString().split('T')[0]);
-                const totalEarnings = myReports.reduce((acc, r) => acc + r.totalEarnings, 0);
-                const pendingOnline = myReports.flatMap(r => r.onlinePayments).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
+                const totalEarnings = myReports.reduce((acc, r) => acc + (r.totalEarnings || 0), 0);
+                const pendingOnline = myReports.flatMap(r => r.onlinePayments || []).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
 
                 container.innerHTML = `
                     <div class="space-y-6 fade-in">
@@ -404,7 +419,7 @@
                                 <div class="flex justify-between items-start">
                                     <div>
                                         <p class="text-sm text-gray-500 font-medium">Today's Earnings</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">Rs. ${todayReport ? todayReport.totalEarnings.toLocaleString() : '0'}</h3>
+                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">Rs. ${todayReport ? (todayReport.totalEarnings || 0).toLocaleString() : '0'}</h3>
                                     </div>
                                     <div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet"></i></div>
                                 </div>
@@ -422,7 +437,7 @@
                                 <div class="flex justify-between items-start">
                                     <div>
                                         <p class="text-sm text-gray-500 font-medium">Total Deliveries</p>
-                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">${myReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0)}</h3>
+                                        <h3 class="text-2xl font-bold text-gray-800 mt-1">${myReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0)}</h3>
                                     </div>
                                     <div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box"></i></div>
                                 </div>
@@ -480,7 +495,7 @@
             renderRiderReportForm() {
                 document.getElementById('page-title').textContent = 'Submit Daily Report';
                 const container = document.getElementById('main-container');
-                const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
+                const userCommission = this.data.currentUser.commissionRate || 10;
                 
                 container.innerHTML = `
                     <div class="max-w-4xl mx-auto fade-in">
@@ -650,7 +665,7 @@
             },
 
             calculateTotals() {
-                const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
+                const userCommission = this.data.currentUser.commissionRate || 10;
                 
                 // Orders with Commission
                 let grossTotal = 0;
@@ -672,7 +687,7 @@
                 document.getElementById('grand-gross-total').textContent = `Rs ${grossTotal.toLocaleString()}`;
                 document.getElementById('grand-commission-total').textContent = `Rs ${commissionTotal.toLocaleString()}`;
 
-                // Online Payments - Calculate Pending vs Received
+                // Online Payments
                 let onlinePending = 0;
                 let onlineReceived = 0;
                 
@@ -716,14 +731,14 @@
                 }
             },
 
-            submitReport(e) {
+            async submitReport(e) {
                 e.preventDefault();
                 if(!confirm("Are you sure you want to submit this report?")) return;
 
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
-                const userCommission = this.data.currentUser.commissionRate || this.data.commissionSettings.defaultRate;
+                const userCommission = this.data.currentUser.commissionRate || 10;
                 
-                // Collect Orders with commission
+                // Collect Orders
                 const orders = [1, 2, 3].map(i => {
                     const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
                     const rate = parseFloat(document.getElementById(`order-rate-${i}`).value) || 0;
@@ -762,11 +777,11 @@
                 const finalAmount = opening + totalCommission - totalOnlineReceived - totalExpenses;
 
                 const newReport = {
-                    id: 'rep-' + Date.now(),
                     riderId: this.data.currentUser.id,
                     riderName: this.data.currentUser.name,
+                    riderEmail: this.data.currentUser.email,
                     date: new Date().toISOString().split('T')[0],
-                    createdAt: new Date().toISOString(),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     openingBalance: opening,
                     orders: orders,
                     onlinePayments: onlinePayments,
@@ -774,23 +789,31 @@
                     totalGross: totalGross,
                     totalCommission: totalCommission,
                     totalExpenses: totalExpenses,
+                    totalEarnings: totalCommission,
                     finalAmount: finalAmount,
                     status: 'pending',
                     proofImage: document.getElementById('proof-preview-img').src || null,
-                    shiftDuration: '8h 30m',
                     commissionRate: userCommission
                 };
 
-                this.data.reports.push(newReport);
-                this.saveData();
-                alert('Report Submitted Successfully! Pending Admin Approval.');
-                this.navigate('rider-dashboard');
+                try {
+                    // Save to Firestore
+                    await db.collection('reports').add(newReport);
+                    
+                    // Reload reports
+                    await this.loadReportsFromFirebase();
+                    
+                    alert('Report Submitted Successfully! Pending Admin Approval.');
+                    this.navigate('rider-dashboard');
+                } catch (error) {
+                    alert('Error submitting report: ' + error.message);
+                }
             },
 
             renderRiderHistory() {
                 document.getElementById('page-title').textContent = 'My Report History';
                 const container = document.getElementById('main-container');
-                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
 
                 let html = `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">`;
                 html += `<table class="w-full text-left border-collapse">
@@ -811,13 +834,13 @@
                     html += `<tr><td colspan="7" class="p-8 text-center text-gray-500">No reports found.</td></tr>`;
                 } else {
                     myReports.forEach(r => {
-                        const totalQty = r.orders.reduce((acc, o) => acc + o.qty, 0);
+                        const totalQty = (r.orders || []).reduce((acc, o) => acc + (o.qty || 0), 0);
                         html += `<tr class="hover:bg-gray-50 transition-colors">
                             <td class="p-4 font-medium text-gray-800">${new Date(r.date).toLocaleDateString()}</td>
                             <td class="p-4">${totalQty}</td>
-                            <td class="p-4 text-gray-600">Rs ${r.totalGross.toLocaleString()}</td>
-                            <td class="p-4 text-purple-600 font-medium">Rs ${r.totalCommission.toLocaleString()} (${r.commissionRate}%)</td>
-                            <td class="p-4 font-bold">Rs ${r.finalAmount.toLocaleString()}</td>
+                            <td class="p-4 text-gray-600">Rs ${(r.totalGross || 0).toLocaleString()}</td>
+                            <td class="p-4 text-purple-600 font-medium">Rs ${(r.totalCommission || 0).toLocaleString()} (${r.commissionRate || 10}%)</td>
+                            <td class="p-4 font-bold">Rs ${(r.finalAmount || 0).toLocaleString()}</td>
                             <td class="p-4"><span class="status-badge status-${r.status}">${r.status}</span></td>
                             <td class="p-4">
                                 <button onclick="app.viewReportDetails('${r.id}')" class="text-indigo-600 hover:text-indigo-800 font-medium">View</button>
@@ -829,8 +852,20 @@
                 container.innerHTML = html;
             },
 
-            viewReportDetails(id) {
-                const report = this.data.reports.find(r => r.id === id);
+            async viewReportDetails(reportId) {
+                let report = this.data.reports.find(r => r.id === reportId);
+                
+                if (!report) {
+                    try {
+                        const doc = await db.collection('reports').doc(reportId).get();
+                        if (doc.exists) {
+                            report = { id: doc.id, ...doc.data() };
+                        }
+                    } catch (error) {
+                        console.error("Error fetching report:", error);
+                    }
+                }
+                
                 if(!report) return;
                 
                 const modalContent = document.getElementById('modal-content');
@@ -854,14 +889,14 @@
                             </div>
                         </div>
 
-                        <h3 class="font-bold text-gray-700 mb-2 border-b pb-1">Orders (Commission: ${report.commissionRate}%)</h3>
+                        <h3 class="font-bold text-gray-700 mb-2 border-b pb-1">Orders (Commission: ${report.commissionRate || 10}%)</h3>
                         <ul class="space-y-1 mb-4 text-sm">
-                            ${report.orders.map(o => `
+                            ${(report.orders || []).map(o => `
                                 <li class="flex justify-between items-center">
                                     <span>${o.type} (x${o.qty}) @ Rs ${o.rate}</span>
                                     <div class="text-right">
-                                        <div class="text-gray-600">Gross: Rs ${o.gross.toLocaleString()}</div>
-                                        <div class="text-purple-600 text-xs">Comm: Rs ${o.commission.toLocaleString()}</div>
+                                        <div class="text-gray-600">Gross: Rs ${(o.gross || 0).toLocaleString()}</div>
+                                        <div class="text-purple-600 text-xs">Comm: Rs ${(o.commission || 0).toLocaleString()}</div>
                                     </div>
                                 </li>
                             `).join('')}
@@ -869,7 +904,7 @@
 
                         <h3 class="font-bold text-gray-700 mb-2 border-b pb-1">Online Payments</h3>
                         <ul class="space-y-1 mb-4 text-sm">
-                            ${report.onlinePayments.map(p => `
+                            ${(report.onlinePayments || []).map(p => `
                                 <li class="flex justify-between">
                                     <span>${p.detail}</span>
                                     <span class="${p.status === 'received' ? 'text-green-600' : 'text-orange-600'}">
@@ -881,15 +916,15 @@
 
                         <h3 class="font-bold text-gray-700 mb-2 border-b pb-1">Expenses</h3>
                         <ul class="space-y-1 mb-4 text-sm">
-                            ${report.expenses.map(e => `<li class="flex justify-between"><span>${e.type}</span> <span class="text-red-500">Rs ${e.amount.toLocaleString()}</span></li>`).join('')}
+                            ${(report.expenses || []).map(e => `<li class="flex justify-between"><span>${e.type}</span> <span class="text-red-500">Rs ${e.amount.toLocaleString()}</span></li>`).join('')}
                         </ul>
 
                         <div class="bg-indigo-50 p-4 rounded-xl space-y-1">
-                            <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${report.openingBalance.toLocaleString()}</span></div>
-                            <div class="flex justify-between text-sm text-purple-600"><span>Commission:</span><span>Rs ${report.totalCommission.toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance || 0).toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm text-purple-600"><span>Commission:</span><span>Rs ${(report.totalCommission || 0).toLocaleString()}</span></div>
                             <div class="flex justify-between font-bold text-indigo-900 text-lg pt-2 border-t border-indigo-200">
                                 <span>Final Amount</span>
-                                <span>Rs ${report.finalAmount.toLocaleString()}</span>
+                                <span>Rs ${(report.finalAmount || 0).toLocaleString()}</span>
                             </div>
                         </div>
                         
@@ -911,7 +946,7 @@
                 
                 let allPayments = [];
                 myReports.forEach(r => {
-                    r.onlinePayments.forEach((p, idx) => {
+                    (r.onlinePayments || []).forEach((p, idx) => {
                         allPayments.push({ ...p, reportId: r.id, date: r.date, idx: idx });
                     });
                 });
@@ -984,12 +1019,22 @@
                 `;
             },
 
-            updatePaymentStatus(reportId, idx, status) {
-                const report = this.data.reports.find(r => r.id === reportId);
-                if(report) {
-                    report.onlinePayments[idx].status = status;
-                    this.saveData();
-                    this.renderRiderPayments();
+            async updatePaymentStatus(reportId, idx, status) {
+                try {
+                    const reportRef = db.collection('reports').doc(reportId);
+                    const reportDoc = await reportRef.get();
+                    
+                    if (reportDoc.exists) {
+                        const reportData = reportDoc.data();
+                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
+                            reportData.onlinePayments[idx].status = status;
+                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
+                            await this.loadReportsFromFirebase();
+                            this.renderRiderPayments();
+                        }
+                    }
+                } catch (error) {
+                    alert('Error updating status: ' + error.message);
                 }
             },
 
@@ -999,8 +1044,8 @@
                 
                 const currentMonth = new Date().getMonth();
                 const monthlyReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && new Date(r.date).getMonth() === currentMonth);
-                const totalOrders = monthlyReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0);
-                const totalCommission = monthlyReports.reduce((acc, r) => acc + r.totalCommission, 0);
+                const totalOrders = monthlyReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
+                const totalCommission = monthlyReports.reduce((acc, r) => acc + (r.totalCommission || 0), 0);
                 const baseSalary = this.data.currentUser.salaryBase || 15000;
                 const deductions = 500;
                 const netSalary = baseSalary + totalCommission - deductions;
@@ -1069,10 +1114,9 @@
                 const pendingReports = this.data.reports.filter(r => r.status === 'pending').length;
                 const todayCollection = this.data.reports
                     .filter(r => r.date === new Date().toISOString().split('T')[0] && r.status === 'approved')
-                    .reduce((acc, r) => acc + r.finalAmount, 0);
+                    .reduce((acc, r) => acc + (r.finalAmount || 0), 0);
 
-                // Calculate all online payments
-                const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments);
+                const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments || []);
                 const totalOnlinePending = allOnlinePayments.filter(p => p.status === 'pending').reduce((a,b) => a + b.amount, 0);
 
                 container.innerHTML = `
@@ -1126,7 +1170,7 @@
                                                 <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold">${r.riderName.charAt(0)}</div>
                                                 <div>
                                                     <p class="font-semibold text-sm">${r.riderName}</p>
-                                                    <p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()} • Rs ${r.finalAmount.toLocaleString()}</p>
+                                                    <p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()} • Rs ${(r.finalAmount || 0).toLocaleString()}</p>
                                                 </div>
                                             </div>
                                             <div class="flex gap-2">
@@ -1222,16 +1266,22 @@
                 `;
             },
 
-            editCommission(riderId) {
+            async editCommission(riderId) {
                 const rider = this.data.users.find(u => u.id === riderId);
                 if (!rider) return;
                 
                 const newRate = prompt(`Enter new commission rate for ${rider.name} (current: ${rider.commissionRate || 10}%):`, rider.commissionRate || 10);
                 if (newRate && !isNaN(newRate) && newRate > 0 && newRate <= 100) {
-                    rider.commissionRate = parseInt(newRate);
-                    this.saveData();
-                    this.renderAdminRiders();
-                    alert(`Commission rate updated to ${newRate}%`);
+                    try {
+                        await db.collection('users').doc(riderId).update({
+                            commissionRate: parseInt(newRate)
+                        });
+                        rider.commissionRate = parseInt(newRate);
+                        this.renderAdminRiders();
+                        alert(`Commission rate updated to ${newRate}%`);
+                    } catch (error) {
+                        alert('Error updating commission: ' + error.message);
+                    }
                 }
             },
 
@@ -1272,8 +1322,8 @@
                                         <td class="p-4"><input type="checkbox" class="rounded"></td>
                                         <td class="p-4 font-medium">${r.riderName}</td>
                                         <td class="p-4 text-gray-500">${new Date(r.date).toLocaleDateString()}</td>
-                                        <td class="p-4 text-purple-600">Rs ${r.totalCommission.toLocaleString()} (${r.commissionRate}%)</td>
-                                        <td class="p-4 font-bold">Rs ${r.finalAmount.toLocaleString()}</td>
+                                        <td class="p-4 text-purple-600">Rs ${(r.totalCommission || 0).toLocaleString()} (${r.commissionRate || 10}%)</td>
+                                        <td class="p-4 font-bold">Rs ${(r.finalAmount || 0).toLocaleString()}</td>
                                         <td class="p-4"><span class="status-badge status-${r.status}">${r.status}</span></td>
                                         <td class="p-4 text-right">
                                             <button onclick="app.viewReportDetails('${r.id}')" class="text-indigo-600 hover:underline mr-3">View</button>
@@ -1290,14 +1340,24 @@
                 `;
             },
 
+            async updateReportStatus(id, status) {
+                try {
+                    await db.collection('reports').doc(id).update({ status: status });
+                    await this.loadReportsFromFirebase();
+                    if(this.data.currentUser.role === 'admin') this.renderAdminReports();
+                    else this.renderRiderHistory();
+                } catch (error) {
+                    alert('Error updating status: ' + error.message);
+                }
+            },
+
             renderAdminOnlinePayments() {
                 document.getElementById('page-title').textContent = 'All Online Payments';
                 const container = document.getElementById('main-container');
                 
-                // Get all online payments from all reports
                 let allPayments = [];
                 this.data.reports.forEach(r => {
-                    r.onlinePayments.forEach((p, idx) => {
+                    (r.onlinePayments || []).forEach((p, idx) => {
                         allPayments.push({ 
                             ...p, 
                             reportId: r.id, 
@@ -1316,7 +1376,6 @@
 
                 container.innerHTML = `
                     <div class="space-y-6 fade-in">
-                        <!-- Summary Cards -->
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="bg-orange-50 p-6 rounded-xl shadow-sm border border-orange-200">
                                 <div class="flex items-center gap-3 mb-2">
@@ -1328,7 +1387,6 @@
                                         <h3 class="text-2xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
                                     </div>
                                 </div>
-                                <p class="text-xs text-orange-500 mt-2">Awaiting confirmation</p>
                             </div>
                             <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
                                 <div class="flex items-center gap-3 mb-2">
@@ -1340,7 +1398,6 @@
                                         <h3 class="text-2xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
                                     </div>
                                 </div>
-                                <p class="text-xs text-green-500 mt-2">Confirmed payments</p>
                             </div>
                             <div class="bg-blue-50 p-6 rounded-xl shadow-sm border border-blue-200">
                                 <div class="flex items-center gap-3 mb-2">
@@ -1352,32 +1409,13 @@
                                         <h3 class="text-2xl font-bold text-blue-700">Rs ${(totalPending + totalReceived).toLocaleString()}</h3>
                                     </div>
                                 </div>
-                                <p class="text-xs text-blue-500 mt-2">All online payments</p>
                             </div>
                         </div>
 
-                        <!-- Filters -->
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-4">
-                            <select id="filter-payment-status" onchange="app.filterOnlinePayments()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
-                                <option value="all">All Status</option>
-                                <option value="pending">Pending</option>
-                                <option value="received">Received</option>
-                            </select>
-                            <select id="filter-payment-rider" onchange="app.filterOnlinePayments()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
-                                <option value="all">All Riders</option>
-                                ${this.data.users.filter(u => u.role === 'rider').map(r => `<option value="${r.id}">${r.name}</option>`).join('')}
-                            </select>
-                            <button onclick="app.bulkMarkReceived()" class="ml-auto bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
-                                <i class="fas fa-check-double mr-2"></i>Bulk Mark Received
-                            </button>
-                        </div>
-
-                        <!-- Payments Table -->
                         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                             <table class="w-full text-left">
                                 <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
                                     <tr>
-                                        <th class="p-4"><input type="checkbox" id="select-all-payments" onchange="app.toggleSelectAllPayments()"></th>
                                         <th class="p-4">Rider</th>
                                         <th class="p-4">Date</th>
                                         <th class="p-4">Customer</th>
@@ -1386,10 +1424,9 @@
                                         <th class="p-4 text-right">Action</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-gray-100 text-sm" id="online-payments-tbody">
+                                <tbody class="divide-y divide-gray-100 text-sm">
                                     ${allPayments.map(p => `
-                                        <tr data-rider="${p.riderId}" data-status="${p.status}">
-                                            <td class="p-4"><input type="checkbox" class="payment-checkbox" data-report="${p.reportId}" data-idx="${p.idx}"></td>
+                                        <tr>
                                             <td class="p-4 font-medium">${p.riderName}</td>
                                             <td class="p-4 text-gray-500">${new Date(p.date).toLocaleDateString()}</td>
                                             <td class="p-4">${p.detail}</td>
@@ -1407,7 +1444,7 @@
                                             </td>
                                         </tr>
                                     `).join('')}
-                                    ${allPayments.length === 0 ? '<tr><td colspan="7" class="p-8 text-center text-gray-500">No online payments found.</td></tr>' : ''}
+                                    ${allPayments.length === 0 ? '<tr><td colspan="6" class="p-8 text-center text-gray-500">No online payments found.</td></tr>' : ''}
                                 </tbody>
                             </table>
                         </div>
@@ -1415,69 +1452,39 @@
                 `;
             },
 
-            filterOnlinePayments() {
-                const statusFilter = document.getElementById('filter-payment-status').value;
-                const riderFilter = document.getElementById('filter-payment-rider').value;
-                
-                document.querySelectorAll('#online-payments-tbody tr').forEach(row => {
-                    const rider = row.getAttribute('data-rider');
-                    const status = row.getAttribute('data-status');
-                    
-                    let show = true;
-                    if (statusFilter !== 'all' && status !== statusFilter) show = false;
-                    if (riderFilter !== 'all' && rider !== riderFilter) show = false;
-                    
-                    row.style.display = show ? '' : 'none';
-                });
-            },
-
-            toggleSelectAllPayments() {
-                const checked = document.getElementById('select-all-payments').checked;
-                document.querySelectorAll('.payment-checkbox').forEach(cb => {
-                    if (cb.closest('tr').style.display !== 'none') {
-                        cb.checked = checked;
+            async adminMarkReceived(reportId, idx) {
+                try {
+                    const reportRef = db.collection('reports').doc(reportId);
+                    const reportDoc = await reportRef.get();
+                    if (reportDoc.exists) {
+                        const reportData = reportDoc.data();
+                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
+                            reportData.onlinePayments[idx].status = 'received';
+                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
+                            await this.loadReportsFromFirebase();
+                            this.renderAdminOnlinePayments();
+                        }
                     }
-                });
-            },
-
-            bulkMarkReceived() {
-                const checkboxes = document.querySelectorAll('.payment-checkbox:checked');
-                if (checkboxes.length === 0) {
-                    alert('Please select at least one payment');
-                    return;
-                }
-                
-                if (!confirm(`Mark ${checkboxes.length} payments as received?`)) return;
-                
-                checkboxes.forEach(cb => {
-                    const reportId = cb.getAttribute('data-report');
-                    const idx = parseInt(cb.getAttribute('data-idx'));
-                    const report = this.data.reports.find(r => r.id === reportId);
-                    if (report && report.onlinePayments[idx]) {
-                        report.onlinePayments[idx].status = 'received';
-                    }
-                });
-                
-                this.saveData();
-                this.renderAdminOnlinePayments();
-                alert('Payments marked as received!');
-            },
-
-            adminMarkReceived(reportId, idx) {
-                const report = this.data.reports.find(r => r.id === reportId);
-                if (report && report.onlinePayments[idx]) {
-                    report.onlinePayments[idx].status = 'received';
-                    this.saveData();
-                    this.renderAdminOnlinePayments();
+                } catch (error) {
+                    alert('Error: ' + error.message);
                 }
             },
 
-            adminMarkPending(reportId, idx) {
-                const report = this.data.reports.find(r => r.id === reportId);
-                if (report && report.onlinePayments[idx]) {
-                    report.onlinePayments[idx].status = 'pending';
-                    this.saveData();
-                    this.renderAdminOnlinePayments();
+            async adminMarkPending(reportId, idx) {
+                try {
+                    const reportRef = db.collection('reports').doc(reportId);
+                    const reportDoc = await reportRef.get();
+                    if (reportDoc.exists) {
+                        const reportData = reportDoc.data();
+                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
+                            reportData.onlinePayments[idx].status = 'pending';
+                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
+                            await this.loadReportsFromFirebase();
+                            this.renderAdminOnlinePayments();
+                        }
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
                 }
             },
 
@@ -1493,26 +1500,14 @@
                         </div>
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <!-- Input Section -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h4 class="font-bold text-gray-800 mb-4">Customer Message</h4>
                                 <textarea id="ai-input" rows="8" class="w-full border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Example: Bhai mujhe 2 kg aloo chahiye, 1 dozen ande, double roti 4 pieces, aur 1.5 liter coke. Jaldi bhejo please!"></textarea>
                                 <button onclick="app.parseMessage()" id="parse-btn" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
                                     <i class="fas fa-magic mr-2"></i>Parse Message
                                 </button>
-                                
-                                <div class="mt-4 p-4 bg-gray-50 rounded-lg">
-                                    <p class="text-xs font-semibold text-gray-500 mb-2">EXAMPLES TO TRY:</p>
-                                    <ul class="text-xs text-gray-600 space-y-1">
-                                        <li>• "2 kg aloo, 1 dozen ande, double roti 4"</li>
-                                        <li>• "Bhai 3 liter oil bhejo aur 500gm cheeni"</li>
-                                        <li>• "Single bread 2, double bread 3, 1 kg gosht"</li>
-                                        <li>• "4 pack biscuits, 2.5 kg chawal, 6 bottle water 1.5L"</li>
-                                    </ul>
-                                </div>
                             </div>
 
-                            <!-- Output Section -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h4 class="font-bold text-gray-800 mb-4">Parsed Order List</h4>
                                 <div id="ai-output" class="space-y-2 min-h-[200px]">
@@ -1525,21 +1520,10 @@
                                     <button onclick="app.copyOrderList()" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200">
                                         <i class="fas fa-copy mr-2"></i>Copy
                                     </button>
-                                    <button onclick="app.saveOrderList()" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
-                                        <i class="fas fa-save mr-2"></i>Save Order
-                                    </button>
                                     <button onclick="app.printOrderList()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">
                                         <i class="fas fa-print mr-2"></i>Print
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- Saved Orders History -->
-                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                            <h4 class="font-bold text-gray-800 mb-4">Recent Parsed Orders</h4>
-                            <div id="saved-orders-list" class="space-y-2">
-                                <p class="text-gray-500 text-sm">No saved orders yet.</p>
                             </div>
                         </div>
                     </div>
@@ -1557,7 +1541,6 @@
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
                 btn.disabled = true;
 
-                // Simulate AI processing
                 setTimeout(() => {
                     const parsedItems = this.aiParseLogic(input);
                     this.displayParsedItems(parsedItems);
@@ -1570,19 +1553,12 @@
                 const items = [];
                 const lowerMsg = message.toLowerCase();
                 
-                // Enhanced patterns for Pakistani grocery items
                 const patterns = [
-                    // Weight patterns: "2 kg aloo", "2kg aloo", "2 kilo aloo"
                     { regex: /(\d+\.?\d*)\s*(kg|kilo|kilogram|kgs)\s+(\w+)/g, type: 'weight', unit: 'kg' },
-                    // Dozen patterns: "1 dozen ande", "2 dozen eggs"
                     { regex: /(\d+)\s*(dozen)\s+(\w+)/g, type: 'dozen', unit: 'dozen' },
-                    // Liter patterns: "1.5 liter coke", "2 l oil"
                     { regex: /(\d+\.?\d*)\s*(liter|litre|l|ltr)\s+(\w+)/g, type: 'volume', unit: 'L' },
-                    // Piece patterns with descriptors: "4 double roti", "2 single bread", "6 pack biscuits"
                     { regex: /(\d+)\s*(single|double|pack|bottle|can)?\s*(\w+)/g, type: 'piece', unit: 'pcs' },
-                    // Gram patterns: "500gm cheeni", "250 g namak"
                     { regex: /(\d+)\s*(gm|g|gram)\s+(\w+)/g, type: 'weight', unit: 'g' },
-                    // Simple number + item: "4 ande", "2 bread"
                     { regex: /(\d+)\s+(\w+)/g, type: 'piece', unit: 'pcs' }
                 ];
 
@@ -1610,7 +1586,6 @@
                     }
                 });
 
-                // Remove duplicates and sub-matches
                 return items.filter((item, index, self) => 
                     index === self.findIndex((t) => t.name === item.name && t.quantity === item.quantity)
                 );
@@ -1675,40 +1650,6 @@
                 alert('Order list copied to clipboard!');
             },
 
-            saveOrderList() {
-                if (!this.currentParsedOrder) return;
-                
-                const saved = JSON.parse(localStorage.getItem('aiParsedOrders') || '[]');
-                saved.unshift({
-                    date: new Date().toISOString(),
-                    items: this.currentParsedOrder
-                });
-                localStorage.setItem('aiParsedOrders', JSON.stringify(saved.slice(0, 10)));
-                
-                alert('Order saved successfully!');
-                this.loadSavedOrders();
-            },
-
-            loadSavedOrders() {
-                const saved = JSON.parse(localStorage.getItem('aiParsedOrders') || '[]');
-                const container = document.getElementById('saved-orders-list');
-                
-                if (saved.length === 0) {
-                    container.innerHTML = '<p class="text-gray-500 text-sm">No saved orders yet.</p>';
-                    return;
-                }
-                
-                container.innerHTML = saved.map((order, i) => `
-                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs text-gray-500">${new Date(order.date).toLocaleString()}</span>
-                            <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">${order.items.length} items</span>
-                        </div>
-                        <p class="text-sm text-gray-700 truncate">${order.items.map(it => it.name).join(', ')}</p>
-                    </div>
-                `).join('');
-            },
-
             printOrderList() {
                 if (!this.currentParsedOrder) return;
                 const printWindow = window.open('', '_blank');
@@ -1764,13 +1705,6 @@
                                 <canvas id="zoneChart" height="200"></canvas>
                             </div>
                         </div>
-                        
-                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                            <h3 class="font-bold text-lg mb-4">Peak Hours Analysis</h3>
-                            <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
-                                [Heatmap Visualization Placeholder - Busy Hours: 1PM - 3PM & 7PM - 9PM]
-                            </div>
-                        </div>
                     </div>
                 `;
 
@@ -1806,16 +1740,6 @@
                 }, 100);
             },
 
-            updateReportStatus(id, status) {
-                const report = this.data.reports.find(r => r.id === id);
-                if (report) {
-                    report.status = status;
-                    this.saveData();
-                    if(this.data.currentUser.role === 'admin') this.renderAdminReports();
-                    else this.renderRiderHistory();
-                }
-            },
-
             toggleShift() {
                 const btn = document.getElementById('shift-btn');
                 if (!this.data.currentShift) {
@@ -1849,4 +1773,3 @@
     </script>
 </body>
 </html>
-
