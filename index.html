@@ -118,6 +118,44 @@
         const app = {
             data: {
                 currentUser: null,
+                // 🔥 DEMO ACCOUNTS - YEH PEHLE KI TARAH KAAM KARENGE
+                demoUsers: [
+                    { 
+                        id: 'admin1', 
+                        name: 'System Admin', 
+                        email: 'admin@portal.com', 
+                        password: 'admin123', 
+                        role: 'admin', 
+                        phone: '03001234567', 
+                        zone: 'All' 
+                    },
+                    { 
+                        id: 'r1', 
+                        name: 'Ali Khan', 
+                        email: 'ali@portal.com', 
+                        password: 'rider123', 
+                        role: 'rider', 
+                        phone: '03001111111', 
+                        zone: 'North', 
+                        vehicle: 'Honda 125 - LEA-123', 
+                        joinDate: '2023-01-15', 
+                        salaryBase: 15000, 
+                        commissionRate: 10 
+                    },
+                    { 
+                        id: 'r2', 
+                        name: 'Ahmed Raza', 
+                        email: 'ahmed@portal.com', 
+                        password: 'rider123', 
+                        role: 'rider', 
+                        phone: '03002222222', 
+                        zone: 'South', 
+                        vehicle: 'Yamaha YBR - KHI-456', 
+                        joinDate: '2023-03-10', 
+                        salaryBase: 15000, 
+                        commissionRate: 12 
+                    }
+                ],
                 users: [],
                 reports: [],
                 attendance: [],
@@ -136,21 +174,51 @@
             },
 
             async init() {
+                this.loadData();
                 this.updateDate();
                 
-                // Check if user is already logged in
+                // Check if user is already logged in (Firebase)
                 auth.onAuthStateChanged(async (user) => {
                     if (user) {
-                        // User is signed in, get user data from Firestore
                         await this.loadUserData(user.uid);
                         document.getElementById('sidebar').classList.remove('hidden');
                         document.querySelector('header').classList.remove('hidden');
                         this.showDashboard();
                     } else {
-                        // No user signed in
-                        this.showLogin();
+                        // Check localStorage for demo login
+                        const savedUser = localStorage.getItem('demoCurrentUser');
+                        if (savedUser) {
+                            this.data.currentUser = JSON.parse(savedUser);
+                            document.getElementById('sidebar').classList.remove('hidden');
+                            document.querySelector('header').classList.remove('hidden');
+                            this.showDashboard();
+                        } else {
+                            this.showLogin();
+                        }
                     }
                 });
+            },
+
+            loadData() {
+                const saved = localStorage.getItem('riderPortalData_v3');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    this.data.reports = parsed.reports || [];
+                    this.data.attendance = parsed.attendance || [];
+                    // Merge demo users with any saved users
+                    const savedUsers = parsed.users || [];
+                    this.data.users = [...this.data.demoUsers, ...savedUsers.filter(su => !this.data.demoUsers.find(du => du.email === su.email))];
+                } else {
+                    this.data.users = [...this.data.demoUsers];
+                }
+            },
+
+            saveData() {
+                localStorage.setItem('riderPortalData_v3', JSON.stringify({
+                    reports: this.data.reports,
+                    attendance: this.data.attendance,
+                    users: this.data.users.filter(u => !this.data.demoUsers.find(du => du.id === u.id))
+                }));
             },
 
             async loadUserData(uid) {
@@ -159,7 +227,6 @@
                     if (userDoc.exists) {
                         this.data.currentUser = { id: uid, ...userDoc.data() };
                     }
-                    // Load reports from Firestore
                     await this.loadReportsFromFirebase();
                 } catch (error) {
                     console.error("Error loading user data:", error);
@@ -169,7 +236,9 @@
             async loadReportsFromFirebase() {
                 try {
                     const reportsSnapshot = await db.collection('reports').orderBy('createdAt', 'desc').get();
-                    this.data.reports = reportsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const firebaseReports = reportsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Merge with local reports
+                    this.data.reports = [...this.data.reports, ...firebaseReports.filter(fr => !this.data.reports.find(lr => lr.id === fr.id))];
                 } catch (error) {
                     console.error("Error loading reports:", error);
                 }
@@ -203,6 +272,13 @@
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
                                     <input type="password" id="login-pass" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="••••••••" required>
                                 </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                                    <select id="login-role" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                        <option value="rider">Rider</option>
+                                        <option value="admin">Administrator</option>
+                                    </select>
+                                </div>
                                 <button type="submit" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200">
                                     Sign In
                                 </button>
@@ -213,14 +289,42 @@
                                 </p>
                             </div>
                             <div class="mt-6 text-center text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-                                <p class="font-semibold mb-1">Firebase Connected ✅</p>
-                                <p>Data will be saved permanently</p>
+                                <p class="font-semibold mb-1">Demo Accounts:</p>
+                                <p class="text-green-600">Admin: admin@portal.com / admin123</p>
+                                <p class="text-blue-600">Rider: ali@portal.com / rider123</p>
                             </div>
                         </div>
                     </div>
                 `;
                 document.getElementById('sidebar').classList.add('hidden');
                 document.querySelector('header').classList.add('hidden');
+            },
+
+            async handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value;
+                const pass = document.getElementById('login-pass').value;
+                const role = document.getElementById('login-role').value;
+
+                // 🔥 DEMO LOGIN CHECK - Pehle ki tarah kaam karega!
+                const demoUser = this.data.demoUsers.find(u => u.email === email && u.password === pass && u.role === role);
+                
+                if (demoUser) {
+                    // Demo user login
+                    this.data.currentUser = demoUser;
+                    localStorage.setItem('demoCurrentUser', JSON.stringify(demoUser));
+                    document.getElementById('sidebar').classList.remove('hidden');
+                    document.querySelector('header').classList.remove('hidden');
+                    this.showDashboard();
+                    return;
+                }
+
+                // Firebase login try karein
+                try {
+                    await auth.signInWithEmailAndPassword(email, pass);
+                } catch (error) {
+                    alert('Invalid credentials! Use demo accounts:\nAdmin: admin@portal.com / admin123\nRider: ali@portal.com / rider123');
+                }
             },
 
             showSignup() {
@@ -291,47 +395,58 @@
                 const zone = document.getElementById('signup-zone').value;
                 const vehicle = document.getElementById('signup-vehicle').value;
 
-                try {
-                    // Create user in Firebase Auth
-                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                    const user = userCredential.user;
+                // Check if email exists in demo users
+                if (this.data.demoUsers.find(u => u.email === email)) {
+                    alert('Email already registered as demo account! Please use a different email.');
+                    return;
+                }
 
-                    // Save user data to Firestore
-                    await db.collection('users').doc(user.uid).set({
-                        name: name,
-                        email: email,
-                        phone: phone,
-                        zone: zone,
-                        vehicle: vehicle,
+                // Check local users
+                if (this.data.users.find(u => u.email === email)) {
+                    alert('Email already registered! Please use a different email.');
+                    return;
+                }
+
+                const newRider = {
+                    id: 'r' + Date.now(),
+                    name,
+                    email,
+                    password,
+                    phone,
+                    zone,
+                    vehicle,
+                    role: 'rider',
+                    joinDate: new Date().toISOString().split('T')[0],
+                    salaryBase: 15000,
+                    commissionRate: 10
+                };
+
+                this.data.users.push(newRider);
+                this.saveData();
+                
+                // Also try to create in Firebase
+                try {
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    await db.collection('users').doc(userCredential.user.uid).set({
+                        name, email, phone, zone, vehicle,
                         role: 'rider',
                         joinDate: new Date().toISOString().split('T')[0],
                         salaryBase: 15000,
                         commissionRate: 10,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
-
-                    alert('Account created successfully! Please sign in.');
-                    this.showLogin();
                 } catch (error) {
-                    alert('Error: ' + error.message);
+                    console.log("Firebase signup skipped or failed:", error.message);
                 }
+
+                alert('Account created successfully! Please sign in.');
+                this.showLogin();
+                document.getElementById('login-email').value = email;
             },
 
-            async handleLogin(e) {
-                e.preventDefault();
-                const email = document.getElementById('login-email').value;
-                const pass = document.getElementById('login-pass').value;
-
-                try {
-                    await auth.signInWithEmailAndPassword(email, pass);
-                    // Auth state listener will handle the rest
-                } catch (error) {
-                    alert('Invalid credentials: ' + error.message);
-                }
-            },
-
-            async logout() {
-                await auth.signOut();
+            logout() {
+                localStorage.removeItem('demoCurrentUser');
+                auth.signOut();
                 this.data.currentUser = null;
                 location.reload();
             },
@@ -407,7 +522,7 @@
                 document.getElementById('page-title').textContent = 'Rider Dashboard';
                 const container = document.getElementById('main-container');
                 
-                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id || r.riderEmail === this.data.currentUser.email);
                 const todayReport = myReports.find(r => r.date === new Date().toISOString().split('T')[0]);
                 const totalEarnings = myReports.reduce((acc, r) => acc + (r.totalEarnings || 0), 0);
                 const pendingOnline = myReports.flatMap(r => r.onlinePayments || []).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
@@ -500,7 +615,6 @@
                 container.innerHTML = `
                     <div class="max-w-4xl mx-auto fade-in">
                         <form onsubmit="app.submitReport(event)" class="space-y-6">
-                            <!-- Header Info -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                                 <div>
                                     <h3 class="font-bold text-lg">Daily Report</h3>
@@ -515,13 +629,11 @@
                                 </div>
                             </div>
 
-                            <!-- Orders Section with Commission -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-bold text-gray-800">Order Details</h3>
                                     <div class="flex gap-2">
                                         <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">Commission: ${userCommission}%</span>
-                                        <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Editable Rates</span>
                                     </div>
                                 </div>
                                 <div class="space-y-4" id="orders-container">
@@ -562,15 +674,12 @@
                                 </div>
                             </div>
 
-                            <!-- Online Payments -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-bold text-gray-800">Online Collections</h3>
                                     <button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add Entry</button>
                                 </div>
-                                <div id="online-payments-list" class="space-y-3">
-                                    <!-- Dynamic Rows -->
-                                </div>
+                                <div id="online-payments-list" class="space-y-3"></div>
                                 <div class="mt-4 grid grid-cols-2 gap-4">
                                     <div class="bg-orange-50 p-3 rounded-lg border border-orange-200">
                                         <p class="text-xs text-orange-600 font-medium">Total Pending</p>
@@ -583,7 +692,6 @@
                                 </div>
                             </div>
 
-                            <!-- Expenses -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 class="font-bold text-gray-800 mb-4">Expenses</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -602,7 +710,6 @@
                                 </div>
                             </div>
 
-                            <!-- Delivery Proof -->
                             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                 <h3 class="font-bold text-gray-800 mb-4">Delivery Proof</h3>
                                 <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
@@ -615,7 +722,6 @@
                                 </div>
                             </div>
 
-                            <!-- Calculation Summary -->
                             <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-xl shadow-lg">
                                 <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
                                 <div class="space-y-2 text-sm">
@@ -667,7 +773,6 @@
             calculateTotals() {
                 const userCommission = this.data.currentUser.commissionRate || 10;
                 
-                // Orders with Commission
                 let grossTotal = 0;
                 let commissionTotal = 0;
                 
@@ -687,7 +792,6 @@
                 document.getElementById('grand-gross-total').textContent = `Rs ${grossTotal.toLocaleString()}`;
                 document.getElementById('grand-commission-total').textContent = `Rs ${commissionTotal.toLocaleString()}`;
 
-                // Online Payments
                 let onlinePending = 0;
                 let onlineReceived = 0;
                 
@@ -702,7 +806,6 @@
                 document.getElementById('online-pending-display').textContent = `Rs ${onlinePending.toLocaleString()}`;
                 document.getElementById('online-received-display').textContent = `Rs ${onlineReceived.toLocaleString()}`;
 
-                // Expenses
                 const fuel = parseFloat(document.getElementById('exp-fuel').value) || 0;
                 const food = parseFloat(document.getElementById('exp-food').value) || 0;
                 const maint = parseFloat(document.getElementById('exp-maint').value) || 0;
@@ -711,7 +814,6 @@
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
                 const final = opening + commissionTotal - onlineReceived - expensesTotal;
 
-                // Update Summary UI
                 document.getElementById('sum-opening').textContent = `Rs ${opening.toLocaleString()}`;
                 document.getElementById('sum-commission').textContent = `Rs ${commissionTotal.toLocaleString()}`;
                 document.getElementById('sum-online').textContent = `Rs ${onlineReceived.toLocaleString()}`;
@@ -738,7 +840,6 @@
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
                 const userCommission = this.data.currentUser.commissionRate || 10;
                 
-                // Collect Orders
                 const orders = [1, 2, 3].map(i => {
                     const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
                     const rate = parseFloat(document.getElementById(`order-rate-${i}`).value) || 0;
@@ -752,7 +853,6 @@
                     };
                 }).filter(o => o.qty > 0);
 
-                // Collect Online Payments
                 const onlinePayments = [];
                 document.querySelectorAll('#online-payments-list > div').forEach(row => {
                     const inputs = row.querySelectorAll('input, select');
@@ -763,7 +863,6 @@
                     });
                 });
 
-                // Collect Expenses
                 const expenses = [
                     { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
                     { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
@@ -777,11 +876,12 @@
                 const finalAmount = opening + totalCommission - totalOnlineReceived - totalExpenses;
 
                 const newReport = {
+                    id: 'rep-' + Date.now(),
                     riderId: this.data.currentUser.id,
                     riderName: this.data.currentUser.name,
                     riderEmail: this.data.currentUser.email,
                     date: new Date().toISOString().split('T')[0],
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdAt: new Date().toISOString(),
                     openingBalance: opening,
                     orders: orders,
                     onlinePayments: onlinePayments,
@@ -796,24 +896,28 @@
                     commissionRate: userCommission
                 };
 
+                // Save to localStorage (demo mode)
+                this.data.reports.push(newReport);
+                this.saveData();
+
+                // Also try Firebase
                 try {
-                    // Save to Firestore
-                    await db.collection('reports').add(newReport);
-                    
-                    // Reload reports
-                    await this.loadReportsFromFirebase();
-                    
-                    alert('Report Submitted Successfully! Pending Admin Approval.');
-                    this.navigate('rider-dashboard');
+                    await db.collection('reports').add({
+                        ...newReport,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
                 } catch (error) {
-                    alert('Error submitting report: ' + error.message);
+                    console.log("Firebase save skipped:", error.message);
                 }
+
+                alert('Report Submitted Successfully! Pending Admin Approval.');
+                this.navigate('rider-dashboard');
             },
 
             renderRiderHistory() {
                 document.getElementById('page-title').textContent = 'My Report History';
                 const container = document.getElementById('main-container');
-                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id || r.riderEmail === this.data.currentUser.email).sort((a,b) => new Date(b.date) - new Date(a.date));
 
                 let html = `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">`;
                 html += `<table class="w-full text-left border-collapse">
@@ -852,20 +956,8 @@
                 container.innerHTML = html;
             },
 
-            async viewReportDetails(reportId) {
-                let report = this.data.reports.find(r => r.id === reportId);
-                
-                if (!report) {
-                    try {
-                        const doc = await db.collection('reports').doc(reportId).get();
-                        if (doc.exists) {
-                            report = { id: doc.id, ...doc.data() };
-                        }
-                    } catch (error) {
-                        console.error("Error fetching report:", error);
-                    }
-                }
-                
+            viewReportDetails(id) {
+                const report = this.data.reports.find(r => r.id === id);
                 if(!report) return;
                 
                 const modalContent = document.getElementById('modal-content');
@@ -942,7 +1034,7 @@
             renderRiderPayments() {
                 document.getElementById('page-title').textContent = 'Online Payment Tracking';
                 const container = document.getElementById('main-container');
-                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id || r.riderEmail === this.data.currentUser.email);
                 
                 let allPayments = [];
                 myReports.forEach(r => {
@@ -1019,22 +1111,12 @@
                 `;
             },
 
-            async updatePaymentStatus(reportId, idx, status) {
-                try {
-                    const reportRef = db.collection('reports').doc(reportId);
-                    const reportDoc = await reportRef.get();
-                    
-                    if (reportDoc.exists) {
-                        const reportData = reportDoc.data();
-                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
-                            reportData.onlinePayments[idx].status = status;
-                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
-                            await this.loadReportsFromFirebase();
-                            this.renderRiderPayments();
-                        }
-                    }
-                } catch (error) {
-                    alert('Error updating status: ' + error.message);
+            updatePaymentStatus(reportId, idx, status) {
+                const report = this.data.reports.find(r => r.id === reportId);
+                if(report && report.onlinePayments && report.onlinePayments[idx]) {
+                    report.onlinePayments[idx].status = status;
+                    this.saveData();
+                    this.renderRiderPayments();
                 }
             },
 
@@ -1043,7 +1125,7 @@
                 const container = document.getElementById('main-container');
                 
                 const currentMonth = new Date().getMonth();
-                const monthlyReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && new Date(r.date).getMonth() === currentMonth);
+                const monthlyReports = this.data.reports.filter(r => (r.riderId === this.data.currentUser.id || r.riderEmail === this.data.currentUser.email) && new Date(r.date).getMonth() === currentMonth);
                 const totalOrders = monthlyReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
                 const totalCommission = monthlyReports.reduce((acc, r) => acc + (r.totalCommission || 0), 0);
                 const baseSalary = this.data.currentUser.salaryBase || 15000;
@@ -1266,22 +1348,16 @@
                 `;
             },
 
-            async editCommission(riderId) {
+            editCommission(riderId) {
                 const rider = this.data.users.find(u => u.id === riderId);
                 if (!rider) return;
                 
                 const newRate = prompt(`Enter new commission rate for ${rider.name} (current: ${rider.commissionRate || 10}%):`, rider.commissionRate || 10);
                 if (newRate && !isNaN(newRate) && newRate > 0 && newRate <= 100) {
-                    try {
-                        await db.collection('users').doc(riderId).update({
-                            commissionRate: parseInt(newRate)
-                        });
-                        rider.commissionRate = parseInt(newRate);
-                        this.renderAdminRiders();
-                        alert(`Commission rate updated to ${newRate}%`);
-                    } catch (error) {
-                        alert('Error updating commission: ' + error.message);
-                    }
+                    rider.commissionRate = parseInt(newRate);
+                    this.saveData();
+                    this.renderAdminRiders();
+                    alert(`Commission rate updated to ${newRate}%`);
                 }
             },
 
@@ -1340,14 +1416,13 @@
                 `;
             },
 
-            async updateReportStatus(id, status) {
-                try {
-                    await db.collection('reports').doc(id).update({ status: status });
-                    await this.loadReportsFromFirebase();
+            updateReportStatus(id, status) {
+                const report = this.data.reports.find(r => r.id === id);
+                if (report) {
+                    report.status = status;
+                    this.saveData();
                     if(this.data.currentUser.role === 'admin') this.renderAdminReports();
                     else this.renderRiderHistory();
-                } catch (error) {
-                    alert('Error updating status: ' + error.message);
                 }
             },
 
@@ -1452,39 +1527,21 @@
                 `;
             },
 
-            async adminMarkReceived(reportId, idx) {
-                try {
-                    const reportRef = db.collection('reports').doc(reportId);
-                    const reportDoc = await reportRef.get();
-                    if (reportDoc.exists) {
-                        const reportData = reportDoc.data();
-                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
-                            reportData.onlinePayments[idx].status = 'received';
-                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
-                            await this.loadReportsFromFirebase();
-                            this.renderAdminOnlinePayments();
-                        }
-                    }
-                } catch (error) {
-                    alert('Error: ' + error.message);
+            adminMarkReceived(reportId, idx) {
+                const report = this.data.reports.find(r => r.id === reportId);
+                if (report && report.onlinePayments && report.onlinePayments[idx]) {
+                    report.onlinePayments[idx].status = 'received';
+                    this.saveData();
+                    this.renderAdminOnlinePayments();
                 }
             },
 
-            async adminMarkPending(reportId, idx) {
-                try {
-                    const reportRef = db.collection('reports').doc(reportId);
-                    const reportDoc = await reportRef.get();
-                    if (reportDoc.exists) {
-                        const reportData = reportDoc.data();
-                        if (reportData.onlinePayments && reportData.onlinePayments[idx]) {
-                            reportData.onlinePayments[idx].status = 'pending';
-                            await reportRef.update({ onlinePayments: reportData.onlinePayments });
-                            await this.loadReportsFromFirebase();
-                            this.renderAdminOnlinePayments();
-                        }
-                    }
-                } catch (error) {
-                    alert('Error: ' + error.message);
+            adminMarkPending(reportId, idx) {
+                const report = this.data.reports.find(r => r.id === reportId);
+                if (report && report.onlinePayments && report.onlinePayments[idx]) {
+                    report.onlinePayments[idx].status = 'pending';
+                    this.saveData();
+                    this.renderAdminOnlinePayments();
                 }
             },
 
