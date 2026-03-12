@@ -19,6 +19,9 @@
         .status-pending { background: #fef3c7; color: #92400e; }
         .status-approved { background: #d1fae5; color: #065f46; }
         .status-rejected { background: #fee2e2; color: #991b1b; }
+        .status-present { background: #d1fae5; color: #065f46; }
+        .status-absent { background: #fee2e2; color: #991b1b; }
+        .status-relief { background: #dbeafe; color: #1e40af; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
@@ -27,32 +30,15 @@
         @keyframes gradient-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         
         /* Mobile Sidebar Styles */
-        #sidebar {
-            transition: transform 0.3s ease-in-out;
-        }
-        #sidebar.mobile-hidden {
-            transform: translateX(-100%);
-        }
-        #sidebar-overlay {
-            transition: opacity 0.3s ease;
-        }
+        #sidebar { transition: transform 0.3s ease-in-out; }
+        #sidebar.mobile-hidden { transform: translateX(-100%); }
+        #sidebar-overlay { transition: opacity 0.3s ease; }
         
         /* Mobile Responsive */
         @media (max-width: 768px) {
-            #sidebar {
-                position: fixed;
-                left: 0;
-                top: 0;
-                height: 100vh;
-                z-index: 50;
-                transform: translateX(-100%);
-            }
-            #sidebar.mobile-visible {
-                transform: translateX(0);
-            }
-            .main-content-shift {
-                margin-left: 0 !important;
-            }
+            #sidebar { position: fixed; left: 0; top: 0; height: 100vh; z-index: 50; transform: translateX(-100%); }
+            #sidebar.mobile-visible { transform: translateX(0); }
+            .main-content-shift { margin-left: 0 !important; }
         }
         
         /* Card Styles */
@@ -72,9 +58,7 @@
             text-align: center;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-        .quick-action-btn:active {
-            transform: scale(0.98);
-        }
+        .quick-action-btn:active { transform: scale(0.98); }
         
         .section-card {
             background: white;
@@ -83,6 +67,49 @@
             margin-bottom: 16px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
+
+        .time-filter-btn {
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: 1px solid #e5e7eb;
+            background: white;
+            color: #6b7280;
+        }
+        .time-filter-btn.active {
+            background: #4f46e5;
+            color: white;
+            border-color: #4f46e5;
+        }
+        .time-filter-btn:hover:not(.active) {
+            background: #f3f4f6;
+        }
+
+        .attendance-calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #e5e7eb;
+        }
+        .calendar-day:hover { transform: scale(1.05); }
+        .calendar-day.present { background: #d1fae5; color: #065f46; border-color: #10b981; }
+        .calendar-day.absent { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
+        .calendar-day.relief { background: #dbeafe; color: #1e40af; border-color: #3b82f6; }
+        .calendar-day.empty { background: #f9fafb; border-color: #f3f4f6; cursor: default; }
+        .calendar-day.empty:hover { transform: none; }
     </style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
@@ -170,11 +197,11 @@
                 currentUser: null,
                 users: [
                     { id: 'admin1', name: 'System Admin', email: 'admin@portal.com', password: 'admin123', role: 'admin', phone: '03001234567', zone: 'All' },
-                    { id: 'r1', name: 'Ali Khan', email: 'ali@portal.com', password: 'rider123', role: 'rider', phone: '03001111111', zone: 'North', vehicle: 'Honda 125 - LEA-123', joinDate: '2023-01-15', salaryBase: 15000, commissionRate: 10 },
-                    { id: 'r2', name: 'Ahmed Raza', email: 'ahmed@portal.com', password: 'rider123', role: 'rider', phone: '03002222222', zone: 'South', vehicle: 'Yamaha YBR - KHI-456', joinDate: '2023-03-10', salaryBase: 15000, commissionRate: 12 }
+                    { id: 'r1', name: 'Ali Khan', email: 'ali@portal.com', password: 'rider123', role: 'rider', phone: '03001111111', zone: 'North', vehicle: 'Honda 125 - LEA-123', joinDate: '2023-01-15', salaryBase: 15000, commissionRate: 10, dailyWage: 500 },
+                    { id: 'r2', name: 'Ahmed Raza', email: 'ahmed@portal.com', password: 'rider123', role: 'rider', phone: '03002222222', zone: 'South', vehicle: 'Yamaha YBR - KHI-456', joinDate: '2023-03-10', salaryBase: 15000, commissionRate: 12, dailyWage: 500 }
                 ],
                 reports: [],
-                attendance: [],
+                attendance: [], // { riderId, date, status: 'present'|'absent', isReliefDay: boolean }
                 announcements: [
                     { id: 1, title: 'Eid Bonus Policy', content: 'All riders delivering 50+ orders this week get a Rs. 2000 bonus.', date: '2023-10-25', priority: 'high' }
                 ],
@@ -187,7 +214,8 @@
                         'Type 3': 15
                     }
                 },
-                sidebarOpen: false
+                sidebarOpen: false,
+                currentTimeFilter: 'month' // 'month' | 'year'
             },
 
             init() {
@@ -227,17 +255,106 @@
             },
 
             loadData() {
-                const saved = localStorage.getItem('riderPortalData_v3');
+                const saved = localStorage.getItem('riderPortalData_v4');
                 if (saved) {
                     const parsed = JSON.parse(saved);
                     this.data.reports = parsed.reports || [];
                     this.data.attendance = parsed.attendance || [];
                     this.data.users = parsed.users || this.data.users;
+                    // Ensure dailyWage exists for existing users
+                    this.data.users.forEach(u => {
+                        if (u.role === 'rider' && !u.dailyWage) u.dailyWage = 500;
+                    });
                 }
+                // Generate sample data if empty (for demo)
+                if (this.data.reports.length === 0) this.generateSampleData();
+                if (this.data.attendance.length === 0) this.generateSampleAttendance();
+            },
+
+            generateSampleData() {
+                // Generate sample reports for the last 60 days
+                const riders = this.data.users.filter(u => u.role === 'rider');
+                const today = new Date();
+                
+                for (let i = 0; i < 60; i++) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    
+                    riders.forEach(rider => {
+                        if (Math.random() > 0.3) { // 70% chance of having work
+                            const orders = [
+                                { type: 'Type 1', qty: Math.floor(Math.random() * 10) + 1, rate: 100, gross: 0, commission: 0 },
+                                { type: 'Type 2', qty: Math.floor(Math.random() * 5), rate: 150, gross: 0, commission: 0 }
+                            ].filter(o => o.qty > 0);
+                            
+                            orders.forEach(o => {
+                                o.gross = o.qty * o.rate;
+                                o.commission = o.gross * (rider.commissionRate / 100);
+                            });
+                            
+                            const totalCommission = orders.reduce((a, o) => a + o.commission, 0);
+                            const totalGross = orders.reduce((a, o) => a + o.gross, 0);
+                            
+                            this.data.reports.push({
+                                id: 'rep-' + Date.now() + '-' + i + '-' + rider.id,
+                                riderId: rider.id,
+                                riderName: rider.name,
+                                date: dateStr,
+                                createdAt: date.toISOString(),
+                                orders: orders,
+                                onlinePayments: Math.random() > 0.5 ? [{ detail: 'Online Order', amount: Math.floor(Math.random() * 1000) + 500, status: 'received' }] : [],
+                                expenses: [{ type: 'Fuel', amount: Math.floor(Math.random() * 300) + 100 }],
+                                totalGross: totalGross,
+                                totalCommission: totalCommission,
+                                totalExpenses: 200,
+                                finalAmount: totalCommission - 200,
+                                status: Math.random() > 0.2 ? 'approved' : 'pending',
+                                commissionRate: rider.commissionRate
+                            });
+                        }
+                    });
+                }
+                this.saveData();
+            },
+
+            generateSampleAttendance() {
+                const riders = this.data.users.filter(u => u.role === 'rider');
+                const today = new Date();
+                
+                for (let i = 0; i < 30; i++) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    
+                    riders.forEach(rider => {
+                        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                        if (!isWeekend && Math.random() > 0.15) { // 85% attendance on weekdays
+                            this.data.attendance.push({
+                                riderId: rider.id,
+                                date: dateStr,
+                                status: 'present',
+                                isReliefDay: false
+                            });
+                        } else if (!isWeekend) {
+                            // Absent - check if relief day applies
+                            const monthAbsences = this.getMonthlyAbsences(rider.id, date.getMonth(), date.getFullYear());
+                            const isFirstAbsence = monthAbsences.length === 0;
+                            
+                            this.data.attendance.push({
+                                riderId: rider.id,
+                                date: dateStr,
+                                status: 'absent',
+                                isReliefDay: isFirstAbsence
+                            });
+                        }
+                    });
+                }
+                this.saveData();
             },
 
             saveData() {
-                localStorage.setItem('riderPortalData_v3', JSON.stringify({
+                localStorage.setItem('riderPortalData_v4', JSON.stringify({
                     reports: this.data.reports,
                     attendance: this.data.attendance,
                     users: this.data.users
@@ -474,7 +591,8 @@
                     role: 'rider',
                     joinDate: new Date().toISOString().split('T')[0],
                     salaryBase: 15000,
-                    commissionRate: this.data.commissionSettings.defaultRate
+                    commissionRate: this.data.commissionSettings.defaultRate,
+                    dailyWage: 500
                 };
 
                 this.data.users.push(newRider);
@@ -518,7 +636,7 @@
                     { id: 'admin-riders', icon: 'fa-users', label: 'Manage Riders' },
                     { id: 'admin-reports', icon: 'fa-clipboard-check', label: 'Review Reports' },
                     { id: 'admin-online-payments', icon: 'fa-credit-card', label: 'Online Payments' },
-                    { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance Log' },
+                    { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance' },
                     { id: 'admin-ai-parser', icon: 'fa-robot', label: 'AI Order Parser' },
                     { id: 'admin-announcements', icon: 'fa-bullhorn', label: 'Announcements' },
                     { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' }
@@ -572,6 +690,111 @@
                 }
             },
 
+            // --- Helper Functions for Date Aggregation ---
+
+            getDailyProfits(days = 30) {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                
+                const dailyData = {};
+                
+                // Initialize all days with 0
+                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    dailyData[dateStr] = 0;
+                }
+                
+                // Aggregate profits
+                this.data.reports
+                    .filter(r => r.status === 'approved')
+                    .forEach(r => {
+                        if (dailyData.hasOwnProperty(r.date)) {
+                            dailyData[r.date] += r.finalAmount || 0;
+                        }
+                    });
+                
+                return Object.entries(dailyData).map(([date, profit]) => ({
+                    date,
+                    profit,
+                    displayDate: new Date(date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })
+                })).sort((a, b) => new Date(a.date) - new Date(b.date));
+            },
+
+            getMonthlyProfits(year = new Date().getFullYear()) {
+                const monthlyData = {};
+                
+                // Initialize all months
+                for (let i = 0; i < 12; i++) {
+                    monthlyData[i] = 0;
+                }
+                
+                this.data.reports
+                    .filter(r => {
+                        const rDate = new Date(r.date);
+                        return r.status === 'approved' && rDate.getFullYear() === year;
+                    })
+                    .forEach(r => {
+                        const month = new Date(r.date).getMonth();
+                        monthlyData[month] += r.finalAmount || 0;
+                    });
+                
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                
+                return Object.entries(monthlyData).map(([month, profit]) => ({
+                    month: parseInt(month),
+                    monthName: monthNames[month],
+                    profit
+                }));
+            },
+
+            getYearlyProfits() {
+                const yearlyData = {};
+                
+                this.data.reports
+                    .filter(r => r.status === 'approved')
+                    .forEach(r => {
+                        const year = new Date(r.date).getFullYear();
+                        yearlyData[year] = (yearlyData[year] || 0) + (r.finalAmount || 0);
+                    });
+                
+                return Object.entries(yearlyData)
+                    .map(([year, profit]) => ({ year: parseInt(year), profit }))
+                    .sort((a, b) => a.year - b.year);
+            },
+
+            // --- Attendance Helper Functions ---
+
+            getMonthlyAbsences(riderId, month, year) {
+                return this.data.attendance.filter(a => {
+                    const aDate = new Date(a.date);
+                    return a.riderId === riderId && 
+                           a.status === 'absent' && 
+                           aDate.getMonth() === month && 
+                           aDate.getFullYear() === year;
+                });
+            },
+
+            calculateAttendanceDeductions(riderId, month, year) {
+                const absences = this.getMonthlyAbsences(riderId, month, year);
+                const rider = this.data.users.find(u => u.id === riderId);
+                const dailyWage = rider?.dailyWage || 500;
+                
+                // Relief policy: First absence is relief (no deduction), deductions start from 2nd absence
+                const deductibleAbsences = Math.max(0, absences.length - 1);
+                const reliefDays = Math.min(1, absences.length); // Max 1 relief day
+                
+                const totalDeduction = deductibleAbsences * dailyWage;
+                
+                return {
+                    totalAbsences: absences.length,
+                    reliefDays,
+                    deductibleAbsences,
+                    dailyWage,
+                    totalDeduction
+                };
+            },
+
             // --- RIDER VIEWS ---
 
             renderRiderDashboard() {
@@ -583,6 +806,11 @@
                 const totalEarnings = myReports.reduce((acc, r) => acc + (r.totalEarnings || 0), 0);
                 const pendingOnline = myReports.flatMap(r => r.onlinePayments).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
                 const totalDeliveries = myReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0);
+
+                // Get attendance info
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const attendanceInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, currentMonth, currentYear);
 
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
@@ -631,6 +859,52 @@
                                 <p class="text-xs text-gray-500 mb-1">Commission</p>
                                 <h3 class="text-lg md:text-xl font-bold text-purple-600">${this.data.currentUser.commissionRate || 10}%</h3>
                             </div>
+                        </div>
+
+                        <!-- Attendance Summary Card -->
+                        <div class="section-card border-l-4 border-indigo-500">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800 text-sm md:text-base">Attendance Status</h3>
+                                <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">This Month</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3 mb-3">
+                                <div class="text-center p-2 bg-green-50 rounded-lg">
+                                    <p class="text-xs text-green-600 mb-1">Present</p>
+                                    <p class="text-lg font-bold text-green-700">
+                                        ${this.data.attendance.filter(a => a.riderId === this.data.currentUser.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length}
+                                    </p>
+                                </div>
+                                <div class="text-center p-2 bg-red-50 rounded-lg">
+                                    <p class="text-xs text-red-600 mb-1">Absences</p>
+                                    <p class="text-lg font-bold text-red-700">${attendanceInfo.totalAbsences}</p>
+                                </div>
+                                <div class="text-center p-2 ${attendanceInfo.reliefDays > 0 ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg">
+                                    <p class="text-xs ${attendanceInfo.reliefDays > 0 ? 'text-blue-600' : 'text-gray-500'} mb-1">Relief Days</p>
+                                    <p class="text-lg font-bold ${attendanceInfo.reliefDays > 0 ? 'text-blue-700' : 'text-gray-600'}">${attendanceInfo.reliefDays}</p>
+                                </div>
+                            </div>
+                            ${attendanceInfo.deductibleAbsences > 0 ? `
+                                <div class="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
+                                    <div>
+                                        <p class="text-xs text-red-600 font-medium">Wage Deduction</p>
+                                        <p class="text-xs text-red-500">${attendanceInfo.deductibleAbsences} days × Rs ${attendanceInfo.dailyWage}</p>
+                                    </div>
+                                    <p class="text-lg font-bold text-red-700">-Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p>
+                                </div>
+                            ` : attendanceInfo.totalAbsences > 0 ? `
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex justify-between items-center">
+                                    <div>
+                                        <p class="text-xs text-blue-600 font-medium">Relief Applied</p>
+                                        <p class="text-xs text-blue-500">First absence is relief - no deduction</p>
+                                    </div>
+                                    <p class="text-lg font-bold text-blue-700">Rs 0</p>
+                                </div>
+                            ` : `
+                                <div class="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center">
+                                    <p class="text-xs text-green-600 font-medium">Perfect Attendance!</p>
+                                    <p class="text-lg font-bold text-green-700">Rs 0</p>
+                                </div>
+                            `}
                         </div>
 
                         <!-- Quick Actions -->
@@ -1196,12 +1470,16 @@
                 const container = document.getElementById('main-container');
                 
                 const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
                 const monthlyReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && new Date(r.date).getMonth() === currentMonth);
                 const totalOrders = monthlyReports.reduce((acc, r) => acc + r.orders.reduce((o, x) => o + x.qty, 0), 0);
                 const totalCommission = monthlyReports.reduce((acc, r) => acc + r.totalCommission, 0);
                 const baseSalary = this.data.currentUser.salaryBase || 15000;
-                const deductions = 500;
-                const netSalary = baseSalary + totalCommission - deductions;
+                
+                // Calculate attendance deductions with relief policy
+                const attendanceInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, currentMonth, currentYear);
+                
+                const netSalary = baseSalary + totalCommission - attendanceInfo.totalDeduction;
 
                 container.innerHTML = `
                     <div class="fade-in pb-20 space-y-4">
@@ -1219,8 +1497,60 @@
                                 </div>
                                 <div class="bg-white/20 rounded-lg p-2">
                                     <p class="text-indigo-100">Deductions</p>
-                                    <p class="font-semibold text-red-300">-Rs ${deductions.toLocaleString()}</p>
+                                    <p class="font-semibold ${attendanceInfo.totalDeduction > 0 ? 'text-red-300' : 'text-green-300'}">
+                                        -Rs ${attendanceInfo.totalDeduction.toLocaleString()}
+                                    </p>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Attendance Breakdown -->
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">Attendance Breakdown</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-umbrella"></i></div>
+                                        <div>
+                                            <span class="font-medium block">Relief Day Policy</span>
+                                            <span class="text-xs text-blue-600">First absence is relief - no deduction</span>
+                                        </div>
+                                    </div>
+                                    <span class="font-bold text-blue-700">1 Day</span>
+                                </div>
+                                
+                                <div class="flex justify-between items-center p-3 ${attendanceInfo.totalAbsences > 0 ? 'bg-red-50' : 'bg-green-50'} rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-full ${attendanceInfo.totalAbsences > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} flex items-center justify-center">
+                                            <i class="fas ${attendanceInfo.totalAbsences > 0 ? 'fa-times' : 'fa-check'}"></i>
+                                        </div>
+                                        <span class="font-medium">Total Absences</span>
+                                    </div>
+                                    <span class="font-bold text-lg">${attendanceInfo.totalAbsences} days</span>
+                                </div>
+
+                                ${attendanceInfo.reliefDays > 0 ? `
+                                    <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-heart"></i></div>
+                                            <span class="font-medium">Relief Days Applied</span>
+                                        </div>
+                                        <span class="font-bold text-lg text-blue-700">${attendanceInfo.reliefDays}</span>
+                                    </div>
+                                ` : ''}
+
+                                ${attendanceInfo.deductibleAbsences > 0 ? `
+                                    <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-minus-circle"></i></div>
+                                            <div>
+                                                <span class="font-medium block">Deductible Absences</span>
+                                                <span class="text-xs text-red-600">${attendanceInfo.deductibleAbsences} days × Rs ${attendanceInfo.dailyWage}</span>
+                                            </div>
+                                        </div>
+                                        <span class="font-bold text-lg text-red-700">-Rs ${attendanceInfo.totalDeduction.toLocaleString()}</span>
+                                    </div>
+                                ` : ''}
                             </div>
                         </div>
 
@@ -1241,13 +1571,6 @@
                                     </div>
                                     <span class="font-bold text-lg">${this.data.currentUser.commissionRate || 10}%</span>
                                 </div>
-                                <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-minus-circle"></i></div>
-                                        <span class="font-medium">Deductions</span>
-                                    </div>
-                                    <span class="font-bold text-lg text-red-600">Rs ${deductions}</span>
-                                </div>
                             </div>
                             <button class="w-full mt-4 border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors">
                                 <i class="fas fa-download mr-2"></i>Download Payslip
@@ -1265,31 +1588,85 @@
                 
                 const totalRiders = this.data.users.filter(u => u.role === 'rider').length;
                 const pendingReports = this.data.reports.filter(r => r.status === 'pending').length;
-                const todayCollection = this.data.reports
-                    .filter(r => r.date === new Date().toISOString().split('T')[0] && r.status === 'approved')
-                    .reduce((acc, r) => acc + r.finalAmount, 0);
-
+                
+                // Get profits based on current filter
+                const dailyProfits = this.getDailyProfits(this.data.currentTimeFilter === 'month' ? 30 : 365);
+                const totalProfit = dailyProfits.reduce((a, b) => a + b.profit, 0);
+                
                 const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments);
                 const totalOnlinePending = allOnlinePayments.filter(p => p.status === 'pending').reduce((a,b) => a + b.amount, 0);
 
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div class="stat-card border-l-4 border-blue-500">
-                                <p class="text-xs text-gray-500">Total Riders</p>
-                                <h3 class="text-xl font-bold text-gray-800">${totalRiders}</h3>
+                        <!-- Time Filter Controls -->
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Profit Overview</h3>
+                                <div class="flex gap-2">
+                                    <button onclick="app.setTimeFilter('month')" class="time-filter-btn ${this.data.currentTimeFilter === 'month' ? 'active' : ''}">This Month</button>
+                                    <button onclick="app.setTimeFilter('year')" class="time-filter-btn ${this.data.currentTimeFilter === 'year' ? 'active' : ''}">This Year</button>
+                                </div>
                             </div>
-                            <div class="stat-card border-l-4 border-orange-500">
-                                <p class="text-xs text-gray-500">Pending</p>
-                                <h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3>
+                            
+                            <!-- Summary Cards -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                <div class="stat-card border-l-4 border-green-500">
+                                    <p class="text-xs text-gray-500">Total Profit</p>
+                                    <h3 class="text-lg font-bold text-green-600">Rs ${totalProfit.toLocaleString()}</h3>
+                                </div>
+                                <div class="stat-card border-l-4 border-blue-500">
+                                    <p class="text-xs text-gray-500">Total Riders</p>
+                                    <h3 class="text-xl font-bold text-gray-800">${totalRiders}</h3>
+                                </div>
+                                <div class="stat-card border-l-4 border-orange-500">
+                                    <p class="text-xs text-gray-500">Pending</p>
+                                    <h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3>
+                                </div>
+                                <div class="stat-card border-l-4 border-red-500">
+                                    <p class="text-xs text-gray-500">Online Pending</p>
+                                    <h3 class="text-lg font-bold text-red-600">Rs ${totalOnlinePending.toLocaleString()}</h3>
+                                </div>
                             </div>
-                            <div class="stat-card border-l-4 border-green-500">
-                                <p class="text-xs text-gray-500">Today's Collection</p>
-                                <h3 class="text-lg font-bold text-green-600">Rs ${todayCollection.toLocaleString()}</h3>
+
+                            <!-- Daily Profit Chart -->
+                            <div class="bg-white rounded-xl p-4 border border-gray-200">
+                                <canvas id="profitChart" height="250"></canvas>
                             </div>
-                            <div class="stat-card border-l-4 border-red-500">
-                                <p class="text-xs text-gray-500">Online Pending</p>
-                                <h3 class="text-lg font-bold text-red-600">Rs ${totalOnlinePending.toLocaleString()}</h3>
+
+                            <!-- Daily Details Table -->
+                            <div class="mt-4">
+                                <h4 class="font-bold text-gray-800 mb-3 text-sm">Daily Details</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th class="text-left p-3 rounded-tl-lg">Date</th>
+                                                <th class="text-right p-3">Profit</th>
+                                                <th class="text-right p-3">Orders</th>
+                                                <th class="text-right p-3 rounded-tr-lg">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            ${dailyProfits.slice().reverse().map(d => {
+                                                const dayReports = this.data.reports.filter(r => r.date === d.date && r.status === 'approved');
+                                                const orderCount = dayReports.reduce((a, r) => a + r.orders.reduce((o, x) => o + x.qty, 0), 0);
+                                                const isToday = d.date === new Date().toISOString().split('T')[0];
+                                                return `
+                                                    <tr class="hover:bg-gray-50 ${isToday ? 'bg-indigo-50' : ''}">
+                                                        <td class="p-3 font-medium ${isToday ? 'text-indigo-700' : 'text-gray-800'}">
+                                                            ${isToday ? 'Today' : d.displayDate}
+                                                        </td>
+                                                        <td class="p-3 text-right font-bold text-green-600">Rs ${d.profit.toLocaleString()}</td>
+                                                        <td class="p-3 text-right text-gray-600">${orderCount}</td>
+                                                        <td class="p-3 text-right">
+                                                            ${d.profit > 0 ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Profitable</span>' : '<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">No Data</span>'}
+                                                        </td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
 
@@ -1322,6 +1699,57 @@
                         </div>
                     </div>
                 `;
+
+                // Render Chart
+                setTimeout(() => {
+                    const ctx = document.getElementById('profitChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: dailyProfits.map(d => d.displayDate),
+                            datasets: [{
+                                label: 'Daily Profit (Rs)',
+                                data: dailyProfits.map(d => d.profit),
+                                borderColor: '#4f46e5',
+                                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 3,
+                                pointBackgroundColor: '#4f46e5'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return 'Profit: Rs ' + context.parsed.y.toLocaleString();
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return 'Rs ' + value.toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }, 100);
+            },
+
+            setTimeFilter(filter) {
+                this.data.currentTimeFilter = filter;
+                this.renderAdminDashboard();
             },
 
             renderAdminRiders() {
@@ -1346,7 +1774,7 @@
                                             <div>
                                                 <p class="font-bold text-gray-800">${r.name}</p>
                                                 <p class="text-xs text-gray-500">${r.phone} • ${r.zone}</p>
-                                                <p class="text-xs text-purple-600 font-semibold mt-1">${r.commissionRate || 10}% Commission</p>
+                                                <p class="text-xs text-purple-600 font-semibold mt-1">${r.commissionRate || 10}% Commission • Rs ${r.dailyWage || 500}/day</p>
                                             </div>
                                         </div>
                                         <div class="flex gap-2">
@@ -1365,6 +1793,7 @@
                 if (!confirm('Delete this rider? All data will be removed.')) return;
                 this.data.users = this.data.users.filter(u => u.id !== riderId);
                 this.data.reports = this.data.reports.filter(r => r.riderId !== riderId);
+                this.data.attendance = this.data.attendance.filter(a => a.riderId !== riderId);
                 this.saveData();
                 this.renderAdminRiders();
                 alert('Rider deleted!');
@@ -1388,9 +1817,10 @@
                             <input type="email" id="edit-email" value="${rider.email}" placeholder="Email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" required>
                             <input type="tel" id="edit-phone" value="${rider.phone}" placeholder="Phone" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" required>
                             <input type="text" id="edit-vehicle" value="${rider.vehicle || ''}" placeholder="Vehicle Details" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-3 gap-3">
                                 <input type="number" id="edit-commission" value="${rider.commissionRate || 10}" placeholder="Commission %" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" required>
                                 <input type="number" id="edit-salary" value="${rider.salaryBase || 15000}" placeholder="Base Salary" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" required>
+                                <input type="number" id="edit-dailywage" value="${rider.dailyWage || 500}" placeholder="Daily Wage" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" required>
                             </div>
                             <div class="flex gap-3 pt-2">
                                 <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button>
@@ -1424,6 +1854,7 @@
                 rider.vehicle = document.getElementById('edit-vehicle').value;
                 rider.commissionRate = parseInt(document.getElementById('edit-commission').value);
                 rider.salaryBase = parseInt(document.getElementById('edit-salary').value);
+                rider.dailyWage = parseInt(document.getElementById('edit-dailywage').value);
                 
                 this.saveData();
                 this.closeModal();
@@ -1545,6 +1976,224 @@
                     this.saveData();
                     this.renderAdminOnlinePayments();
                 }
+            },
+
+            renderAdminAttendance() {
+                document.getElementById('page-title').textContent = 'Attendance Management';
+                const container = document.getElementById('main-container');
+                const riders = this.data.users.filter(u => u.role === 'rider');
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Attendance Overview</h3>
+                                <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">
+                                    ${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}
+                                </span>
+                            </div>
+                            
+                            <!-- Relief Policy Notice -->
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-3">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <i class="fas fa-info"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-blue-800">Relief Day Policy Active</p>
+                                    <p class="text-xs text-blue-600 mt-1">Each rider gets 1 relief day per month. First absence is marked as relief (no wage deduction). Deductions apply from 2nd absence onwards.</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                ${riders.map(rider => {
+                                    const attendanceInfo = this.calculateAttendanceDeductions(rider.id, currentMonth, currentYear);
+                                    const presentDays = this.data.attendance.filter(a => 
+                                        a.riderId === rider.id && 
+                                        a.status === 'present' && 
+                                        new Date(a.date).getMonth() === currentMonth
+                                    ).length;
+                                    
+                                    return `
+                                        <div class="bg-gray-50 rounded-xl p-4">
+                                            <div class="flex justify-between items-start mb-3">
+                                                <div class="flex items-center gap-3">
+                                                    <img src="https://ui-avatars.com/api/?name=${rider.name}&background=random" class="w-10 h-10 rounded-full">
+                                                    <div>
+                                                        <p class="font-bold text-gray-800">${rider.name}</p>
+                                                        <p class="text-xs text-gray-500">Daily Wage: Rs ${rider.dailyWage || 500}</p>
+                                                    </div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <p class="text-2xl font-bold text-gray-800">${presentDays}<span class="text-sm text-gray-500 font-normal"> days</span></p>
+                                                    <p class="text-xs text-gray-500">Present</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                                <div class="bg-green-100 text-green-700 rounded-lg p-2 text-center">
+                                                    <p class="text-xs font-medium">Present</p>
+                                                    <p class="text-lg font-bold">${presentDays}</p>
+                                                </div>
+                                                <div class="bg-red-100 text-red-700 rounded-lg p-2 text-center">
+                                                    <p class="text-xs font-medium">Absent</p>
+                                                    <p class="text-lg font-bold">${attendanceInfo.totalAbsences}</p>
+                                                </div>
+                                                <div class="${attendanceInfo.deductibleAbsences > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'} rounded-lg p-2 text-center">
+                                                    <p class="text-xs font-medium">Deduction</p>
+                                                    <p class="text-lg font-bold">Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+
+                                            ${attendanceInfo.totalAbsences > 0 ? `
+                                                <div class="flex items-center gap-2 text-xs">
+                                                    <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded">Relief: ${attendanceInfo.reliefDays} day</span>
+                                                    <span class="px-2 py-1 ${attendanceInfo.deductibleAbsences > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'} rounded">
+                                                        Deductible: ${attendanceInfo.deductibleAbsences} days
+                                                    </span>
+                                                </div>
+                                            ` : ''}
+
+                                            <div class="mt-3 pt-3 border-t border-gray-200">
+                                                <button onclick="app.showAttendanceCalendar('${rider.id}')" class="w-full text-center text-sm text-indigo-600 font-medium hover:bg-white py-2 rounded-lg transition-colors">
+                                                    View Calendar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            showAttendanceCalendar(riderId) {
+                const rider = this.data.users.find(u => u.id === riderId);
+                if (!rider) return;
+
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+
+                // Generate calendar days
+                let calendarHTML = '';
+                // Empty cells for days before start of month
+                for (let i = 0; i < firstDay; i++) {
+                    calendarHTML += `<div class="calendar-day empty"></div>`;
+                }
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const attendance = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+                    
+                    let dayClass = 'empty';
+                    let statusIcon = '';
+                    
+                    if (attendance) {
+                        if (attendance.status === 'present') {
+                            dayClass = 'present';
+                            statusIcon = '<i class="fas fa-check text-xs"></i>';
+                        } else if (attendance.status === 'absent') {
+                            if (attendance.isReliefDay) {
+                                dayClass = 'relief';
+                                statusIcon = '<i class="fas fa-umbrella text-xs"></i>';
+                            } else {
+                                dayClass = 'absent';
+                                statusIcon = '<i class="fas fa-times text-xs"></i>';
+                            }
+                        }
+                    }
+
+                    calendarHTML += `
+                        <div class="calendar-day ${dayClass}" onclick="app.toggleAttendance('${riderId}', '${dateStr}')">
+                            <span class="font-bold">${day}</span>
+                            ${statusIcon}
+                        </div>
+                    `;
+                }
+
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800">${rider.name}</h2>
+                                <p class="text-sm text-gray-500">Attendance - ${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</p>
+                            </div>
+                            <button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+
+                        <div class="flex justify-center gap-4 mb-4 text-xs">
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-green-200 border border-green-500"></div> Present</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-red-200 border border-red-500"></div> Absent</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-blue-200 border border-blue-500"></div> Relief</div>
+                        </div>
+
+                        <div class="attendance-calendar mb-4">
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Sun</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Mon</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Tue</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Wed</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Thu</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Fri</div>
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Sat</div>
+                            ${calendarHTML}
+                        </div>
+
+                        <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+                            <p class="mb-2"><strong>Instructions:</strong></p>
+                            <ul class="list-disc list-inside space-y-1 text-xs">
+                                <li>Click on any date to toggle attendance</li>
+                                <li>First absence is automatically marked as relief day</li>
+                                <li>Subsequent absences will incur wage deductions</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                overlay.classList.remove('hidden');
+                setTimeout(() => {
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                    modalContent.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            },
+
+            toggleAttendance(riderId, dateStr) {
+                const existing = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+                const month = new Date(dateStr).getMonth();
+                const year = new Date(dateStr).getFullYear();
+                
+                if (existing) {
+                    // Cycle: present -> absent -> not set
+                    if (existing.status === 'present') {
+                        existing.status = 'absent';
+                        // Check if this should be relief day
+                        const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+                        existing.isReliefDay = monthAbsences.length === 0 || (monthAbsences.length === 1 && monthAbsences[0].date === dateStr);
+                    } else {
+                        // Remove attendance record
+                        this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
+                    }
+                } else {
+                    // Check if this should be relief day
+                    const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+                    const isReliefDay = monthAbsences.length === 0;
+                    
+                    this.data.attendance.push({
+                        riderId,
+                        date: dateStr,
+                        status: 'present',
+                        isReliefDay: false
+                    });
+                }
+                
+                this.saveData();
+                this.showAttendanceCalendar(riderId);
             },
 
             renderAIParser() {
@@ -1692,27 +2341,26 @@
                 printWindow.print();
             },
 
-            renderAdminAttendance() {
-                document.getElementById('page-title').textContent = 'Attendance';
-                const container = document.getElementById('main-container');
-                container.innerHTML = `
-                    <div class="section-card fade-in">
-                        <h3 class="font-bold text-gray-800 mb-4">Attendance Management</h3>
-                        <p class="text-gray-500 text-center py-8">Feature coming soon</p>
-                    </div>
-                `;
-            },
-
             renderAdminAnalytics() {
                 document.getElementById('page-title').textContent = 'Analytics';
                 const container = document.getElementById('main-container');
                 
+                // Get data for different time periods
+                const monthlyProfits = this.getMonthlyProfits();
+                const yearlyProfits = this.getYearlyProfits();
+                
                 container.innerHTML = `
                     <div class="fade-in pb-20 space-y-4">
                         <div class="section-card">
-                            <h3 class="font-bold text-gray-800 mb-4">Weekly Revenue</h3>
-                            <canvas id="revenueChart" height="200"></canvas>
+                            <h3 class="font-bold text-gray-800 mb-4">Monthly Revenue Trend</h3>
+                            <canvas id="monthlyChart" height="200"></canvas>
                         </div>
+                        
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">Yearly Comparison</h3>
+                            <canvas id="yearlyChart" height="200"></canvas>
+                        </div>
+
                         <div class="section-card">
                             <h3 class="font-bold text-gray-800 mb-4">Zone Performance</h3>
                             <canvas id="zoneChart" height="200"></canvas>
@@ -1721,33 +2369,88 @@
                 `;
 
                 setTimeout(() => {
-                    new Chart(document.getElementById('revenueChart'), {
-                        type: 'line',
+                    // Monthly Chart
+                    new Chart(document.getElementById('monthlyChart'), {
+                        type: 'bar',
                         data: {
-                            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                            labels: monthlyProfits.map(m => m.monthName),
                             datasets: [{
-                                label: 'Revenue (Rs)',
-                                data: [45000, 52000, 48000, 61000, 58000, 72000, 69000],
-                                borderColor: '#4f46e5',
-                                tension: 0.4,
-                                fill: true,
-                                backgroundColor: 'rgba(79, 70, 229, 0.1)'
+                                label: 'Monthly Profit (Rs)',
+                                data: monthlyProfits.map(m => m.profit),
+                                backgroundColor: '#4f46e5',
+                                borderRadius: 6
                             }]
                         },
-                        options: { responsive: true, plugins: { legend: { display: false } } }
+                        options: { 
+                            responsive: true, 
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: {
+                                    ticks: {
+                                        callback: function(value) {
+                                            return 'Rs ' + value.toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Yearly Chart
+                    new Chart(document.getElementById('yearlyChart'), {
+                        type: 'line',
+                        data: {
+                            labels: yearlyProfits.map(y => y.year),
+                            datasets: [{
+                                label: 'Yearly Profit (Rs)',
+                                data: yearlyProfits.map(y => y.profit),
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: { 
+                            responsive: true,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: {
+                                    ticks: {
+                                        callback: function(value) {
+                                            return 'Rs ' + value.toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Zone Chart (sample data)
+                    const zones = ['North', 'South', 'East', 'West'];
+                    const zoneData = zones.map(zone => {
+                        return this.data.reports
+                            .filter(r => {
+                                const rider = this.data.users.find(u => u.id === r.riderId);
+                                return rider && rider.zone === zone && r.status === 'approved';
+                            })
+                            .reduce((acc, r) => acc + r.finalAmount, 0);
                     });
 
                     new Chart(document.getElementById('zoneChart'), {
-                        type: 'bar',
+                        type: 'doughnut',
                         data: {
-                            labels: ['North', 'South', 'East', 'West'],
+                            labels: zones,
                             datasets: [{
-                                label: 'Deliveries',
-                                data: [120, 190, 150, 80],
+                                data: zoneData,
                                 backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444']
                             }]
                         },
-                        options: { responsive: true, plugins: { legend: { display: false } } }
+                        options: { 
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
                     });
                 }, 100);
             },
