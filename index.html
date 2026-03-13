@@ -219,23 +219,32 @@
             },
 
             init() {
-                this.loadData();
-                this.updateDate();
-                if (this.data.currentUser) {
-                    this.showDashboard();
-                } else {
-                    this.showLogin();
-                }
-                
-                // Handle window resize
-                window.addEventListener('resize', () => {
-                    if (window.innerWidth >= 768) {
-                        document.getElementById('sidebar').classList.remove('mobile-visible');
-                        document.getElementById('sidebar-overlay').classList.add('hidden');
-                        this.data.sidebarOpen = false;
-                    }
-                });
-            },
+    this.loadData();
+    this.updateDate();
+    
+    // NAYA CODE: Check for saved user session
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+        this.data.currentUser = JSON.parse(savedUser);
+    }
+    
+    if (this.data.currentUser) {
+        document.getElementById('sidebar').classList.remove('hidden');
+        document.querySelector('header').classList.remove('hidden');
+        this.showDashboard();
+    } else {
+        this.showLogin();
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 768) {
+            document.getElementById('sidebar').classList.remove('mobile-visible');
+            document.getElementById('sidebar-overlay').classList.add('hidden');
+            this.data.sidebarOpen = false;
+        }
+    });
+},
 
             toggleSidebar() {
                 const sidebar = document.getElementById('sidebar');
@@ -602,28 +611,36 @@
                 document.getElementById('login-email').value = email;
             },
 
-            handleLogin(e) {
-                e.preventDefault();
-                const email = document.getElementById('login-email').value;
-                const pass = document.getElementById('login-pass').value;
-                const role = document.getElementById('login-role').value;
+           handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const pass = document.getElementById('login-pass').value;
+    const role = document.getElementById('login-role').value;
 
-                const user = this.data.users.find(u => u.email === email && u.password === pass && u.role === role);
-                
-                if (user) {
-                    this.data.currentUser = user;
-                    document.getElementById('sidebar').classList.remove('hidden');
-                    document.querySelector('header').classList.remove('hidden');
-                    this.showDashboard();
-                } else {
-                    alert('Invalid credentials! Please use demo accounts provided below.');
-                }
-            },
+    const user = this.data.users.find(u => u.email === email && u.password === pass && u.role === role);
+    
+    if (user) {
+        this.data.currentUser = user;
+        
+        // NAYA CODE: Save user to localStorage for persistence
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        
+        document.getElementById('sidebar').classList.remove('hidden');
+        document.querySelector('header').classList.remove('hidden');
+        this.showDashboard();
+    } else {
+        alert('Invalid credentials! Please use demo accounts provided below.');
+    }
+},
 
             logout() {
-                this.data.currentUser = null;
-                location.reload();
-            },
+    this.data.currentUser = null;
+    
+    // NAYA CODE: Clear saved session
+    localStorage.removeItem('currentUser');
+    
+    location.reload();
+},
 
             // --- Navigation & Rendering ---
 
