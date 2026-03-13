@@ -263,46 +263,22 @@
                 }
             },
 
-    async loadData() {
-                // 1. Pehle local storage check karein (Backup ke liye)
+            loadData() {
                 const saved = localStorage.getItem('riderPortalData_v4');
                 if (saved) {
                     const parsed = JSON.parse(saved);
                     this.data.reports = parsed.reports || [];
                     this.data.attendance = parsed.attendance || [];
                     this.data.users = parsed.users || this.data.users;
+                    // Ensure dailyWage exists for existing users
                     this.data.users.forEach(u => {
                         if (u.role === 'rider' && !u.dailyWage) u.dailyWage = 500;
                     });
                 }
-
-                // 2. AB FIREBASE SE DATA KHEENCHNA HAI (Asli Solution)
-                if (window.db) {
-                    try {
-                        const { collection, getDocs } = window.firebaseMethods;
-                        const querySnapshot = await getDocs(collection(window.db, "all_reports"));
-                        
-                        const cloudReports = [];
-                        querySnapshot.forEach((doc) => {
-                            cloudReports.push(doc.data());
-                        });
-
-                        // Agar cloud par data mil gaya, toh local list update karein
-                        if (cloudReports.length > 0) {
-                            this.data.reports = cloudReports;
-                            this.renderAdminReports(); // UI Refresh karein
-                            console.log("Cloud data loaded successfully!");
-                        }
-                    } catch (e) {
-                        console.error("Firebase sync error: ", e);
-                    }
-                }
-
-                // Sample data generate karne wala logic (Optional)
+                // Generate sample data if empty (for demo)
                 if (this.data.reports.length === 0) this.generateSampleData();
                 if (this.data.attendance.length === 0) this.generateSampleAttendance();
             },
-               
 
             generateSampleData() {
                 // Generate sample reports for the last 60 days
@@ -386,35 +362,13 @@
                 this.saveData();
             },
 
-         async saveData() {
-                // 1. Local storage backup
+            saveData() {
                 localStorage.setItem('riderPortalData_v4', JSON.stringify({
                     reports: this.data.reports,
                     attendance: this.data.attendance,
                     users: this.data.users
                 }));
-
-                // 2. Firebase Cloud Sync
-                if (window.db) {
-                    try {
-                        const { collection, addDoc } = window.firebaseMethods;
-                        const latestReport = this.data.reports[this.data.reports.length - 1];
-                        
-                        if (latestReport) {
-                            await addDoc(collection(window.db, "all_reports"), {
-                                ...latestReport,
-                                submittedAt: new Date().toISOString()
-                            });
-                            console.log("Cloud Sync Success!");
-                        }
-                    } catch (e) {
-                        console.error("Firebase Error: ", e);
-                    }
-                }
-            }, // Ye bracket aur comma yahan khatam hona chahiye
-
-            closeModal() {
-                const modalContent = document.getElementById('modal-content');
+            },
 
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -2559,26 +2513,5 @@
         });
 
     </script>
-	<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyDJ1oajXpYmw4gdwpK_thX0DNHxrj-S5SM",
-    authDomain: "dastak-rider.firebaseapp.com",
-    projectId: "dastak-rider",
-    storageBucket: "dastak-rider.firebasestorage.app",
-    messagingSenderId: "465569820823",
-    appId: "1:465569820823:web:9f02264c8c7d04e548238d"
-  };
-
-  const firebaseApp = initializeApp(firebaseConfig);
-  const db = getFirestore(firebaseApp);
-  
-  // Ye lines portal ko Firebase se connect karti hain
-  window.db = db;
-  window.firebaseMethods = { collection, addDoc, getDocs };
-</script>
-
 </body>
 </html>
