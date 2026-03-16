@@ -283,113 +283,85 @@
                 }
             },
 
-            loadData() {
-                const saved = localStorage.getItem('riderPortalData_v4');
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    this.data.reports = parsed.reports || [];
-                    this.data.attendance = parsed.attendance || [];
-                    this.data.users = parsed.users || this.data.users;
+async loadData() {
+                try {
+                    // Try to load from Firebase first
+                    const ridersSnapshot = await window.db.collection('users').where('role', '==', 'rider').get();
+                    const riders = ridersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    const reportsSnapshot = await window.db.collection('reports').get();
+                    const reports = reportsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    const attendanceSnapshot = await window.db.collection('attendance').get();
+                    const attendance = attendanceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    this.data.users = [
+                        ...this.data.users.filter(u => u.role === 'admin'),
+                        ...riders
+                    ];
+                    this.data.reports = reports;
+                    this.data.attendance = attendance;
+                    
                     // Ensure dailyWage exists for existing users
                     this.data.users.forEach(u => {
                         if (u.role === 'rider' && !u.dailyWage) u.dailyWage = 500;
                     });
-                }
-                // Generate sample data if empty (for demo)
-                if (this.data.reports.length === 0) this.generateSampleData();
-                if (this.data.attendance.length === 0) this.generateSampleAttendance();
-            },
-
-            generateSampleData() {
-                // Generate sample reports for the last 60 days
-                const riders = this.data.users.filter(u => u.role === 'rider');
-                const today = new Date();
-                
-                for (let i = 0; i < 60; i++) {
-                    const date = new Date(today);
-                    date.setDate(date.getDate() - i);
-                    const dateStr = date.toISOString().split('T')[0];
                     
-                    riders.forEach(rider => {
-                        if (Math.random() > 0.3) { // 70% chance of having work
-                            const orders = [
-                                { type: 'Type 1', qty: Math.floor(Math.random() * 10) + 1, rate: 100, gross: 0, commission: 0 },
-                                { type: 'Type 2', qty: Math.floor(Math.random() * 5), rate: 150, gross: 0, commission: 0 }
-                            ].filter(o => o.qty > 0);
-                            
-                            orders.forEach(o => {
-                                o.gross = o.qty * o.rate;
-                                o.commission = o.gross * (rider.commissionRate / 100);
-                            });
-                            
-                            const totalCommission = orders.reduce((a, o) => a + o.commission, 0);
-                            const totalGross = orders.reduce((a, o) => a + o.gross, 0);
-                            
-                            this.data.reports.push({
-                                id: 'rep-' + Date.now() + '-' + i + '-' + rider.id,
-                                riderId: rider.id,
-                                riderName: rider.name,
-                                date: dateStr,
-                                createdAt: date.toISOString(),
-                                orders: orders,
-                                onlinePayments: Math.random() > 0.5 ? [{ detail: 'Online Order', amount: Math.floor(Math.random() * 1000) + 500, status: 'received' }] : [],
-                                expenses: [{ type: 'Fuel', amount: Math.floor(Math.random() * 300) + 100 }],
-                                totalGross: totalGross,
-                                totalCommission: totalCommission,
-                                totalExpenses: 200,
-                                finalAmount: totalCommission - 200,
-                                status: Math.random() > 0.2 ? 'approved' : 'pending',
-                                commissionRate: rider.commissionRate
-                            });
-                        }
-                    });
-                }
-                this.saveData();
-            },
-
-            generateSampleAttendance() {
-                const riders = this.data.users.filter(u => u.role === 'rider');
-                const today = new Date();
-                
-                for (let i = 0; i < 30; i++) {
-                    const date = new Date(today);
-                    date.setDate(date.getDate() - i);
-                    const dateStr = date.toISOString().split('T')[0];
+                    // Generate sample data if empty (for demo)
+                    if (this.data.reports.length === 0) this.generateSampleData();
+                    if (this.data.attendance.length === 0) this.generateSampleAttendance();
                     
-                    riders.forEach(rider => {
-                        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                        if (!isWeekend && Math.random() > 0.15) { // 85% attendance on weekdays
-                            this.data.attendance.push({
-                                riderId: rider.id,
-                                date: dateStr,
-                                status: 'present',
-                                isReliefDay: false
-                            });
-                        } else if (!isWeekend) {
-                            // Absent - check if relief day applies
-                            const monthAbsences = this.getMonthlyAbsences(rider.id, date.getMonth(), date.getFullYear());
-                            const isFirstAbsence = monthAbsences.length === 0;
-                            
-                            this.data.attendance.push({
-                                riderId: rider.id,
-                                date: dateStr,
-                                status: 'absent',
-                                isReliefDay: isFirstAbsence
-                            });
-                        }
-                    });
+                } catch (error) {
+                    console.error('Error loading from Firebase:', error);
+                    // Fallback to localStorage if Firebase fails
+                    const saved = localStorage.getItem('riderPortalData_v4');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        this.data.reports = parsed.reports || [];
+                        this.data.attendance = parsed.attendance || [];
+                        this.data.users = parsed.users || this.data.users;
+                    }
+                    if (this.data.reports.length === 0) this.generateSampleData();
+                    if (this.data.attendance.length === 0) this.generateSampleAttendance();
                 }
-                this.saveData();
             },
 
-            saveData() {
-                localStorage.setItem('riderPortalData_v4', JSON.stringify({
-                    reports: this.data.reports,
-                    attendance: this.data.attendance,
-                    users: this.data.users
-                }));
+            async saveData() {
+                try {
+                    // Save reports to Firebase
+                    const batch = window.db.batch();
+                    
+                    // Save each report as a separate document
+                    this.data.reports.forEach(report => {
+                        const ref = window.db.collection('reports').doc(report.id);
+                        batch.set(ref, report);
+                    });
+                    
+                    // Save attendance records
+                    this.data.attendance.forEach(record => {
+                        const ref = window.db.collection('attendance').doc(`${record.riderId}_${record.date}`);
+                        batch.set(ref, record);
+                    });
+                    
+                    // Save riders
+                    this.data.users.filter(u => u.role === 'rider').forEach(rider => {
+                        const ref = window.db.collection('users').doc(rider.id);
+                        batch.set(ref, rider);
+                    });
+                    
+                    await batch.commit();
+                    console.log('Data saved to Firebase');
+                    
+                } catch (error) {
+                    console.error('Error saving to Firebase:', error);
+                    // Fallback to localStorage
+                    localStorage.setItem('riderPortalData_v4', JSON.stringify({
+                        reports: this.data.reports,
+                        attendance: this.data.attendance,
+                        users: this.data.users
+                    }));
+                }
             },
-
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
                 document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-PK', options);
