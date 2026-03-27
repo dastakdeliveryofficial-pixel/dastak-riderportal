@@ -238,12 +238,12 @@
                 currentTimeFilter: 'month' // 'month' | 'year'
             },
 
-            init() {
-    this.loadData();
+        init() {
+    // this.loadData();  // ✅ HATA DO - LINE 89 DELETE
     this.updateDate();
     
     // NAYA CODE: Check for saved user session
-    const savedUser = localStorage.getItem('currentUser');
+    const savedUser = sessionStorage.getItem('currentUser');  // ✅ LINE 94 CHANGE
     if (savedUser) {
         this.data.currentUser = JSON.parse(savedUser);
     }
@@ -251,6 +251,7 @@
     if (this.data.currentUser) {
         document.getElementById('sidebar').classList.remove('hidden');
         document.querySelector('header').classList.remove('hidden');
+        this.setupRealtimeListeners();  // ✅ LINE 103 ADD
         this.showDashboard();
     } else {
         this.showLogin();
@@ -283,84 +284,29 @@
                 }
             },
 
-async loadData() {
-                try {
-                    // Try to load from Firebase first
-                    const ridersSnapshot = await window.db.collection('users').where('role', '==', 'rider').get();
-                    const riders = ridersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    
-                    const reportsSnapshot = await window.db.collection('reports').get();
-                    const reports = reportsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    
-                    const attendanceSnapshot = await window.db.collection('attendance').get();
-                    const attendance = attendanceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    
-                    this.data.users = [
-                        ...this.data.users.filter(u => u.role === 'admin'),
-                        ...riders
-                    ];
-                    this.data.reports = reports;
-                    this.data.attendance = attendance;
-                    
-                    // Ensure dailyWage exists for existing users
-                    this.data.users.forEach(u => {
-                        if (u.role === 'rider' && !u.dailyWage) u.dailyWage = 500;
-                    });
-                    
-                    // Generate sample data if empty (for demo)
-                    if (this.data.reports.length === 0) this.generateSampleData();
-                    if (this.data.attendance.length === 0) this.generateSampleAttendance();
-                    
-                } catch (error) {
-                    console.error('Error loading from Firebase:', error);
-                    // Fallback to localStorage if Firebase fails
-                    const saved = localStorage.getItem('riderPortalData_v4');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        this.data.reports = parsed.reports || [];
-                        this.data.attendance = parsed.attendance || [];
-                        this.data.users = parsed.users || this.data.users;
-                    }
-                    if (this.data.reports.length === 0) this.generateSampleData();
-                    if (this.data.attendance.length === 0) this.generateSampleAttendance();
-                }
-            },
+// ✅✅✅ YEH NAYA FUNCTION ADD KARO ✅✅✅
+setupRealtimeListeners() {
+    // Riders real-time sync
+    window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
+        const riders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        this.data.users = [...this.data.users.filter(u => u.role === 'admin'), ...riders];
+    });
 
-            async saveData() {
-                try {
-                    // Save reports to Firebase
-                    const batch = window.db.batch();
-                    
-                    // Save each report as a separate document
-                    this.data.reports.forEach(report => {
-                        const ref = window.db.collection('reports').doc(report.id);
-                        batch.set(ref, report);
-                    });
-                    
-                    // Save attendance records
-                    this.data.attendance.forEach(record => {
-                        const ref = window.db.collection('attendance').doc(`${record.riderId}_${record.date}`);
-                        batch.set(ref, record);
-                    });
-                    
-                    // Save riders
-                    this.data.users.filter(u => u.role === 'rider').forEach(rider => {
-                        const ref = window.db.collection('users').doc(rider.id);
-                        batch.set(ref, rider);
-                    });
-                    
-                    await batch.commit();
-                    console.log('Data saved to Firebase');
-                    
-                } catch (error) {
-                    console.error('Error saving to Firebase:', error);
-                    // Fallback to localStorage
-                    localStorage.setItem('riderPortalData_v4', JSON.stringify({
-                        reports: this.data.reports,
-                        attendance: this.data.attendance,
-                        users: this.data.users
-                    }));
-                }
+    // Reports real-time sync
+    window.db.collection('reports').onSnapshot((snapshot) => {
+        this.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    });
+
+    // Attendance real-time sync
+    window.db.collection('attendance').onSnapshot((snapshot) => {
+        this.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    });
+},
+            // ✅✅✅ YEH NAYA FUNCTION ADD KARO ✅✅✅
+stopRealtimeListeners() {
+    // Listeners ko stop karne ke liye baad mein implement karenge
+    // For now, empty function
+},
             },
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -596,10 +542,11 @@ async loadData() {
                     dailyWage: 500
                 };
 
-                this.data.users.push(newRider);
-                this.saveData();
-                alert('Account created successfully! Please sign in.');
-                this.showLogin();
+                // this.data.users.push(newRider);  // ✅ HATAO - LINE 482
+// this.saveData();  // ✅ HATAO - LINE 483
+await window.db.collection('users').add(newRider);  // ✅ LINE 482-483 REPLACE
+alert('Account created successfully! Please sign in.');
+this.showLogin();
                 document.getElementById('login-email').value = email;
             },
 
@@ -609,31 +556,48 @@ async loadData() {
     const pass = document.getElementById('login-pass').value;
     const role = document.getElementById('login-role').value;
 
-    const user = this.data.users.find(u => u.email === email && u.password === pass && u.role === role);
-    
-    if (user) {
-        this.data.currentUser = user;
-        
-        // NAYA CODE: Save user to localStorage for persistence
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        
+    // Check demo admin
+    if (role === 'admin' && email === 'admin@portal.com' && pass === 'admin123') {
+        const adminUser = this.data.users.find(u => u.email === 'admin@portal.com');
+        this.data.currentUser = adminUser;
+        sessionStorage.setItem('currentUser', JSON.stringify(adminUser));  // ✅ LINE 390 CHANGE
         document.getElementById('sidebar').classList.remove('hidden');
         document.querySelector('header').classList.remove('hidden');
+        this.setupRealtimeListeners();  // ✅ LINE 395 ADD
         this.showDashboard();
-    } else {
-        alert('Invalid credentials! Please use demo accounts provided below.');
+        return;
     }
+
+    // Check Firebase for rider  // ✅ NAYA CODE
+    window.db.collection('users')
+        .where('email', '==', email)
+        .where('password', '==', pass)
+        .where('role', '==', 'rider')
+        .get()
+        .then((snapshot) => {
+            if (!snapshot.empty) {
+                const user = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+                this.data.currentUser = user;
+                sessionStorage.setItem('currentUser', JSON.stringify(user));  // ✅ CHANGE
+                document.getElementById('sidebar').classList.remove('hidden');
+                document.querySelector('header').classList.remove('hidden');
+                this.setupRealtimeListeners();  // ✅ ADD
+                this.showDashboard();
+            } else {
+                alert('Invalid credentials! Please check your email and password.');
+            }
+        });
 },
 
-            logout() {
+ logout() {
+    this.stopRealtimeListeners();  // ✅ LINE 402 ADD
     this.data.currentUser = null;
     
     // NAYA CODE: Clear saved session
-    localStorage.removeItem('currentUser');
+    sessionStorage.removeItem('currentUser');  // ✅ LINE 405 CHANGE
     
     location.reload();
 },
-
             // --- Navigation & Rendering ---
 
             renderSidebar() {
@@ -1279,12 +1243,11 @@ async loadData() {
                     commissionRate: userCommission
                 };
 
-                this.data.reports.push(newReport);
-                this.saveData();
-                alert('Report Submitted Successfully!');
-                this.navigate('rider-dashboard');
-            },
-
+          // this.data.reports.push(newReport);  // ✅ HATAO - LINE 852
+// this.saveData();  // ✅ HATAO - LINE 853
+await window.db.collection('reports').add(newReport);  // ✅ LINE 852-853 REPLACE
+alert('Report Submitted Successfully!');
+this.navigate('rider-dashboard');
             renderRiderHistory() {
                 document.getElementById('page-title').textContent = 'My History';
                 const container = document.getElementById('main-container');
@@ -1798,16 +1761,17 @@ async loadData() {
                 `;
             },
 
-            deleteRider(riderId) {
-                if (!confirm('Delete this rider? All data will be removed.')) return;
-                this.data.users = this.data.users.filter(u => u.id !== riderId);
-                this.data.reports = this.data.reports.filter(r => r.riderId !== riderId);
-                this.data.attendance = this.data.attendance.filter(a => a.riderId !== riderId);
-                this.saveData();
-                this.renderAdminRiders();
-                alert('Rider deleted!');
-            },
-
+            async deleteRider(riderId) {  // ✅ LINE 1051 ADD async
+    if (!confirm('Delete this rider? All data will be removed.')) return;
+    
+    try {
+        await window.db.collection('users').doc(riderId).delete();  // ✅ LINE 1053-1056 REPLACE
+        alert('Rider deleted!');
+    } catch (error) {
+        console.error('Error deleting rider:', error);
+        alert('Error deleting rider. Please try again.');
+    }
+},
             editRider(riderId) {
                 const rider = this.data.users.find(u => u.id === riderId);
                 if (!rider) return;
@@ -2177,34 +2141,33 @@ async loadData() {
                 const month = new Date(dateStr).getMonth();
                 const year = new Date(dateStr).getFullYear();
                 
-                if (existing) {
-                    // Cycle: present -> absent -> not set
-                    if (existing.status === 'present') {
-                        existing.status = 'absent';
-                        // Check if this should be relief day
-                        const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
-                        existing.isReliefDay = monthAbsences.length === 0 || (monthAbsences.length === 1 && monthAbsences[0].date === dateStr);
-                    } else {
-                        // Remove attendance record
-                        this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
-                    }
-                } else {
-                    // Check if this should be relief day
-                    const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
-                    const isReliefDay = monthAbsences.length === 0;
-                    
-                    this.data.attendance.push({
-                        riderId,
-                        date: dateStr,
-                        status: 'present',
-                        isReliefDay: false
-                    });
-                }
-                
-                this.saveData();
-                this.showAttendanceCalendar(riderId);
-            },
+               const docId = `${riderId}_${dateStr}`;  // ✅ LINE 1353 ADD
 
+if (existing) {
+    if (existing.status === 'present') {
+        // Update to absent
+        const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+        const isReliefDay = monthAbsences.length === 0;
+        await window.db.collection('attendance').doc(docId).update({  // ✅ LINE 1358-1361 REPLACE
+            status: 'absent',
+            isReliefDay: isReliefDay
+        });
+    } else {
+        // Delete record
+        await window.db.collection('attendance').doc(docId).delete();  // ✅ LINE 1366 REPLACE
+    }
+} else {
+    // Add present
+    await window.db.collection('attendance').doc(docId).set({  // ✅ LINE 1374-1378 REPLACE
+        riderId,
+        date: dateStr,
+        status: 'present',
+        isReliefDay: false,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+}
+
+// this.saveData();  // ✅ HATAO - LINE 1382
             renderAIParser() {
                 document.getElementById('page-title').textContent = 'AI Parser';
                 const container = document.getElementById('main-container');
