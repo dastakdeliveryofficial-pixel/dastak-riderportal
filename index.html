@@ -286,27 +286,32 @@
 
 // ✅✅✅ YEH NAYA FUNCTION ADD KARO ✅✅✅
 setupRealtimeListeners() {
-    // Riders real-time sync
-    window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
+    const self = this; // this ko preserve karo
+    
+    // Riders sync
+    this.data.unsubscribeRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
         const riders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        this.data.users = [...this.data.users.filter(u => u.role === 'admin'), ...riders];
+        self.data.users = [...self.data.users.filter(u => u.role === 'admin'), ...riders];
+        console.log('Riders updated:', riders.length); // Debug ke liye
+    }, (error) => {
+        console.error('Riders sync error:', error);
     });
 
     // Reports real-time sync
-    window.db.collection('reports').onSnapshot((snapshot) => {
-        this.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    this.data.unsubscribeReports = window.db.collection('reports').onSnapshot((snapshot) => {
+        self.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log('Reports updated:', self.data.reports.length); // Debug ke liye
+    }, (error) => {
+        console.error('Reports sync error:', error);
     });
 
-    // Attendance real-time sync
-    window.db.collection('attendance').onSnapshot((snapshot) => {
-        this.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Attendance sync
+    this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
+        self.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }, (error) => {
+        console.error('Attendance sync error:', error);
     });
-},
-            // ✅✅✅ YEH NAYA FUNCTION ADD KARO ✅✅✅
-stopRealtimeListeners() {
-    // Listeners ko stop karne ke liye baad mein implement karenge
-    // For now, empty function
-},
+}
             },
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -544,29 +549,32 @@ stopRealtimeListeners() {
 
                 // this.data.users.push(newRider);  // ✅ HATAO - LINE 482
 // this.saveData();  // ✅ HATAO - LINE 483
-await window.db.collection('users').add(newRider);  // ✅ LINE 482-483 REPLACE
-alert('Account created successfully! Please sign in.');
-this.showLogin();
-                document.getElementById('login-email').value = email;
-            },
-
-           handleLogin(e) {
-    e.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const pass = document.getElementById('login-pass').value;
-    const role = document.getElementById('login-role').value;
-
-    // Check demo admin
-    if (role === 'admin' && email === 'admin@portal.com' && pass === 'admin123') {
-        const adminUser = this.data.users.find(u => u.email === 'admin@portal.com');
-        this.data.currentUser = adminUser;
-        sessionStorage.setItem('currentUser', JSON.stringify(adminUser));  // ✅ LINE 390 CHANGE
-        document.getElementById('sidebar').classList.remove('hidden');
-        document.querySelector('header').classList.remove('hidden');
-        this.setupRealtimeListeners();  // ✅ LINE 395 ADD
-        this.showDashboard();
-        return;
-    }
+window.db.collection('users')
+    .where('email', '==', email)
+    .get()
+    .then((snapshot) => {
+        if (!snapshot.empty) {
+            const userData = snapshot.docs[0].data();
+            // Client-side password check
+            if (userData.password === pass && userData.role === role) {
+                const user = { id: snapshot.docs[0].id, ...userData };
+                this.data.currentUser = user;
+                sessionStorage.setItem('currentUser', JSON.stringify(user));
+                document.getElementById('sidebar').classList.remove('hidden');
+                document.querySelector('header').classList.remove('hidden');
+                this.setupRealtimeListeners();
+                this.showDashboard();
+            } else {
+                alert('Invalid credentials!');
+            }
+        } else {
+            alert('User not found!');
+        }
+    })
+    .catch((error) => {
+        console.error('Login error:', error);
+        alert('Login failed. Check console.');
+    });
 
     // Check Firebase for rider  // ✅ NAYA CODE
     window.db.collection('users')
@@ -590,7 +598,16 @@ this.showLogin();
 },
 
  logout() {
-    this.stopRealtimeListeners();  // ✅ LINE 402 ADD
+  stopRealtimeListeners() {
+    if (this.data.unsubscribeRiders) this.data.unsubscribeRiders();
+    if (this.data.unsubscribeReports) this.data.unsubscribeReports();
+    if (this.data.unsubscribeAttendance) this.data.unsubscribeAttendance();
+    
+    this.data.unsubscribeRiders = null;
+    this.data.unsubscribeReports = null;
+    this.data.unsubscribeAttendance = null;
+},
+ // ✅ LINE 402 ADD
     this.data.currentUser = null;
     
     // NAYA CODE: Clear saved session
@@ -1761,17 +1778,17 @@ this.navigate('rider-dashboard');
                 `;
             },
 
-            async deleteRider(riderId) {  // ✅ LINE 1051 ADD async
+           async deleteRider(riderId) {  // ✅ async add karo
     if (!confirm('Delete this rider? All data will be removed.')) return;
     
     try {
-        await window.db.collection('users').doc(riderId).delete();  // ✅ LINE 1053-1056 REPLACE
+        await window.db.collection('users').doc(riderId).delete();
         alert('Rider deleted!');
     } catch (error) {
-        console.error('Error deleting rider:', error);
-        alert('Error deleting rider. Please try again.');
+        console.error('Delete error:', error);
+        alert('Error: ' + error.message);
     }
-},
+}
             editRider(riderId) {
                 const rider = this.data.users.find(u => u.id === riderId);
                 if (!rider) return;
@@ -2136,7 +2153,7 @@ this.navigate('rider-dashboard');
                 }, 10);
             },
 
-            toggleAttendance(riderId, dateStr) {
+        async toggleAttendance(riderId, dateStr) {
                 const existing = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
                 const month = new Date(dateStr).getMonth();
                 const year = new Date(dateStr).getFullYear();
