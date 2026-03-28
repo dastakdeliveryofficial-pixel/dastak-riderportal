@@ -286,32 +286,53 @@
 
 // ✅✅✅ YEH NAYA FUNCTION ADD KARO ✅✅✅
 setupRealtimeListeners() {
-    const self = this; // this ko preserve karo
+    const self = this;  // ✅ Sirf yeh const hai, baaki let
     
     // Riders sync
-    this.data.unsubscribeRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
-        const riders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        self.data.users = [...self.data.users.filter(u => u.role === 'admin'), ...riders];
-        console.log('Riders updated:', riders.length); // Debug ke liye
-    }, (error) => {
-        console.error('Riders sync error:', error);
-    });
+    let unsubscribeRiders = window.db.collection('users')
+        .where('role', '==', 'rider')
+        .onSnapshot((snapshot) => {
+            const riders = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+            self.data.users = [
+                ...self.data.users.filter(u => u.role === 'admin'), 
+                ...riders
+            ];
+            console.log('Riders loaded:', riders.length);
+        }, (error) => {
+            console.error('Riders error:', error);
+        });
 
-    // Reports real-time sync
-    this.data.unsubscribeReports = window.db.collection('reports').onSnapshot((snapshot) => {
-        self.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        console.log('Reports updated:', self.data.reports.length); // Debug ke liye
-    }, (error) => {
-        console.error('Reports sync error:', error);
-    });
+    // Reports sync
+    let unsubscribeReports = window.db.collection('reports')
+        .onSnapshot((snapshot) => {
+            self.data.reports = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+            console.log('Reports loaded:', self.data.reports.length);
+        }, (error) => {
+            console.error('Reports error:', error);
+        });
 
     // Attendance sync
-    this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
-        self.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    }, (error) => {
-        console.error('Attendance sync error:', error);
-    });
-}
+    let unsubscribeAttendance = window.db.collection('attendance')
+        .onSnapshot((snapshot) => {
+            self.data.attendance = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+        }, (error) => {
+            console.error('Attendance error:', error);
+        });
+        
+    // Store in data
+    this.data.unsubscribeRiders = unsubscribeRiders;
+    this.data.unsubscribeReports = unsubscribeReports;
+    this.data.unsubscribeAttendance = unsubscribeAttendance;
+},
             },
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
