@@ -333,7 +333,6 @@ setupRealtimeListeners() {
     this.data.unsubscribeReports = unsubscribeReports;
     this.data.unsubscribeAttendance = unsubscribeAttendance;
 },
-            },
             updateDate() {
                 const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
                 document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-PK', options);
@@ -502,7 +501,7 @@ setupRealtimeListeners() {
                                 <h2 class="text-xl md:text-2xl font-bold text-gray-800">Join as Rider</h2>
                                 <p class="text-gray-500 text-sm">Create your rider account</p>
                             </div>
-                            <form onsubmit="app.handleSignup(event)" class="space-y-4">
+                            <form onsubmit="app.handleSignup(e)" class="space-y-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                                     <input type="text" id="signup-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" placeholder="Muhammad Ali" required>
