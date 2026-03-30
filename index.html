@@ -188,7 +188,12 @@
                     document.getElementById('sidebar').classList.remove('hidden');
                     document.getElementById('main-header').classList.remove('hidden');
                     this.setupRealtimeListeners();
-                    this.showDashboard();
+                    this.renderSidebar();
+if (this.data.currentUser.role === 'admin') {
+    this.navigate('admin-dashboard');
+} else {
+    this.navigate('rider-dashboard');
+}
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     alert('Error loading user data: ' + error.message);
@@ -203,6 +208,15 @@
                 }, (error) => { console.error('Riders error:', error); });
                 this.data.unsubscribeReports = window.db.collection('reports').onSnapshot((snapshot) => {
                     self.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // AUTO REFRESH DASHBOARD AFTER DATA LOAD
+                    if (self.data.currentUser) {
+                        if (self.data.currentUser.role === 'admin') {
+                            self.renderAdminDashboard();
+                        } else {
+                            self.renderRiderDashboard();
+                        }
+                    }
                 }, (error) => { console.error('Reports error:', error); });
                 this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
                     self.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -306,7 +320,12 @@
                     document.getElementById('sidebar').classList.remove('hidden');
                     document.getElementById('main-header').classList.remove('hidden');
                     this.setupRealtimeListeners();
-                    this.showDashboard();
+                    this.renderSidebar();
+if (this.data.currentUser.role === 'admin') {
+    this.navigate('admin-dashboard');
+} else {
+    this.navigate('rider-dashboard');
+}
                 } catch (error) {
                     console.error("Login error:", error);
                     if (error.code === 'auth/user-not-found') {
