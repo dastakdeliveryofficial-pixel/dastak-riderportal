@@ -1214,11 +1214,14 @@ if (this.data.currentUser.role === 'admin') {
             },
 
             sendWhatsAppPaymentReminder(riderName, customerDetail, amount, date) {
-                const rider = this.data.users.find(u => u.name === riderName);
-                const phone = rider?.phone?.replace(/\D/g, '') || '';
-                const whatsappPhone = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/, '');
                 const message = `Assalam o Alaikum *${customerDetail}*,\n\nآپ کی payment ابھی pending ہے۔ آپ نے *Dastak* پر order کیا تھا۔\n\n💰 *Amount: Rs ${amount.toLocaleString()}*\n📅 Date: ${new Date(date).toLocaleDateString('ur-PK')}\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ 🙏`;
-                const url = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
+                // WhatsApp Business — no phone number so contact picker opens
+                const encoded = encodeURIComponent(message);
+                // Try WhatsApp Business app first, fallback to web
+                const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+                const url = isMobile
+                    ? `whatsapp://send?text=${encoded}`
+                    : `https://web.whatsapp.com/send?text=${encoded}`;
                 window.open(url, '_blank');
             },
 
