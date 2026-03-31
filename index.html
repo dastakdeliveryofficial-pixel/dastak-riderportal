@@ -150,7 +150,9 @@
                 currentParsedOrder: null,
                 unsubscribeRiders: null,
                 unsubscribeReports: null,
-                unsubscribeAttendance: null
+                unsubscribeAttendance: null,
+                unsubscribeCompanyExpenses: null,
+                companyExpenses: []
             },
 
             init() {
@@ -226,15 +228,20 @@ if (this.data.currentUser.role === 'admin') {
                 this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
                     self.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }, (error) => { console.error('Attendance error:', error); });
+                this.data.unsubscribeCompanyExpenses = window.db.collection('companyExpenses').onSnapshot((snapshot) => {
+                    self.data.companyExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                }, (error) => { console.error('CompanyExpenses error:', error); });
             },
 
             stopRealtimeListeners() {
                 if (this.data.unsubscribeRiders) this.data.unsubscribeRiders();
                 if (this.data.unsubscribeReports) this.data.unsubscribeReports();
                 if (this.data.unsubscribeAttendance) this.data.unsubscribeAttendance();
+                if (this.data.unsubscribeCompanyExpenses) this.data.unsubscribeCompanyExpenses();
                 this.data.unsubscribeRiders = null;
                 this.data.unsubscribeReports = null;
                 this.data.unsubscribeAttendance = null;
+                this.data.unsubscribeCompanyExpenses = null;
             },
 
             updateDate() {
@@ -436,6 +443,8 @@ if (this.data.currentUser.role === 'admin') {
                     { id: 'admin-riders', icon: 'fa-users', label: 'Manage Riders' },
                     { id: 'admin-reports', icon: 'fa-clipboard-check', label: 'Review Reports' },
                     { id: 'admin-online-payments', icon: 'fa-credit-card', label: 'Online Payments' },
+                    { id: 'admin-expenses', icon: 'fa-receipt', label: 'Rider Expenses' },
+                    { id: 'admin-company-expenses', icon: 'fa-building', label: 'Company Expenses' },
                     { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance' },
                     { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' }
                 ] : [
@@ -467,6 +476,8 @@ if (this.data.currentUser.role === 'admin') {
                 else if (viewId === 'admin-riders') this.renderAdminRiders();
                 else if (viewId === 'admin-reports') this.renderAdminReports();
                 else if (viewId === 'admin-online-payments') this.renderAdminOnlinePayments();
+                else if (viewId === 'admin-expenses') this.renderAdminExpenses();
+                else if (viewId === 'admin-company-expenses') this.renderCompanyExpenses();
                 else if (viewId === 'admin-attendance') this.renderAdminAttendance();
                 else if (viewId === 'admin-analytics') this.renderAdminAnalytics();
                 else this.renderRiderDashboard();
@@ -1043,40 +1054,54 @@ if (this.data.currentUser.role === 'admin') {
                 const container = document.getElementById('main-container');
                 const totalRiders = this.data.users.filter(u => u.role === 'rider').length;
                 const pendingReports = this.data.reports.filter(r => r.status === 'pending').length;
-                const dailyProfits = this.getDailyProfits(this.data.currentTimeFilter === 'month' ? 30 : 365);
+                const days = this.data.currentTimeFilter === 'month' ? 30 : 365;
+                const dailyProfits = this.getDailyProfits(days);
                 const totalProfit = dailyProfits.reduce((a, b) => a + b.profit, 0);
                 const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments || []);
                 const totalOnlinePending = allOnlinePayments.filter(p => p.status === 'pending').reduce((a,b) => a + (b.amount || 0), 0);
+                // Expenses calculations
+                const approvedReports = this.data.reports.filter(r => r.status === 'approved');
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+                const filteredReports = approvedReports.filter(r => new Date(r.date) >= cutoff);
+                const totalRiderExpenses = filteredReports.reduce((a, r) => a + (r.totalExpenses || 0), 0);
+                const fuelTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Fuel').reduce((s,e)=>s+e.amount,0), 0);
+                const foodTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Food').reduce((s,e)=>s+e.amount,0), 0);
+                const maintTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Maintenance').reduce((s,e)=>s+e.amount,0), 0);
+                // Company expenses
+                const companyExpenses = this.data.companyExpenses || [];
+                const totalCompanyExp = companyExpenses.filter(e => { const d = new Date(e.date); return d >= cutoff; }).reduce((a,e) => a+e.amount, 0);
+                // Daily expenses for chart
+                const dailyExpenses = {};
+                dailyProfits.forEach(d => { dailyExpenses[d.date] = 0; });
+                filteredReports.forEach(r => { if(dailyExpenses.hasOwnProperty(r.date)) dailyExpenses[r.date] += (r.totalExpenses||0); });
+                const expenseChartData = dailyProfits.map(d => dailyExpenses[d.date] || 0);
+
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-4">
-                                <h3 class="font-bold text-gray-800">Profit Overview</h3>
+                                <h3 class="font-bold text-gray-800">Overview</h3>
                                 <div class="flex gap-2">
-                                    <button onclick="app.setTimeFilter('month')" class="time-filter-btn ${this.data.currentTimeFilter === 'month' ? 'active' : ''}">This Month</button>
-                                    <button onclick="app.setTimeFilter('year')" class="time-filter-btn ${this.data.currentTimeFilter === 'year' ? 'active' : ''}">This Year</button>
+                                    <button onclick="app.setTimeFilter('month')" class="time-filter-btn ${this.data.currentTimeFilter === 'month' ? 'active' : ''}">Month</button>
+                                    <button onclick="app.setTimeFilter('year')" class="time-filter-btn ${this.data.currentTimeFilter === 'year' ? 'active' : ''}">Year</button>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                                 <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">Total Profit</p><h3 class="text-lg font-bold text-green-600">Rs ${totalProfit.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-red-400 cursor-pointer" onclick="app.navigate('admin-expenses')"><p class="text-xs text-gray-500">Rider Expenses</p><h3 class="text-lg font-bold text-red-500">Rs ${totalRiderExpenses.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-purple-400 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">Company Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3></div>
                                 <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold text-gray-800">${totalRiders}</h3></div>
-                                <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
-                                <div class="stat-card border-l-4 border-red-500"><p class="text-xs text-gray-500">Online Pending</p><h3 class="text-lg font-bold text-red-600">Rs ${totalOnlinePending.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
+                                <div class="stat-card border-l-4 border-yellow-500 cursor-pointer" onclick="app.navigate('admin-online-payments')"><p class="text-xs text-gray-500">Online Pending</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalOnlinePending.toLocaleString()}</h3></div>
                             </div>
                             <div class="bg-white rounded-xl p-4 border border-gray-200"><canvas id="profitChart" height="250"></canvas></div>
-                            <div class="mt-4">
-                                <h4 class="font-bold text-gray-800 mb-3 text-sm">Daily Details</h4>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm">
-                                        <thead class="bg-gray-50 text-gray-600"><tr><th class="text-left p-3 rounded-tl-lg">Date</th><th class="text-right p-3">Profit</th><th class="text-right p-3">Orders</th><th class="text-right p-3 rounded-tr-lg">Status</th></tr></thead>
-                                        <tbody class="divide-y divide-gray-100">${dailyProfits.slice().reverse().map(d => {
-                                            const dayReports = this.data.reports.filter(r => r.date === d.date && r.status === 'approved');
-                                            const orderCount = dayReports.reduce((a, r) => a + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
-                                            const isToday = d.date === new Date().toISOString().split('T')[0];
-                                            return `<tr class="hover:bg-gray-50 ${isToday ? 'bg-indigo-50' : ''}"><td class="p-3 font-medium ${isToday ? 'text-indigo-700' : 'text-gray-800'}">${isToday ? 'Today' : d.displayDate}</td><td class="p-3 text-right font-bold text-green-600">Rs ${d.profit.toLocaleString()}</td><td class="p-3 text-right text-gray-600">${orderCount}</td><td class="p-3 text-right">${d.profit > 0 ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Profitable</span>' : '<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">No Data</span>'}</td></tr>`;
-                                        }).join('')}</tbody>
-                                    </table>
-                                </div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Rider Expenses Breakdown</h3><button onclick="app.navigate('admin-expenses')" class="text-xs text-indigo-600">View All</button></div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="bg-orange-50 rounded-xl p-3 text-center border border-orange-100"><i class="fas fa-gas-pump text-orange-500 mb-1"></i><p class="text-xs text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${fuelTotal.toLocaleString()}</p></div>
+                                <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100"><i class="fas fa-utensils text-green-500 mb-1"></i><p class="text-xs text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${foodTotal.toLocaleString()}</p></div>
+                                <div class="bg-blue-50 rounded-xl p-3 text-center border border-blue-100"><i class="fas fa-wrench text-blue-500 mb-1"></i><p class="text-xs text-gray-500">Maintenance</p><p class="font-bold text-blue-600">Rs ${maintTotal.toLocaleString()}</p></div>
                             </div>
                         </div>
                         <div class="section-card">
@@ -1097,8 +1122,14 @@ if (this.data.currentUser.role === 'admin') {
                     if (!ctx) return;
                     new Chart(ctx.getContext('2d'), {
                         type: 'line',
-                        data: { labels: dailyProfits.map(d => d.displayDate), datasets: [{ label: 'Daily Profit (Rs)', data: dailyProfits.map(d => d.profit), borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#4f46e5' }] },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(context) { return 'Profit: Rs ' + context.parsed.y.toLocaleString(); } } } }, scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } }
+                        data: {
+                            labels: dailyProfits.map(d => d.displayDate),
+                            datasets: [
+                                { label: 'Profit (Rs)', data: dailyProfits.map(d => d.profit), borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.08)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 2, pointBackgroundColor: '#4f46e5' },
+                                { label: 'Expenses (Rs)', data: expenseChartData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.07)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 2, pointBackgroundColor: '#ef4444' }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' }, tooltip: { callbacks: { label: function(context) { return context.dataset.label + ': Rs ' + context.parsed.y.toLocaleString(); } } } }, scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } }
                     });
                 }, 100);
             },
@@ -1340,6 +1371,159 @@ if (this.data.currentUser.role === 'admin') {
                     await window.db.collection('reports').doc(id).update(updates);
                     this.closeModal();
                     this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderAdminExpenses() {
+                document.getElementById('page-title').textContent = 'Rider Expenses';
+                const container = document.getElementById('main-container');
+                // Collect all expenses from all approved reports
+                let allExpenses = [];
+                this.data.reports.filter(r => r.status === 'approved').forEach(r => {
+                    (r.expenses || []).forEach(e => {
+                        allExpenses.push({ ...e, riderName: r.riderName, riderId: r.riderId, date: r.date, reportId: r.id });
+                    });
+                });
+                allExpenses.sort((a,b) => new Date(b.date) - new Date(a.date));
+                const totalFuel = allExpenses.filter(e=>e.type==='Fuel').reduce((a,e)=>a+e.amount,0);
+                const totalFood = allExpenses.filter(e=>e.type==='Food').reduce((a,e)=>a+e.amount,0);
+                const totalMaint = allExpenses.filter(e=>e.type==='Maintenance').reduce((a,e)=>a+e.amount,0);
+                const grandTotal = totalFuel + totalFood + totalMaint;
+                // Per rider breakdown
+                const riderExp = {};
+                allExpenses.forEach(e => {
+                    if (!riderExp[e.riderId]) riderExp[e.riderId] = { name: e.riderName, fuel:0, food:0, maint:0 };
+                    if(e.type==='Fuel') riderExp[e.riderId].fuel += e.amount;
+                    if(e.type==='Food') riderExp[e.riderId].food += e.amount;
+                    if(e.type==='Maintenance') riderExp[e.riderId].maint += e.amount;
+                });
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="stat-card border-l-4 border-red-500 col-span-2 md:col-span-1"><p class="text-xs text-gray-500">Total Expenses</p><h3 class="text-xl font-bold text-red-600">Rs ${grandTotal.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">⛽ Fuel</p><h3 class="text-lg font-bold text-orange-600">Rs ${totalFuel.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">🍽 Food</p><h3 class="text-lg font-bold text-green-600">Rs ${totalFood.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-blue-400"><p class="text-xs text-gray-500">🔧 Maintenance</p><h3 class="text-lg font-bold text-blue-600">Rs ${totalMaint.toLocaleString()}</h3></div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">Per Rider Breakdown</h3>
+                            <div class="space-y-3">
+                                ${Object.values(riderExp).length === 0 ? `<p class="text-center text-gray-400 py-4">No expense data yet</p>` : Object.values(riderExp).map(r => `
+                                <div class="bg-gray-50 rounded-xl p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <div class="flex items-center gap-2"><div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">${r.name.charAt(0)}</div><p class="font-bold text-gray-800">${r.name}</p></div>
+                                        <p class="font-bold text-red-600">Rs ${(r.fuel+r.food+r.maint).toLocaleString()}</p>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                                        <div class="bg-orange-50 rounded-lg p-2"><p class="text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${r.fuel.toLocaleString()}</p></div>
+                                        <div class="bg-green-50 rounded-lg p-2"><p class="text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${r.food.toLocaleString()}</p></div>
+                                        <div class="bg-blue-50 rounded-lg p-2"><p class="text-gray-500">Maint.</p><p class="font-bold text-blue-600">Rs ${r.maint.toLocaleString()}</p></div>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">All Expense Entries</h3>
+                            <div class="space-y-2">
+                                ${allExpenses.length === 0 ? `<p class="text-center text-gray-400 py-4">No expenses found</p>` : allExpenses.map(e => `
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-sm">${e.riderName}</p>
+                                        <p class="text-xs text-gray-500">${e.type} — ${new Date(e.date).toLocaleDateString()}</p>
+                                    </div>
+                                    <p class="font-bold text-red-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            renderCompanyExpenses() {
+                document.getElementById('page-title').textContent = 'Company Expenses';
+                const container = document.getElementById('main-container');
+                const expenses = this.data.companyExpenses || [];
+                const totalExp = expenses.reduce((a,e)=>a+e.amount,0);
+                const categories = ['Rent', 'Salaries', 'Utilities', 'Fuel', 'Maintenance', 'Marketing', 'Other'];
+                const catTotals = {};
+                categories.forEach(c => { catTotals[c] = expenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="stat-card border-l-4 border-purple-500 col-span-2"><p class="text-xs text-gray-500">Total Company Expenses</p><h3 class="text-2xl font-bold text-purple-600">Rs ${totalExp.toLocaleString()}</h3></div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Add New Expense</h3>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
+                                        <select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                            ${categories.map(c=>`<option value="${c}">${c}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
+                                        <input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
+                                    </div>
+                                </div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
+                                    <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent January 2026">
+                                </div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
+                                    <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <button onclick="app.addCompanyExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors"><i class="fas fa-plus mr-2"></i>Add Expense</button>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">By Category</h3>
+                            <div class="grid grid-cols-2 gap-2">
+                                ${categories.filter(c=>catTotals[c]>0).map(c=>`
+                                <div class="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                                    <p class="text-xs text-gray-500">${c}</p>
+                                    <p class="font-bold text-purple-700">Rs ${catTotals[c].toLocaleString()}</p>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">All Entries</h3>
+                            <div class="space-y-2">
+                                ${expenses.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-building text-4xl mb-2"></i><p class="text-sm">No company expenses added yet</p><p class="text-xs mt-1">Add your first expense above (rent, utilities, etc.)</p></div>` :
+                                [...expenses].reverse().map(e=>`
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-sm">${e.description || e.category}</p>
+                                        <p class="text-xs text-gray-500">${e.category} — ${new Date(e.date).toLocaleDateString()}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                        <button onclick="app.deleteCompanyExpense('${e.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            async addCompanyExpense() {
+                const category = document.getElementById('ce-category').value;
+                const amount = parseFloat(document.getElementById('ce-amount').value) || 0;
+                const description = document.getElementById('ce-desc').value.trim();
+                const date = document.getElementById('ce-date').value;
+                if (!amount || amount <= 0) { alert('Amount daalna zaroori hai!'); return; }
+                try {
+                    const newExp = { category, amount, description, date, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+                    await window.db.collection('companyExpenses').add(newExp);
+                    alert('Expense add ho gaya!');
+                    this.renderCompanyExpenses();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteCompanyExpense(id) {
+                if (!confirm('Delete this expense?')) return;
+                try {
+                    await window.db.collection('companyExpenses').doc(id).delete();
+                    this.renderCompanyExpenses();
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
