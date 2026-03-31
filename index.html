@@ -25,6 +25,8 @@
         .status-present { background: #d1fae5; color: #065f46; }
         .status-absent { background: #fee2e2; color: #991b1b; }
         .status-relief { background: #dbeafe; color: #1e40af; }
+        .status-draft { background: #fef9c3; color: #854d0e; }
+        .status-deleted { background: #f3f4f6; color: #6b7280; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
@@ -96,8 +98,8 @@
                     <p class="text-sm font-medium text-gray-900 truncate" id="user-name">Loading...</p>
                     <p class="text-xs text-gray-500 truncate" id="user-role">Rider</p>
                 </div>
-                <button onclick="app.logout()" class="text-gray-400 hover:text-red-500 transition-colors">
-                    <i class="fas fa-sign-out-alt"></i>
+                <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors flex-shrink-0">
+                    <i class="fas fa-sign-out-alt text-base"></i>
                 </button>
             </div>
         </div>
@@ -120,6 +122,9 @@
                 </button>
                 <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
                     <i class="fas fa-play mr-1"></i> <span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Shift</span>
+                </button>
+                <button onclick="app.logout()" title="Logout" class="md:hidden flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                    <i class="fas fa-sign-out-alt text-base"></i>
                 </button>
             </div>
         </header>
@@ -432,7 +437,6 @@ if (this.data.currentUser.role === 'admin') {
                     { id: 'admin-reports', icon: 'fa-clipboard-check', label: 'Review Reports' },
                     { id: 'admin-online-payments', icon: 'fa-credit-card', label: 'Online Payments' },
                     { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance' },
-                    { id: 'admin-ai-parser', icon: 'fa-robot', label: 'AI Order Parser' },
                     { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' }
                 ] : [
                     { id: 'rider-dashboard', icon: 'fa-home', label: 'Dashboard' },
@@ -464,7 +468,6 @@ if (this.data.currentUser.role === 'admin') {
                 else if (viewId === 'admin-reports') this.renderAdminReports();
                 else if (viewId === 'admin-online-payments') this.renderAdminOnlinePayments();
                 else if (viewId === 'admin-attendance') this.renderAdminAttendance();
-                else if (viewId === 'admin-ai-parser') this.renderAIParser();
                 else if (viewId === 'admin-analytics') this.renderAdminAnalytics();
                 else this.renderRiderDashboard();
             },
@@ -530,7 +533,7 @@ if (this.data.currentUser.role === 'admin') {
             renderRiderDashboard() {
                 document.getElementById('page-title').textContent = 'Dashboard';
                 const container = document.getElementById('main-container');
-                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && r.status !== 'draft' && r.status !== 'deleted');
                 const pendingOnline = myReports.flatMap(r => r.onlinePayments || []).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
                 const totalDeliveries = myReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
                 const currentMonth = new Date().getMonth();
@@ -568,7 +571,7 @@ if (this.data.currentUser.role === 'admin') {
                                 <h3 class="font-bold text-gray-800 text-sm md:text-base">Attendance Status</h3>
                                 <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">This Month</span>
                             </div>
-                            <div class="grid grid-cols-3 gap-3 mb-3">
+                            <div class="grid grid-cols-2 gap-3 mb-3">
                                 <div class="text-center p-2 bg-green-50 rounded-lg">
                                     <p class="text-xs text-green-600 mb-1">Present</p>
                                     <p class="text-lg font-bold text-green-700">${this.data.attendance.filter(a => a.riderId === this.data.currentUser.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length}</p>
@@ -576,10 +579,6 @@ if (this.data.currentUser.role === 'admin') {
                                 <div class="text-center p-2 bg-red-50 rounded-lg">
                                     <p class="text-xs text-red-600 mb-1">Absences</p>
                                     <p class="text-lg font-bold text-red-700">${attendanceInfo.totalAbsences}</p>
-                                </div>
-                                <div class="text-center p-2 ${attendanceInfo.reliefDays > 0 ? 'bg-blue-50' : 'bg-gray-50'} rounded-lg">
-                                    <p class="text-xs ${attendanceInfo.reliefDays > 0 ? 'text-blue-600' : 'text-gray-500'} mb-1">Relief Days</p>
-                                    <p class="text-lg font-bold ${attendanceInfo.reliefDays > 0 ? 'text-blue-700' : 'text-gray-600'}">${attendanceInfo.reliefDays}</p>
                                 </div>
                             </div>
                             ${attendanceInfo.deductibleAbsences > 0 ? `
@@ -696,7 +695,11 @@ if (this.data.currentUser.role === 'admin') {
                                     <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30"><span>Final Cash</span><span id="sum-final">Rs 0</span></div>
                                 </div>
                             </div>
-                            <div class="flex gap-3 pb-4"><button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg">Submit Report</button></div>
+                            <input type="hidden" id="report-edit-id" value="">
+                            <div class="flex gap-3 pb-4">
+                                <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"><i class="fas fa-save mr-2"></i>Save Draft</button>
+                                <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-paper-plane mr-2"></i>Submit Report</button>
+                            </div>
                         </form>
                     </div>`;
                 this.addOnlinePaymentRow();
@@ -780,7 +783,8 @@ if (this.data.currentUser.role === 'admin') {
 
             async submitReport(e) {
                 e.preventDefault();
-                if(!confirm("Submit this report?")) return;
+                const isDraft = e.submitter?.dataset?.draft === 'true';
+                if(!isDraft && !confirm("Submit this report?")) return;
                 const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
                 const orders = [1, 2, 3].map(i => {
                     const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
@@ -803,10 +807,12 @@ if (this.data.currentUser.role === 'admin') {
                 const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
                 const dailyWage = this.data.currentUser?.dailyWage || 500;
                 const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
+                const reportStatus = isDraft ? 'draft' : 'pending';
+                const today = new Date().toISOString().split('T')[0];
                 const newReport = {
                     riderId: this.data.currentUser.id, 
                     riderName: this.data.currentUser.name,
-                    date: new Date().toISOString().split('T')[0], 
+                    date: today, 
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     openingBalance: opening, 
                     orders, 
@@ -816,30 +822,62 @@ if (this.data.currentUser.role === 'admin') {
                     totalExpenses, 
                     dailyWage,
                     finalAmount,
-                    status: 'pending', 
+                    status: reportStatus, 
                     proofImage: document.getElementById('proof-preview-img')?.src || null
                 };
                 try {
-                    await window.db.collection('reports').add(newReport);
-                    alert('Report Submitted Successfully!');
-                    this.navigate('rider-dashboard');
-                } catch (error) { alert('Error submitting report: ' + error.message); }
+                    const editId = document.getElementById('report-edit-id')?.value;
+                    if (editId) {
+                        await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                        alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
+                    } else {
+                        await window.db.collection('reports').add(newReport);
+                        // Auto mark present when submitting (not draft)
+                        if (!isDraft) {
+                            const docId = `${this.data.currentUser.id}_${today}`;
+                            const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === today);
+                            if (!existingAtt) {
+                                await window.db.collection('attendance').doc(docId).set({
+                                    riderId: this.data.currentUser.id,
+                                    date: today,
+                                    status: 'present',
+                                    isReliefDay: false,
+                                    autoMarked: true,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                            }
+                        }
+                        alert(isDraft ? 'Draft saved!' : 'Report Submitted! ✅ Attendance auto-marked Present.');
+                    }
+                    this.navigate('rider-history');
+                } catch (error) { alert('Error: ' + error.message); }
             },
 
-            renderRiderHistory() {
+            renderRiderHistory(activeTab = 'submitted') {
                 document.getElementById('page-title').textContent = 'My History';
                 const container = document.getElementById('main-container');
                 const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+                const submittedReports = myReports.filter(r => r.status !== 'draft');
+                const draftReports = myReports.filter(r => r.status === 'draft');
+                const displayReports = activeTab === 'draft' ? draftReports : submittedReports;
                 container.innerHTML = `
-                    <div class="fade-in pb-20">${myReports.length === 0 ? `
-                        <div class="text-center py-12 text-gray-400"><i class="fas fa-history text-5xl mb-4"></i><p>No reports found</p></div>` : `
-                        <div class="space-y-3">${myReports.map(r => {
+                    <div class="fade-in pb-20">
+                        <div class="flex gap-2 mb-4">
+                            <button onclick="app.renderRiderHistory('submitted')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'submitted' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}"><i class="fas fa-clipboard-check mr-1"></i>Submitted (${submittedReports.length})</button>
+                            <button onclick="app.renderRiderHistory('draft')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'draft' ? 'bg-yellow-500 text-white' : 'bg-white text-gray-600 border border-gray-300'}"><i class="fas fa-folder mr-1"></i>Drafts (${draftReports.length})</button>
+                        </div>
+                        ${displayReports.length === 0 ? `
+                        <div class="text-center py-12 text-gray-400"><i class="fas fa-${activeTab === 'draft' ? 'folder-open' : 'history'} text-5xl mb-4"></i><p>${activeTab === 'draft' ? 'No drafts saved' : 'No reports found'}</p></div>` : `
+                        <div class="space-y-3">${displayReports.map(r => {
                             const totalQty = (r.orders || []).reduce((acc, o) => acc + (o.qty || 0), 0);
                             return `
-                            <div class="section-card" onclick="app.viewReportDetails('${r.id}')">
+                            <div class="section-card">
                                 <div class="flex justify-between items-start mb-2">
-                                    <div><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders - ${(r.orders || []).length} types</p></div>
-                                    <span class="status-badge status-${r.status}">${r.status}</span>
+                                    <div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders - ${(r.orders || []).length} types</p></div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="status-badge status-${r.status === 'draft' ? 'pending' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'draft' ? '📝 Draft' : r.status}</span>
+                                        ${(r.status === 'draft' || r.status === 'pending' || r.status === 'rejected') ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center">
                                     <div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross || 0).toLocaleString()}</p></div>
@@ -848,6 +886,42 @@ if (this.data.currentUser.role === 'admin') {
                                 </div>
                             </div>`;}).join('')}</div>`}
                     </div>`;
+            },
+
+            editReport(id) {
+                const report = this.data.reports.find(r => r.id === id);
+                if (!report) return;
+                this.renderRiderReportForm();
+                setTimeout(() => {
+                    document.getElementById('report-edit-id').value = id;
+                    document.getElementById('opening-balance').value = report.openingBalance || 0;
+                    [1, 2, 3].forEach((i, idx) => {
+                        const order = report.orders?.[idx];
+                        if (order) {
+                            const qtyEl = document.getElementById(`order-qty-${i}`);
+                            const rateEl = document.getElementById(`order-rate-${i}`);
+                            if (qtyEl) qtyEl.value = order.qty || 0;
+                            if (rateEl) rateEl.value = order.rate || 0;
+                        }
+                    });
+                    const container = document.getElementById('online-payments-list');
+                    if (container) container.innerHTML = '';
+                    (report.onlinePayments || []).forEach(p => {
+                        this.addOnlinePaymentRow();
+                        const rows = document.querySelectorAll('#online-payments-list > div');
+                        const lastRow = rows[rows.length - 1];
+                        if (lastRow) {
+                            const inputs = lastRow.querySelectorAll('input, select');
+                            if (inputs[0]) inputs[0].value = p.detail || '';
+                            if (inputs[1]) inputs[1].value = p.amount || 0;
+                            if (inputs[2]) inputs[2].value = p.status || 'pending';
+                        }
+                    });
+                    const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
+                    (report.expenses || []).forEach(e => { const el = document.getElementById(expMap[e.type]); if (el) el.value = e.amount || 0; });
+                    this.calculateTotals();
+                    document.getElementById('page-title').textContent = report.status === 'draft' ? 'Edit Draft' : 'Edit Report';
+                }, 100);
             },
 
             viewReportDetails(id) {
@@ -937,10 +1011,6 @@ if (this.data.currentUser.role === 'admin') {
                         <div class="section-card">
                             <h3 class="font-bold text-gray-800 mb-4">Attendance Breakdown</h3>
                             <div class="space-y-3">
-                                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-umbrella"></i></div><div><span class="font-medium block">Relief Day Policy</span><span class="text-xs text-blue-600">First absence is relief - no deduction</span></div></div>
-                                    <span class="font-bold text-blue-700">1 Day</span>
-                                </div>
                                 <div class="flex justify-between items-center p-3 ${attendanceInfo.totalAbsences > 0 ? 'bg-red-50' : 'bg-green-50'} rounded-lg">
                                     <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full ${attendanceInfo.totalAbsences > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} flex items-center justify-center"><i class="fas ${attendanceInfo.totalAbsences > 0 ? 'fa-times' : 'fa-check'}"></i></div><span class="font-medium">Total Absences</span></div>
                                     <span class="font-bold text-lg">${attendanceInfo.totalAbsences} days</span>
@@ -1102,20 +1172,10 @@ if (this.data.currentUser.role === 'admin') {
                 container.innerHTML = `
                     <div class="fade-in pb-20">
                         <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
-                            <select class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option>All Zones</option><option>North</option><option>South</option></select>
-                            <select class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option>All Status</option><option>Pending</option><option>Approved</option></select>
+                            <select id="filter-zone" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Zones</option><option>North</option><option>South</option><option>East</option><option>West</option></select>
+                            <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
                         </div>
-                        <div class="space-y-3">${this.data.reports.map(r => `
-                            <div class="section-card">
-                                <div class="flex justify-between items-start mb-2"><div><p class="font-bold text-gray-800">${r.riderName}</p><p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()}</p></div><span class="status-badge status-${r.status}">${r.status}</span></div>
-                                <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
-                                    <div class="text-sm"><span class="text-gray-500">Total: </span><span class="text-gray-800 font-semibold">Rs ${(r.totalGross || 0).toLocaleString()}</span></div>
-                                    <div class="flex gap-2">
-                                        <button onclick="app.viewReportDetails('${r.id}')" class="text-indigo-600 text-sm font-medium">View</button>
-                                        ${r.status === 'pending' ? `<button onclick="app.updateReportStatus('${r.id}', 'approved')" class="text-green-600 text-sm font-medium">Approve</button><button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="text-red-600 text-sm font-medium">Reject</button>` : ''}
-                                    </div>
-                                </div>
-                            </div>`).join('')}${this.data.reports.length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found</p>' : ''}</div>
+                        <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.data.reports.length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found</p>' : ''}</div>
                     </div>`;
             },
 
@@ -1139,7 +1199,7 @@ if (this.data.currentUser.role === 'admin') {
                             <div class="space-y-2">${allPayments.map(p => `
                                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                                     <div><p class="font-medium text-sm">${p.riderName}</p><p class="text-xs text-gray-500">${p.detail} - ${new Date(p.date).toLocaleDateString()}</p></div>
-                                    <div class="text-right"><p class="font-bold">Rs ${(p.amount || 0).toLocaleString()}</p>${p.status === 'pending' ? `<button onclick="app.adminMarkReceived('${p.reportId}', ${p.idx})" class="text-xs bg-green-600 text-white px-2 py-1 rounded mt-1">Mark Received</button>` : `<span class="text-xs text-green-600">Received</span>`}</div>
+                                    <div class="text-right"><p class="font-bold">Rs ${(p.amount || 0).toLocaleString()}</p>${p.status === 'pending' ? `<div class="flex gap-1 mt-1 justify-end"><button onclick="app.sendWhatsAppPaymentReminder('${p.riderName}', '${p.detail}', ${p.amount}, '${p.date}')" class="text-xs bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1"><i class="fab fa-whatsapp"></i> WhatsApp</button><button onclick="app.adminMarkReceived('${p.reportId}', ${p.idx})" class="text-xs bg-indigo-600 text-white px-2 py-1 rounded">✓ Received</button></div>` : `<span class="text-xs text-green-600">✓ Received</span>`}</div>
                                 </div>`).join('')}${allPayments.length === 0 ? '<p class="text-center text-gray-400 py-4">No payments found</p>' : ''}</div>
                         </div>
                     </div>`;
@@ -1153,6 +1213,133 @@ if (this.data.currentUser.role === 'admin') {
                 }
             },
 
+            sendWhatsAppPaymentReminder(riderName, customerDetail, amount, date) {
+                const rider = this.data.users.find(u => u.name === riderName);
+                const phone = rider?.phone?.replace(/\D/g, '') || '';
+                const whatsappPhone = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/, '');
+                const message = `Assalam o Alaikum *${customerDetail}*,\n\nآپ کی payment ابھی pending ہے۔ آپ نے *Dastak* پر order کیا تھا۔\n\n💰 *Amount: Rs ${amount.toLocaleString()}*\n📅 Date: ${new Date(date).toLocaleDateString('ur-PK')}\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ 🙏`;
+                const url = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
+                window.open(url, '_blank');
+            },
+
+            getFilteredAdminReports() {
+                let reports = [...this.data.reports];
+                const zoneFilter = document.getElementById('filter-zone')?.value;
+                const statusFilter = document.getElementById('filter-status')?.value;
+                if (zoneFilter) {
+                    reports = reports.filter(r => {
+                        const rider = this.data.users.find(u => u.id === r.riderId);
+                        return rider?.zone === zoneFilter;
+                    });
+                }
+                if (statusFilter) {
+                    reports = reports.filter(r => r.status === statusFilter);
+                } else {
+                    reports = reports.filter(r => r.status !== 'deleted');
+                }
+                return reports.sort((a,b) => new Date(b.date) - new Date(a.date));
+            },
+
+            renderAdminReportCard(r) {
+                const isDeleted = r.status === 'deleted';
+                return `
+                <div class="section-card ${isDeleted ? 'opacity-60 border-l-4 border-red-300' : ''}">
+                    <div class="flex justify-between items-start mb-2">
+                        <div><p class="font-bold text-gray-800">${r.riderName}</p><p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()}</p></div>
+                        <span class="status-badge status-${r.status === 'deleted' ? 'rejected' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'deleted' ? '🗑 Deleted' : r.status}</span>
+                    </div>
+                    <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                        <div class="text-sm"><span class="text-gray-500">Total: </span><span class="text-gray-800 font-semibold">Rs ${(r.totalGross || 0).toLocaleString()}</span></div>
+                        <div class="flex gap-1 flex-wrap justify-end">
+                            <button onclick="app.viewReportDetails('${r.id}')" class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded font-medium">View</button>
+                            ${isDeleted ? `
+                                <button onclick="app.adminRecoverReport('${r.id}')" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded font-medium">↩ Recover</button>
+                            ` : `
+                                ${r.status !== 'approved' ? `<button onclick="app.adminApproveReport('${r.id}')" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded font-medium">✓ Approve</button>` : ''}
+                                ${r.status !== 'rejected' ? `<button onclick="app.adminRejectReport('${r.id}')" class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded font-medium">✗ Reject</button>` : ''}
+                                <button onclick="app.adminEditReport('${r.id}')" class="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded font-medium">✎ Edit</button>
+                                <button onclick="app.adminDeleteReport('${r.id}')" class="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded font-medium">🗑</button>
+                            `}
+                        </div>
+                    </div>
+                </div>`;
+            },
+
+            async adminApproveReport(id) {
+                await this.updateReportStatus(id, 'approved');
+            },
+
+            async adminRejectReport(id) {
+                const reason = prompt('Rejection reason (optional):');
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'rejected', rejectionReason: reason || '' });
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async adminDeleteReport(id) {
+                if (!confirm('Delete this report? It can be recovered later.')) return;
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'deleted', deletedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async adminRecoverReport(id) {
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'pending', deletedAt: null });
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            adminEditReport(id) {
+                const report = this.data.reports.find(r => r.id === id);
+                if (!report) return;
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold">Edit Report</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
+                        <form onsubmit="app.adminSaveReportEdit(event, '${id}')" class="space-y-3">
+                            <div><label class="text-xs text-gray-500">Opening Balance</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
+                            <div><label class="text-xs text-gray-500">Total Gross (Rs)</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
+                            <div><label class="text-xs text-gray-500">Total Expenses (Rs)</label><input type="number" id="ae-expenses" value="${report.totalExpenses || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
+                            <div><label class="text-xs text-gray-500">Final Amount (Rs)</label><input type="number" id="ae-final" value="${report.finalAmount || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
+                            <div><label class="text-xs text-gray-500">Status</label>
+                                <select id="ae-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1">
+                                    <option value="pending" ${report.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="approved" ${report.status==='approved'?'selected':''}>Approved</option>
+                                    <option value="rejected" ${report.status==='rejected'?'selected':''}>Rejected</option>
+                                    <option value="draft" ${report.status==='draft'?'selected':''}>Draft</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-3 pt-2">
+                                <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button>
+                                <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+            },
+
+            async adminSaveReportEdit(e, id) {
+                e.preventDefault();
+                try {
+                    const updates = {
+                        openingBalance: parseFloat(document.getElementById('ae-opening').value) || 0,
+                        totalGross: parseFloat(document.getElementById('ae-gross').value) || 0,
+                        totalExpenses: parseFloat(document.getElementById('ae-expenses').value) || 0,
+                        finalAmount: parseFloat(document.getElementById('ae-final').value) || 0,
+                        status: document.getElementById('ae-status').value,
+                        adminEditedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await window.db.collection('reports').doc(id).update(updates);
+                    this.closeModal();
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
             renderAdminAttendance() {
                 document.getElementById('page-title').textContent = 'Attendance Management';
                 const container = document.getElementById('main-container');
@@ -1163,10 +1350,6 @@ if (this.data.currentUser.role === 'admin') {
                     <div class="fade-in pb-20 space-y-4">
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">Attendance Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</span></div>
-                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-3">
-                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5"><i class="fas fa-info"></i></div>
-                                <div><p class="text-sm font-medium text-blue-800">Relief Day Policy Active</p><p class="text-xs text-blue-600 mt-1">Each rider gets 1 relief day per month. First absence is marked as relief (no wage deduction). Deductions apply from 2nd absence onwards.</p></div>
-                            </div>
                             <div class="space-y-4">${riders.map(rider => {
                                 const attendanceInfo = this.calculateAttendanceDeductions(rider.id, currentMonth, currentYear);
                                 const presentDays = this.data.attendance.filter(a => a.riderId === rider.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length;
@@ -1220,7 +1403,7 @@ if (this.data.currentUser.role === 'admin') {
                             <div class="text-center text-xs font-bold text-gray-500 py-2">Sun</div><div class="text-center text-xs font-bold text-gray-500 py-2">Mon</div><div class="text-center text-xs font-bold text-gray-500 py-2">Tue</div><div class="text-center text-xs font-bold text-gray-500 py-2">Wed</div><div class="text-center text-xs font-bold text-gray-500 py-2">Thu</div><div class="text-center text-xs font-bold text-gray-500 py-2">Fri</div><div class="text-center text-xs font-bold text-gray-500 py-2">Sat</div>
                             ${calendarHTML}
                         </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600"><p class="mb-2"><strong>Instructions:</strong></p><ul class="list-disc list-inside space-y-1 text-xs"><li>Click on any date to toggle attendance</li><li>First absence is automatically marked as relief day</li><li>Subsequent absences will incur wage deductions</li></ul></div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600"><p class="mb-2"><strong>Instructions:</strong></p><ul class="list-disc list-inside space-y-1 text-xs"><li>Click on any date to toggle attendance</li><li>Present → Absent → Remove (3 clicks cycle)</li></ul></div>
                     </div>`;
                 overlay.classList.remove('hidden');
                 setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
@@ -1328,7 +1511,11 @@ if (this.data.currentUser.role === 'admin') {
             },
 
             async updateReportStatus(id, status) {
-                try { await window.db.collection('reports').doc(id).update({ status: status }); if(this.data.currentUser.role === 'admin') this.renderAdminReports(); else this.renderRiderHistory(); }
+                try { 
+                    await window.db.collection('reports').doc(id).update({ status: status }); 
+                    if(this.data.currentUser.role === 'admin') this.renderAdminReports(); 
+                    else this.renderRiderHistory(); 
+                }
                 catch (error) { alert('Error: ' + error.message); }
             },
 
