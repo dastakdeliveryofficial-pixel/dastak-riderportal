@@ -115,7 +115,10 @@
                     <p class="text-xs text-gray-500 hidden sm:block" id="current-date">Loading date...</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2 md:gap-4">
+            <div class="flex items-center gap-2 md:gap-3">
+                <div id="month-picker-wrap" class="hidden">
+                    <select id="global-month-picker" onchange="app.onMonthChange()" class="border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none cursor-pointer"></select>
+                </div>
                 <button class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
                     <i class="fas fa-bell text-lg md:text-xl"></i>
                     <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
@@ -148,6 +151,8 @@
                 sidebarOpen: false,
                 currentTimeFilter: 'month',
                 currentParsedOrder: null,
+                selectedMonth: new Date().getMonth(),
+                selectedYear: new Date().getFullYear(),
                 unsubscribeRiders: null,
                 unsubscribeReports: null,
                 unsubscribeAttendance: null,
@@ -196,6 +201,7 @@
                     document.getElementById('main-header').classList.remove('hidden');
                     this.setupRealtimeListeners();
                     this.renderSidebar();
+                    this.initMonthPicker();
 if (this.data.currentUser.role === 'admin') {
     this.navigate('admin-dashboard');
 } else {
@@ -333,6 +339,7 @@ if (this.data.currentUser.role === 'admin') {
                     document.getElementById('main-header').classList.remove('hidden');
                     this.setupRealtimeListeners();
                     this.renderSidebar();
+                    this.initMonthPicker();
 if (this.data.currentUser.role === 'admin') {
     this.navigate('admin-dashboard');
 } else {
@@ -489,6 +496,51 @@ if (this.data.currentUser.role === 'admin') {
                 else this.renderRiderDashboard();
             },
 
+            initMonthPicker() {
+                const wrap = document.getElementById('month-picker-wrap');
+                const sel = document.getElementById('global-month-picker');
+                if (!wrap || !sel) return;
+                if (this.data.currentUser?.role !== 'admin') { wrap.classList.add('hidden'); return; }
+                wrap.classList.remove('hidden');
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                // Build last 24 months options
+                sel.innerHTML = '';
+                const now = new Date();
+                for (let i = 0; i < 24; i++) {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const opt = document.createElement('option');
+                    opt.value = `${d.getFullYear()}-${d.getMonth()}`;
+                    opt.textContent = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                    if (d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            },
+
+            onMonthChange() {
+                const sel = document.getElementById('global-month-picker');
+                if (!sel) return;
+                const [year, month] = sel.value.split('-').map(Number);
+                this.data.selectedMonth = month;
+                this.data.selectedYear = year;
+                // Refresh current page
+                const activeBtn = document.querySelector('.sidebar-link.active');
+                if (activeBtn) {
+                    const id = activeBtn.id.replace('nav-', '');
+                    this.navigate(id);
+                } else {
+                    this.renderAdminDashboard();
+                }
+            },
+
+            getMonthFilteredReports(status = null) {
+                return this.data.reports.filter(r => {
+                    const d = new Date(r.date);
+                    const monthMatch = d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear;
+                    const statusMatch = status ? r.status === status : r.status !== 'deleted';
+                    return monthMatch && statusMatch;
+                });
+            },
+
             getDailyProfits(days = 30) {
                 const endDate = new Date();
                 const startDate = new Date();
@@ -498,7 +550,11 @@ if (this.data.currentUser.role === 'admin') {
                     dailyData[d.toISOString().split('T')[0]] = 0;
                 }
                 this.data.reports.filter(r => r.status === 'approved').forEach(r => {
-                    if (dailyData.hasOwnProperty(r.date)) dailyData[r.date] += r.finalAmount || 0;
+                    if (dailyData.hasOwnProperty(r.date)) {
+                        // Profit = Orders Amount - Expenses - Daily Wage
+                        const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                        dailyData[r.date] += profit;
+                    }
                 });
                 return Object.entries(dailyData).map(([date, profit]) => ({
                     date, profit,
@@ -512,7 +568,11 @@ if (this.data.currentUser.role === 'admin') {
                 this.data.reports.filter(r => {
                     const rDate = new Date(r.date);
                     return r.status === 'approved' && rDate.getFullYear() === year;
-                }).forEach(r => { monthlyData[new Date(r.date).getMonth()] += r.finalAmount || 0; });
+                }).forEach(r => {
+                    // Profit = Orders Amount - Expenses - Daily Wage
+                    const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                    monthlyData[new Date(r.date).getMonth()] += profit;
+                });
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 return Object.entries(monthlyData).map(([month, profit]) => ({ month: parseInt(month), monthName: monthNames[month], profit }));
             },
@@ -521,7 +581,9 @@ if (this.data.currentUser.role === 'admin') {
                 const yearlyData = {};
                 this.data.reports.filter(r => r.status === 'approved').forEach(r => {
                     const year = new Date(r.date).getFullYear();
-                    yearlyData[year] = (yearlyData[year] || 0) + (r.finalAmount || 0);
+                    // Profit = Orders Amount - Expenses - Daily Wage
+                    const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                    yearlyData[year] = (yearlyData[year] || 0) + profit;
                 });
                 return Object.entries(yearlyData).map(([year, profit]) => ({ year: parseInt(year), profit })).sort((a, b) => a.year - b.year);
             },
@@ -1052,52 +1114,53 @@ if (this.data.currentUser.role === 'admin') {
             renderAdminDashboard() {
                 document.getElementById('page-title').textContent = 'Admin Dashboard';
                 const container = document.getElementById('main-container');
+                const m = this.data.selectedMonth;
+                const y = this.data.selectedYear;
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[m]} ${y}`;
+                const monthReports = this.getMonthFilteredReports('approved');
                 const totalRiders = this.data.users.filter(u => u.role === 'rider').length;
-                const pendingReports = this.data.reports.filter(r => r.status === 'pending').length;
-                const days = this.data.currentTimeFilter === 'month' ? 30 : 365;
-                const dailyProfits = this.getDailyProfits(days);
-                const totalProfit = dailyProfits.reduce((a, b) => a + b.profit, 0);
-                const allOnlinePayments = this.data.reports.flatMap(r => r.onlinePayments || []);
-                const totalOnlinePending = allOnlinePayments.filter(p => p.status === 'pending').reduce((a,b) => a + (b.amount || 0), 0);
-                // Expenses calculations
-                const approvedReports = this.data.reports.filter(r => r.status === 'approved');
-                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-                const filteredReports = approvedReports.filter(r => new Date(r.date) >= cutoff);
-                const totalRiderExpenses = filteredReports.reduce((a, r) => a + (r.totalExpenses || 0), 0);
-                const fuelTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Fuel').reduce((s,e)=>s+e.amount,0), 0);
-                const foodTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Food').reduce((s,e)=>s+e.amount,0), 0);
-                const maintTotal = filteredReports.reduce((a, r) => a + (r.expenses || []).filter(e => e.type==='Maintenance').reduce((s,e)=>s+e.amount,0), 0);
-                // Company expenses
-                const companyExpenses = this.data.companyExpenses || [];
-                const totalCompanyExp = companyExpenses.filter(e => { const d = new Date(e.date); return d >= cutoff; }).reduce((a,e) => a+e.amount, 0);
-                // Daily expenses for chart
-                const dailyExpenses = {};
-                dailyProfits.forEach(d => { dailyExpenses[d.date] = 0; });
-                filteredReports.forEach(r => { if(dailyExpenses.hasOwnProperty(r.date)) dailyExpenses[r.date] += (r.totalExpenses||0); });
-                const expenseChartData = dailyProfits.map(d => dailyExpenses[d.date] || 0);
-
+                const pendingReports = this.getMonthFilteredReports('pending').length;
+                // Profit: orders - expenses - wage
+                const totalProfit = monthReports.reduce((a,r) => a + (r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0), 0);
+                const totalRiderExpenses = monthReports.reduce((a,r) => a + (r.totalExpenses||0), 0);
+                const fuelTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0), 0);
+                const foodTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Food').reduce((s,e)=>s+e.amount,0), 0);
+                const maintTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((s,e)=>s+e.amount,0), 0);
+                const allOnlinePayments = this.getMonthFilteredReports().flatMap(r => r.onlinePayments || []);
+                const totalOnlinePending = allOnlinePayments.filter(p=>p.status==='pending').reduce((a,b)=>a+(b.amount||0),0);
+                const companyExp = (this.data.companyExpenses||[]).filter(e=>{ const d=new Date(e.date); return d.getMonth()===m && d.getFullYear()===y; });
+                const totalCompanyExp = companyExp.reduce((a,e)=>a+e.amount,0);
+                // Daily data for chart (all days in selected month)
+                const daysInMonth = new Date(y, m+1, 0).getDate();
+                const dailyLabels = [], dailyProfit = [], dailyExp = [];
+                for (let d=1; d<=daysInMonth; d++) {
+                    const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const dayReps = monthReports.filter(r=>r.date===dateStr);
+                    dailyLabels.push(d);
+                    dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0));
+                    dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
+                }
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
                         <div class="section-card">
-                            <div class="flex justify-between items-center mb-4">
+                            <div class="flex justify-between items-center mb-1">
                                 <h3 class="font-bold text-gray-800">Overview</h3>
-                                <div class="flex gap-2">
-                                    <button onclick="app.setTimeFilter('month')" class="time-filter-btn ${this.data.currentTimeFilter === 'month' ? 'active' : ''}">Month</button>
-                                    <button onclick="app.setTimeFilter('year')" class="time-filter-btn ${this.data.currentTimeFilter === 'year' ? 'active' : ''}">Year</button>
-                                </div>
+                                <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span>
                             </div>
+                            <p class="text-xs text-gray-400 mb-4">Change month from the top picker</p>
                             <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                                <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">Total Profit</p><h3 class="text-lg font-bold text-green-600">Rs ${totalProfit.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3></div>
                                 <div class="stat-card border-l-4 border-red-400 cursor-pointer" onclick="app.navigate('admin-expenses')"><p class="text-xs text-gray-500">Rider Expenses</p><h3 class="text-lg font-bold text-red-500">Rs ${totalRiderExpenses.toLocaleString()}</h3></div>
                                 <div class="stat-card border-l-4 border-purple-400 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">Company Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3></div>
                                 <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold text-gray-800">${totalRiders}</h3></div>
                                 <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
                                 <div class="stat-card border-l-4 border-yellow-500 cursor-pointer" onclick="app.navigate('admin-online-payments')"><p class="text-xs text-gray-500">Online Pending</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalOnlinePending.toLocaleString()}</h3></div>
                             </div>
-                            <div class="bg-white rounded-xl p-4 border border-gray-200"><canvas id="profitChart" height="250"></canvas></div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200"><canvas id="profitChart" height="220"></canvas></div>
                         </div>
                         <div class="section-card">
-                            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Rider Expenses Breakdown</h3><button onclick="app.navigate('admin-expenses')" class="text-xs text-indigo-600">View All</button></div>
+                            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Rider Expenses — ${monthLabel}</h3><button onclick="app.navigate('admin-expenses')" class="text-xs text-indigo-600">View All</button></div>
                             <div class="grid grid-cols-3 gap-3">
                                 <div class="bg-orange-50 rounded-xl p-3 text-center border border-orange-100"><i class="fas fa-gas-pump text-orange-500 mb-1"></i><p class="text-xs text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${fuelTotal.toLocaleString()}</p></div>
                                 <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100"><i class="fas fa-utensils text-green-500 mb-1"></i><p class="text-xs text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${foodTotal.toLocaleString()}</p></div>
@@ -1105,14 +1168,20 @@ if (this.data.currentUser.role === 'admin') {
                             </div>
                         </div>
                         <div class="section-card">
-                            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Pending Reports</h3><button onclick="app.navigate('admin-reports')" class="text-xs text-indigo-600">View All</button></div>
-                            ${this.data.reports.filter(r => r.status === 'pending').length === 0 ? `<p class="text-gray-400 text-center py-4">No pending reports</p>` : `
-                                <div class="space-y-2">${this.data.reports.filter(r => r.status === 'pending').slice(0, 5).map(r => `
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800">Pending Reports</h3>
+                                <div class="flex gap-2">
+                                    <button onclick="app.exportMonthlyExcel()" class="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700"><i class="fas fa-file-excel mr-1"></i>Export Excel</button>
+                                    <button onclick="app.navigate('admin-reports')" class="text-xs text-indigo-600">View All</button>
+                                </div>
+                            </div>
+                            ${this.getMonthFilteredReports('pending').length === 0 ? `<p class="text-gray-400 text-center py-4">No pending reports this month</p>` : `
+                                <div class="space-y-2">${this.getMonthFilteredReports('pending').slice(0,5).map(r => `
                                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${r.riderName.charAt(0)}</div><div><p class="font-semibold text-sm">${r.riderName}</p><p class="text-xs text-gray-500">Rs ${(r.finalAmount || 0).toLocaleString()}</p></div></div>
+                                        <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${r.riderName.charAt(0)}</div><div><p class="font-semibold text-sm">${r.riderName}</p><p class="text-xs text-gray-500">Rs ${(r.finalAmount||0).toLocaleString()}</p></div></div>
                                         <div class="flex gap-1">
-                                            <button onclick="app.updateReportStatus('${r.id}', 'approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button>
-                                            <button onclick="app.updateReportStatus('${r.id}', 'rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button>
+                                            <button onclick="app.updateReportStatus('${r.id}','approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button>
+                                            <button onclick="app.updateReportStatus('${r.id}','rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button>
                                         </div>
                                     </div>`).join('')}</div>`}
                         </div>
@@ -1121,15 +1190,15 @@ if (this.data.currentUser.role === 'admin') {
                     const ctx = document.getElementById('profitChart');
                     if (!ctx) return;
                     new Chart(ctx.getContext('2d'), {
-                        type: 'line',
+                        type: 'bar',
                         data: {
-                            labels: dailyProfits.map(d => d.displayDate),
+                            labels: dailyLabels,
                             datasets: [
-                                { label: 'Profit (Rs)', data: dailyProfits.map(d => d.profit), borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.08)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 2, pointBackgroundColor: '#4f46e5' },
-                                { label: 'Expenses (Rs)', data: expenseChartData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.07)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 2, pointBackgroundColor: '#ef4444' }
+                                { label: 'Profit', data: dailyProfit, backgroundColor: dailyProfit.map(v=>v>=0?'rgba(79,70,229,0.7)':'rgba(239,68,68,0.7)'), borderRadius: 4 },
+                                { label: 'Expenses', data: dailyExp, backgroundColor: 'rgba(239,68,68,0.3)', borderRadius: 4 }
                             ]
                         },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' }, tooltip: { callbacks: { label: function(context) { return context.dataset.label + ': Rs ' + context.parsed.y.toLocaleString(); } } } }, scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } }
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position:'top' }, tooltip: { callbacks: { label: ctx => ctx.dataset.label+': Rs '+ctx.parsed.y.toLocaleString() } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => 'Rs '+v.toLocaleString() } }, x: { title: { display:true, text:'Day of Month' } } } }
                     });
                 }, 100);
             },
@@ -1200,21 +1269,29 @@ if (this.data.currentUser.role === 'admin') {
             renderAdminReports() {
                 document.getElementById('page-title').textContent = 'Review Reports';
                 const container = document.getElementById('main-container');
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[this.data.selectedMonth]} ${this.data.selectedYear}`;
                 container.innerHTML = `
                     <div class="fade-in pb-20">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span>
+                            <button onclick="app.exportMonthlyExcel()" class="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700"><i class="fas fa-file-excel mr-1"></i>Export Excel</button>
+                        </div>
                         <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
                             <select id="filter-zone" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Zones</option><option>North</option><option>South</option><option>East</option><option>West</option></select>
                             <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
                         </div>
-                        <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.data.reports.length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found</p>' : ''}</div>
+                        <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.getFilteredAdminReports().length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found for this month</p>' : ''}</div>
                     </div>`;
             },
 
             renderAdminOnlinePayments() {
                 document.getElementById('page-title').textContent = 'Online Payments';
                 const container = document.getElementById('main-container');
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[this.data.selectedMonth]} ${this.data.selectedYear}`;
                 let allPayments = [];
-                this.data.reports.forEach(r => { (r.onlinePayments || []).forEach((p, idx) => { allPayments.push({ ...p, reportId: r.id, riderId: r.riderId, riderName: r.riderName, date: r.date, idx: idx }); }); });
+                this.getMonthFilteredReports().forEach(r => { (r.onlinePayments || []).forEach((p, idx) => { allPayments.push({ ...p, reportId: r.id, riderId: r.riderId, riderName: r.riderName, date: r.date, idx: idx }); }); });
                 allPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
                 const totalPending = allPayments.filter(p => p.status === 'pending').reduce((a,b) => a + (b.amount || 0), 0);
                 const totalReceived = allPayments.filter(p => p.status === 'received').reduce((a,b) => a + (b.amount || 0), 0);
@@ -1257,7 +1334,12 @@ if (this.data.currentUser.role === 'admin') {
             },
 
             getFilteredAdminReports() {
-                let reports = [...this.data.reports];
+                const m = this.data.selectedMonth;
+                const y = this.data.selectedYear;
+                let reports = this.data.reports.filter(r => {
+                    const d = new Date(r.date);
+                    return d.getMonth() === m && d.getFullYear() === y;
+                });
                 const zoneFilter = document.getElementById('filter-zone')?.value;
                 const statusFilter = document.getElementById('filter-status')?.value;
                 if (zoneFilter) {
@@ -1527,6 +1609,86 @@ if (this.data.currentUser.role === 'admin') {
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
+            exportMonthlyExcel() {
+                const m = this.data.selectedMonth;
+                const y = this.data.selectedYear;
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[m]}_${y}`;
+                const approvedReports = this.getMonthFilteredReports('approved');
+
+                // Sheet 1: Daily Report Details
+                const dailyRows = [['Date','Rider','Orders Qty','Orders Amount','Fuel','Food','Maintenance','Total Expenses','Daily Wage','Net Profit','Opening Balance','Online Payments','Final Cash','Status']];
+                approvedReports.sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(r => {
+                    const totalQty = (r.orders||[]).reduce((a,o)=>a+(o.qty||0),0);
+                    const fuel = (r.expenses||[]).filter(e=>e.type==='Fuel').reduce((a,e)=>a+e.amount,0);
+                    const food = (r.expenses||[]).filter(e=>e.type==='Food').reduce((a,e)=>a+e.amount,0);
+                    const maint = (r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((a,e)=>a+e.amount,0);
+                    const onlineTotal = (r.onlinePayments||[]).reduce((a,p)=>a+(p.amount||0),0);
+                    const profit = (r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0);
+                    dailyRows.push([r.date, r.riderName, totalQty, r.totalGross||0, fuel, food, maint, r.totalExpenses||0, r.dailyWage||0, profit, r.openingBalance||0, onlineTotal, r.finalAmount||0, r.status]);
+                });
+
+                // Sheet 2: Rider Summary
+                const riderMap = {};
+                approvedReports.forEach(r => {
+                    if(!riderMap[r.riderId]) riderMap[r.riderId]={name:r.riderName,days:0,orders:0,gross:0,fuel:0,food:0,maint:0,expenses:0,wage:0,profit:0,online:0,final:0};
+                    const rd = riderMap[r.riderId];
+                    rd.days++; rd.orders+=(r.orders||[]).reduce((a,o)=>a+(o.qty||0),0);
+                    rd.gross+=(r.totalGross||0); rd.expenses+=(r.totalExpenses||0); rd.wage+=(r.dailyWage||0);
+                    rd.profit+=(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0);
+                    rd.online+=(r.onlinePayments||[]).reduce((a,p)=>a+(p.amount||0),0);
+                    rd.final+=(r.finalAmount||0);
+                    rd.fuel+=(r.expenses||[]).filter(e=>e.type==='Fuel').reduce((a,e)=>a+e.amount,0);
+                    rd.food+=(r.expenses||[]).filter(e=>e.type==='Food').reduce((a,e)=>a+e.amount,0);
+                    rd.maint+=(r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((a,e)=>a+e.amount,0);
+                });
+                const summaryRows = [['Rider Name','Working Days','Total Orders','Orders Amount','Fuel','Food','Maintenance','Total Expenses','Daily Wages','Net Profit','Online Payments','Final Cash']];
+                Object.values(riderMap).forEach(r => summaryRows.push([r.name,r.days,r.orders,r.gross,r.fuel,r.food,r.maint,r.expenses,r.wage,r.profit,r.online,r.final]));
+                // Totals row
+                const totals = summaryRows.slice(1).reduce((acc,row) => { row.slice(1).forEach((v,i)=>{ acc[i]=(acc[i]||0)+v; }); return acc; }, {});
+                summaryRows.push(['TOTAL','',totals[0]||0,totals[1]||0,totals[2]||0,totals[3]||0,totals[4]||0,totals[5]||0,totals[6]||0,totals[7]||0,totals[8]||0,totals[9]||0]);
+
+                // Sheet 3: Online Payments
+                const payRows = [['Date','Rider','Customer','Amount','Status']];
+                this.getMonthFilteredReports().forEach(r => {
+                    (r.onlinePayments||[]).forEach(p => payRows.push([r.date, r.riderName, p.detail||'', p.amount||0, p.status]));
+                });
+
+                // Sheet 4: Attendance
+                const riders = this.data.users.filter(u=>u.role==='rider');
+                const attRows = [['Rider','Present Days','Absent Days','Deduction (Rs)']];
+                riders.forEach(rider => {
+                    const present = this.data.attendance.filter(a=>a.riderId===rider.id&&a.status==='present'&&new Date(a.date).getMonth()===m&&new Date(a.date).getFullYear()===y).length;
+                    const absent = this.data.attendance.filter(a=>a.riderId===rider.id&&a.status==='absent'&&new Date(a.date).getMonth()===m&&new Date(a.date).getFullYear()===y).length;
+                    const info = this.calculateAttendanceDeductions(rider.id,m,y);
+                    attRows.push([rider.name, present, absent, info.totalDeduction]);
+                });
+
+                // Build workbook using SheetJS from CDN
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                script.onload = () => {
+                    const wb = XLSX.utils.book_new();
+                    const ws1 = XLSX.utils.aoa_to_sheet(dailyRows);
+                    const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+                    const ws3 = XLSX.utils.aoa_to_sheet(payRows);
+                    const ws4 = XLSX.utils.aoa_to_sheet(attRows);
+                    // Column widths
+                    ws1['!cols'] = [{wch:12},{wch:16},{wch:10},{wch:14},{wch:10},{wch:10},{wch:14},{wch:14},{wch:12},{wch:12},{wch:16},{wch:16},{wch:12},{wch:10}];
+                    ws2['!cols'] = [{wch:18},{wch:12},{wch:12},{wch:14},{wch:10},{wch:10},{wch:14},{wch:14},{wch:13},{wch:12},{wch:16},{wch:12}];
+                    XLSX.utils.book_append_sheet(wb, ws2, 'Rider Summary');
+                    XLSX.utils.book_append_sheet(wb, ws1, 'Daily Reports');
+                    XLSX.utils.book_append_sheet(wb, ws3, 'Online Payments');
+                    XLSX.utils.book_append_sheet(wb, ws4, 'Attendance');
+                    XLSX.writeFile(wb, `Dastak_Report_${monthLabel}.xlsx`);
+                };
+                if (window.XLSX) {
+                    script.onload();
+                } else {
+                    document.head.appendChild(script);
+                }
+            },
+
             renderAdminAttendance() {
                 document.getElementById('page-title').textContent = 'Attendance Management';
                 const container = document.getElementById('main-container');
@@ -1691,7 +1853,7 @@ if (this.data.currentUser.role === 'admin') {
                     const yearlyCtx = document.getElementById('yearlyChart');
                     if (yearlyCtx) new Chart(yearlyCtx.getContext('2d'), { type: 'line', data: { labels: yearlyProfits.map(y => y.year), datasets: [{ label: 'Yearly Profit (Rs)', data: yearlyProfits.map(y => y.profit), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
                     const zones = ['North', 'South', 'East', 'West'];
-                    const zoneData = zones.map(zone => { return this.data.reports.filter(r => { const rider = this.data.users.find(u => u.id === r.riderId); return rider && rider.zone === zone && r.status === 'approved'; }).reduce((acc, r) => acc + (r.finalAmount || 0), 0); });
+                    const zoneData = zones.map(zone => { return this.data.reports.filter(r => { const rider = this.data.users.find(u => u.id === r.riderId); return rider && rider.zone === zone && r.status === 'approved'; }).reduce((acc, r) => acc + ((r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0)), 0); });
                     const zoneCtx = document.getElementById('zoneChart');
                     if (zoneCtx) new Chart(zoneCtx.getContext('2d'), { type: 'doughnut', data: { labels: zones, datasets: [{ data: zoneData, backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
                 }, 100);
