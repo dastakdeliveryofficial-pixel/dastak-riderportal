@@ -1762,24 +1762,24 @@ if (this.data.currentUser.role === 'admin') {
                 document.getElementById('page-title').textContent = 'Customers';
                 const container = document.getElementById('main-container');
                 const customers = this.data.customers || [];
-                // Calculate per-customer payment stats from reports
                 const topCustomers = customers.map(c => {
                     const s = this.getCustomerPaymentStats(c);
                     return { ...s, name: c.name, id: c.id };
                 }).filter(c => c.count > 0).sort((a,b) => b.total - a.total);
+
                 container.innerHTML = `
                     <div class="fade-in pb-20 space-y-4">
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-4">
                                 <h3 class="font-bold text-gray-800">Add Customer</h3>
                                 <label class="flex items-center gap-2 text-xs bg-green-600 text-white px-3 py-2 rounded-lg cursor-pointer hover:bg-green-700 font-semibold">
-                                    <i class="fas fa-file-excel"></i> Import Excel/CSV
+                                    <i class="fas fa-file-excel"></i> Import CSV/Excel
                                     <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="app.importCustomersFile(this)">
                                 </label>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                                 <input type="text" id="cust-name" placeholder="Customer Name *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                                <input type="tel" id="cust-phone" placeholder="Phone: 03001234567 *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <input type="tel" id="cust-phone" placeholder="03001234567 *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                                 <input type="text" id="cust-address" placeholder="Address (optional)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                             </div>
                             <button onclick="app.addCustomer()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700"><i class="fas fa-plus mr-2"></i>Add Customer</button>
@@ -1802,13 +1802,21 @@ if (this.data.currentUser.role === 'admin') {
                             </div>
                         </div>` : ''}
                         <div class="section-card">
-                            <div class="flex justify-between items-center mb-3">
-                                <h3 class="font-bold text-gray-800">All Customers (${customers.length})</h3>
-                                <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-36">
+                            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-bold text-gray-800">All Customers</h3>
+                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" id="cust-count">${customers.length}</span>
+                                </div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-28">
+                                    <button onclick="app.toggleSelectAll()" id="select-all-btn" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200 whitespace-nowrap">☐ Select All</button>
+                                    <button onclick="app.bulkDeleteCustomers()" id="bulk-delete-btn" class="hidden text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-red-700 whitespace-nowrap"><i class="fas fa-trash mr-1"></i>Delete (<span id="selected-count">0</span>)</button>
+                                </div>
                             </div>
                             <div id="customers-list" class="space-y-2">
-                                ${customers.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from Excel/CSV</p></div>` :
-                                customers.map(c => this.renderCustomerCard(c)).join('')}
+                                ${customers.length === 0 ?
+                                    `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from CSV/Excel</p></div>` :
+                                    customers.map(c => this.renderCustomerCard(c)).join('')}
                             </div>
                         </div>
                     </div>`;
@@ -1816,12 +1824,17 @@ if (this.data.currentUser.role === 'admin') {
 
             getCustomerPaymentStats(c) {
                 let total=0, pending=0, received=0, count=0;
+                const custPhone = (c.phone||'').replace(/\D/g,'').slice(-10);
+                const custName = (c.name||'').trim().toLowerCase();
                 this.data.reports.forEach(r => {
                     (r.onlinePayments||[]).forEach(p => {
                         const detail = (p.detail||'').toLowerCase();
-                        const nameMatch = c.name && detail.includes(c.name.toLowerCase());
-                        const phoneMatch = c.phone && detail.includes(c.phone.replace(/\D/g,'').slice(-10));
-                        if (nameMatch || phoneMatch) {
+                        const detailPhone = detail.replace(/\D/g,'').slice(-10);
+                        // Strict: phone last 10 digits exact match
+                        const phoneMatch = custPhone.length >= 10 && detailPhone === custPhone;
+                        // Name match: detail starts with or contains full name (min 4 chars)
+                        const nameMatch = custName.length >= 4 && detail.includes(custName);
+                        if (phoneMatch || nameMatch) {
                             total += p.amount||0; count++;
                             if(p.status==='pending') pending+=p.amount||0; else received+=p.amount||0;
                         }
@@ -1832,29 +1845,85 @@ if (this.data.currentUser.role === 'admin') {
 
             renderCustomerCard(c) {
                 const stats = this.getCustomerPaymentStats(c);
+                const phone = (c.phone||'').replace(/\D/g,'');
+                const wa = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/,'');
                 return `
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">${(c.name||'?').charAt(0).toUpperCase()}</div>
-                        <div>
-                            <p class="font-semibold text-sm">${c.name}</p>
-                            <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
-                            ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'}">Rs ${stats.total.toLocaleString()} total${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ✓'}</p>` : '<p class="text-xs text-gray-400">No payments yet</p>'}
-                        </div>
+                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" data-cust-id="${c.id}">
+                    <input type="checkbox" class="cust-checkbox w-4 h-4 accent-indigo-600 flex-shrink-0 cursor-pointer" data-id="${c.id}" onchange="app.updateBulkDeleteBtn()">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0">${(c.name||'?').charAt(0).toUpperCase()}</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-sm truncate">${c.name}</p>
+                        <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
+                        ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'} font-medium">Rs ${stats.total.toLocaleString()}${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ✓'}</p>` : ''}
                     </div>
-                    <div class="flex gap-1 items-center">
-                        ${stats.pending > 0 ? `<button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="Send WhatsApp reminder"><i class="fab fa-whatsapp"></i></button>` : ''}
+                    <div class="flex gap-1 flex-shrink-0">
+                        ${stats.pending > 0 && phone.length >= 10 ? `
+                        <a href="whatsapp://send?phone=${wa}&text=${encodeURIComponent(`Assalam o Alaikum *${c.name}*,\n\nآپ کی payment pending ہے۔\n💰 Pending: Rs ${stats.pending.toLocaleString()}\n\nبراہ کرم payment کریں۔\nShukria — Dastak 🙏`)}" 
+                           class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>` : stats.pending > 0 ? `
+                        <button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp"><i class="fab fa-whatsapp"></i></button>` : ''}
                         <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
             },
 
+            toggleSelectAll() {
+                const checkboxes = document.querySelectorAll('.cust-checkbox');
+                const allChecked = [...checkboxes].every(cb => cb.checked);
+                checkboxes.forEach(cb => cb.checked = !allChecked);
+                const btn = document.getElementById('select-all-btn');
+                if (btn) btn.textContent = allChecked ? '☐ Select All' : '☑ Deselect All';
+                this.updateBulkDeleteBtn();
+            },
+
+            updateBulkDeleteBtn() {
+                const checked = document.querySelectorAll('.cust-checkbox:checked');
+                const btn = document.getElementById('bulk-delete-btn');
+                const countEl = document.getElementById('selected-count');
+                if (!btn) return;
+                if (checked.length > 0) {
+                    btn.classList.remove('hidden');
+                    if (countEl) countEl.textContent = checked.length;
+                } else {
+                    btn.classList.add('hidden');
+                }
+            },
+
+            async bulkDeleteCustomers() {
+                const checked = document.querySelectorAll('.cust-checkbox:checked');
+                const ids = [...checked].map(cb => cb.dataset.id);
+                if (ids.length === 0) return;
+                if (!confirm(`${ids.length} customers delete karne hain? Yeh wapas nahi aayenge.`)) return;
+                try {
+                    const batchSize = 400;
+                    for (let i = 0; i < ids.length; i += batchSize) {
+                        const batch = window.db.batch();
+                        ids.slice(i, i + batchSize).forEach(id => {
+                            batch.delete(window.db.collection('customers').doc(id));
+                        });
+                        await batch.commit();
+                    }
+                    alert(`✅ ${ids.length} customers delete ho gaye!`);
+                    this.renderAdminCustomers();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
             filterCustomers() {
-                const q = document.getElementById('cust-search')?.value.toLowerCase() || '';
+                const q = (document.getElementById('cust-search')?.value || '').toLowerCase();
                 const list = document.getElementById('customers-list');
+                const countEl = document.getElementById('cust-count');
                 if (!list) return;
-                const filtered = this.data.customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone||'').includes(q));
-                list.innerHTML = filtered.length === 0 ? '<p class="text-center text-gray-400 py-4">No results</p>' : filtered.map(c => this.renderCustomerCard(c)).join('');
+                const filtered = this.data.customers.filter(c =>
+                    (c.name||'').toLowerCase().includes(q) ||
+                    (c.phone||'').includes(q) ||
+                    (c.address||'').toLowerCase().includes(q)
+                );
+                if (countEl) countEl.textContent = filtered.length;
+                list.innerHTML = filtered.length === 0
+                    ? '<p class="text-center text-gray-400 py-4">No results found</p>'
+                    : filtered.map(c => this.renderCustomerCard(c)).join('');
+                this.updateBulkDeleteBtn();
             },
 
             async addCustomer() {
@@ -1889,21 +1958,53 @@ if (this.data.currentUser.role === 'admin') {
                             const wb = XLSX.read(e.target.result, { type: 'array' });
                             const ws = wb.Sheets[wb.SheetNames[0]];
                             const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                            let added = 0;
-                            const batch = window.db.batch();
-                            rows.slice(1).forEach(row => {
-                                if (!row[0]) return;
-                                const ref = window.db.collection('customers').doc();
-                                batch.set(ref, {
-                                    name: String(row[0]||'').trim(),
-                                    phone: String(row[1]||'').trim(),
-                                    address: String(row[2]||'').trim(),
-                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            const headers = rows[0] || [];
+                            // Detect column indices
+                            const colIdx = (names) => {
+                                for (const n of names) {
+                                    const i = headers.findIndex(h => h && h.toString().toLowerCase().includes(n.toLowerCase()));
+                                    if (i >= 0) return i;
+                                }
+                                return -1;
+                            };
+                            const firstNameIdx = colIdx(['first name', 'name', 'contact']);
+                            const mobileIdx = colIdx(['mobile phone', 'mobile', 'phone', 'primary phone', 'cell']);
+                            const addressIdx = colIdx(['address', 'street', 'city']);
+
+                            const cleanPhone = (p) => {
+                                if (!p) return '';
+                                p = p.toString().replace(/[\s\-\(\)]/g, '');
+                                if (p.startsWith('+92')) p = '0' + p.slice(3);
+                                else if (p.startsWith('92') && p.length > 10) p = '0' + p.slice(2);
+                                return p;
+                            };
+                            const cleanName = (raw) => {
+                                if (!raw) return '';
+                                raw = raw.toString().trim();
+                                // Remove leading special/non-alphanumeric chars
+                                raw = raw.replace(/^[^a-zA-Z0-9\u0600-\u06FF]+/, '').trim();
+                                return raw;
+                            };
+
+                            let added = 0, skipped = 0;
+                            const batchSize = 400;
+                            const dataRows = rows.slice(1).filter(r => r && r.length > 0);
+
+                            for (let i = 0; i < dataRows.length; i += batchSize) {
+                                const batch = window.db.batch();
+                                const chunk = dataRows.slice(i, i + batchSize);
+                                chunk.forEach(row => {
+                                    const name = cleanName(firstNameIdx >= 0 ? row[firstNameIdx] : row[0]);
+                                    const phone = cleanPhone(mobileIdx >= 0 ? row[mobileIdx] : row[1]);
+                                    const address = addressIdx >= 0 ? (row[addressIdx]||'').toString().trim() : '';
+                                    if (!name || !phone) { skipped++; return; }
+                                    const ref = window.db.collection('customers').doc();
+                                    batch.set(ref, { name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                                    added++;
                                 });
-                                added++;
-                            });
-                            await batch.commit();
-                            alert(`${added} customers import ho gaye! ✅`);
+                                await batch.commit();
+                            }
+                            alert(`✅ ${added} customers import ho gaye!${skipped > 0 ? `\n⚠️ ${skipped} rows skip hue (name/phone missing)` : ''}`);
                             self.renderAdminCustomers();
                         } catch(err) { alert('Import error: ' + err.message); }
                     };
