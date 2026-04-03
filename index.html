@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rider Portal Pakistan | Pro Edition</title>
+    <title>Dastak Portal | Dastak Delivery Service</title>
     <script src="https://cdn.tailwindcss.com "></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css " rel="stylesheet">
@@ -82,8 +82,8 @@
                     <i class="fas fa-motorcycle"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg text-gray-800 leading-tight">Rider Portal</h1>
-                    <p class="text-xs text-gray-500">Pakistan Pro Edition</p>
+                    <h1 class="font-bold text-lg text-gray-800 leading-tight">Dastak Portal</h1>
+                    <p class="text-xs text-gray-500">Dastak Delivery Service</p>
                 </div>
             </div>
             <button onclick="app.toggleSidebar()" class="md:hidden text-gray-500 hover:text-gray-700 p-2">
@@ -157,7 +157,9 @@
                 unsubscribeReports: null,
                 unsubscribeAttendance: null,
                 unsubscribeCompanyExpenses: null,
-                companyExpenses: []
+                unsubscribeCustomers: null,
+                companyExpenses: [],
+                customers: []
             },
 
             init() {
@@ -237,6 +239,9 @@ if (this.data.currentUser.role === 'admin') {
                 this.data.unsubscribeCompanyExpenses = window.db.collection('companyExpenses').onSnapshot((snapshot) => {
                     self.data.companyExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }, (error) => { console.error('CompanyExpenses error:', error); });
+                this.data.unsubscribeCustomers = window.db.collection('customers').onSnapshot((snapshot) => {
+                    self.data.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                }, (error) => { console.error('Customers error:', error); });
             },
 
             stopRealtimeListeners() {
@@ -244,10 +249,12 @@ if (this.data.currentUser.role === 'admin') {
                 if (this.data.unsubscribeReports) this.data.unsubscribeReports();
                 if (this.data.unsubscribeAttendance) this.data.unsubscribeAttendance();
                 if (this.data.unsubscribeCompanyExpenses) this.data.unsubscribeCompanyExpenses();
+                if (this.data.unsubscribeCustomers) this.data.unsubscribeCustomers();
                 this.data.unsubscribeRiders = null;
                 this.data.unsubscribeReports = null;
                 this.data.unsubscribeAttendance = null;
                 this.data.unsubscribeCompanyExpenses = null;
+                this.data.unsubscribeCustomers = null;
             },
 
             updateDate() {
@@ -297,11 +304,6 @@ if (this.data.currentUser.role === 'admin') {
                             <div class="mt-4 text-center space-y-2">
                                 <p class="text-sm text-gray-500">Don't have an account? <button onclick="app.showSignup()" class="text-indigo-600 font-semibold hover:underline">Sign Up</button></p>
                                 <button onclick="app.showForgotPassword()" class="text-sm text-gray-500 hover:text-indigo-600">Forgot Password?</button>
-                            </div>
-                            <div class="mt-6 text-center text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
-                                <p class="font-semibold mb-1">Demo Accounts:</p>
-                                <p>Admin: admin@portal.com / admin123</p>
-                                <p>Rider: ali@portal.com / rider123</p>
                             </div>
                         </div>
                     </div>`;
@@ -452,14 +454,17 @@ if (this.data.currentUser.role === 'admin') {
                     { id: 'admin-online-payments', icon: 'fa-credit-card', label: 'Online Payments' },
                     { id: 'admin-expenses', icon: 'fa-receipt', label: 'Rider Expenses' },
                     { id: 'admin-company-expenses', icon: 'fa-building', label: 'Company Expenses' },
+                    { id: 'admin-customers', icon: 'fa-address-book', label: 'Customers' },
                     { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance' },
-                    { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' }
+                    { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' },
+                    { id: 'admin-settings', icon: 'fa-cog', label: 'Settings' }
                 ] : [
                     { id: 'rider-dashboard', icon: 'fa-home', label: 'Dashboard' },
                     { id: 'rider-report', icon: 'fa-file-invoice-dollar', label: 'Daily Report' },
                     { id: 'rider-history', icon: 'fa-history', label: 'My History' },
                     { id: 'rider-payments', icon: 'fa-wallet', label: 'Online Payments' },
-                    { id: 'rider-salary', icon: 'fa-money-bill-wave', label: 'Salary & Slips' }
+                    { id: 'rider-salary', icon: 'fa-money-bill-wave', label: 'Salary & Slips' },
+                    { id: 'rider-settings', icon: 'fa-cog', label: 'Settings' }
                 ];
                 nav.innerHTML = menuItems.map(item => `
                     <button onclick="app.navigate('${item.id}'); if(window.innerWidth < 768) app.toggleSidebar();" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}">
@@ -485,8 +490,11 @@ if (this.data.currentUser.role === 'admin') {
                 else if (viewId === 'admin-online-payments') this.renderAdminOnlinePayments();
                 else if (viewId === 'admin-expenses') this.renderAdminExpenses();
                 else if (viewId === 'admin-company-expenses') this.renderCompanyExpenses();
+                else if (viewId === 'admin-customers') this.renderAdminCustomers();
                 else if (viewId === 'admin-attendance') this.renderAdminAttendance();
                 else if (viewId === 'admin-analytics') this.renderAdminAnalytics();
+                else if (viewId === 'admin-settings') this.renderSettings();
+                else if (viewId === 'rider-settings') this.renderSettings();
                 else this.renderRiderDashboard();
             },
 
@@ -781,20 +789,78 @@ if (this.data.currentUser.role === 'admin') {
             addOnlinePaymentRow() {
                 const container = document.getElementById('online-payments-list');
                 if (!container) return;
+                const rowId = 'opr-' + Date.now();
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
+                div.id = rowId;
                 div.innerHTML = `
-                    <div class="grid grid-cols-12 gap-2 items-center">
-                        <div class="col-span-5"><input type="text" placeholder="Customer" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1" required></div>
-                        <div class="col-span-4"><input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required></div>
+                    <div class="grid grid-cols-12 gap-2 items-start">
+                        <div class="col-span-5 relative">
+                            <input type="text" placeholder="Customer name..." 
+                                class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-name-input" 
+                                autocomplete="off"
+                                oninput="app.showCustomerSuggestions(this, '${rowId}')"
+                                onblur="setTimeout(()=>app.hideSuggestions('${rowId}'),200)"
+                                required>
+                            <div id="sugg-${rowId}" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 hidden max-h-48 overflow-y-auto"></div>
+                        </div>
+                        <div class="col-span-4">
+                            <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
+                        </div>
                         <div class="col-span-2">
                             <select class="w-full bg-transparent text-xs outline-none border-b border-gray-300 py-1 online-status" onchange="app.calculateTotals()">
                                 <option value="pending">Pending</option><option value="received">Received</option>
                             </select>
                         </div>
-                        <div class="col-span-1 text-right"><button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button></div>
+                        <div class="col-span-1 text-right">
+                            <button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                    <div id="cust-info-${rowId}" class="hidden text-xs text-indigo-600 flex items-center gap-1 pl-1">
+                        <i class="fas fa-phone-alt"></i><span class="cust-phone-label"></span>
                     </div>`;
                 container.appendChild(div);
+            },
+
+            showCustomerSuggestions(input, rowId) {
+                const q = input.value.trim().toLowerCase();
+                const suggBox = document.getElementById('sugg-' + rowId);
+                if (!suggBox) return;
+                if (q.length < 1) { suggBox.classList.add('hidden'); return; }
+                const customers = this.data.customers || [];
+                const matches = customers.filter(c =>
+                    c.name.toLowerCase().includes(q) || (c.phone||'').includes(q)
+                ).slice(0, 8);
+                if (matches.length === 0) { suggBox.classList.add('hidden'); return; }
+                suggBox.innerHTML = matches.map(c => `
+                    <div class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0"
+                        onmousedown="app.selectCustomer('${c.id}', '${rowId}')">
+                        <p class="text-sm font-medium text-gray-800">${c.name}</p>
+                        <p class="text-xs text-gray-500">${c.phone || 'No number'}${c.address ? ' · '+c.address : ''}</p>
+                    </div>`).join('');
+                suggBox.classList.remove('hidden');
+            },
+
+            selectCustomer(custId, rowId) {
+                const customer = (this.data.customers||[]).find(c => c.id === custId);
+                if (!customer) return;
+                const row = document.getElementById(rowId);
+                if (!row) return;
+                const nameInput = row.querySelector('.cust-name-input');
+                if (nameInput) nameInput.value = customer.name + (customer.phone ? ' · ' + customer.phone : '');
+                const infoDiv = document.getElementById('cust-info-' + rowId);
+                const phoneLabel = infoDiv?.querySelector('.cust-phone-label');
+                if (infoDiv && customer.phone) {
+                    if (phoneLabel) phoneLabel.textContent = customer.phone;
+                    infoDiv.classList.remove('hidden');
+                }
+                const suggBox = document.getElementById('sugg-' + rowId);
+                if (suggBox) suggBox.classList.add('hidden');
+            },
+
+            hideSuggestions(rowId) {
+                const suggBox = document.getElementById('sugg-' + rowId);
+                if (suggBox) suggBox.classList.add('hidden');
             },
 
             calculateTotals() {
@@ -1143,6 +1209,28 @@ if (this.data.currentUser.role === 'admin') {
                 }
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
+                        ${(() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            const todayReps = this.data.reports.filter(r=>r.date===today&&r.status==='approved');
+                            const todayProfit = todayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0);
+                            const todayOrders = todayReps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                            const todayExp = todayReps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                            const todayOnline = todayReps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                            const todayPending = this.data.reports.filter(r=>r.date===today&&r.status==='pending').length;
+                            return `<div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="font-bold text-base">📅 Aaj ka Summary</h3>
+                                    <span class="text-xs bg-white/20 px-2 py-1 rounded-full">${new Date().toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short'})}</span>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-xl font-bold ${todayProfit>=0?'text-green-300':'text-red-300'}">Rs ${todayProfit.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-xl font-bold">${todayOrders}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-xl font-bold text-red-300">Rs ${todayExp.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-xl font-bold text-yellow-300">Rs ${todayOnline.toLocaleString()}</p></div>
+                                </div>
+                                ${todayPending>0?`<div class="mt-3 bg-white/10 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${todayPending} report(s) pending approval today</div>`:''}
+                            </div>`;
+                        })()}
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-1">
                                 <h3 class="font-bold text-gray-800">Overview</h3>
@@ -1165,6 +1253,37 @@ if (this.data.currentUser.role === 'admin') {
                                 <div class="bg-orange-50 rounded-xl p-3 text-center border border-orange-100"><i class="fas fa-gas-pump text-orange-500 mb-1"></i><p class="text-xs text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${fuelTotal.toLocaleString()}</p></div>
                                 <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100"><i class="fas fa-utensils text-green-500 mb-1"></i><p class="text-xs text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${foodTotal.toLocaleString()}</p></div>
                                 <div class="bg-blue-50 rounded-xl p-3 text-center border border-blue-100"><i class="fas fa-wrench text-blue-500 mb-1"></i><p class="text-xs text-gray-500">Maintenance</p><p class="font-bold text-blue-600">Rs ${maintTotal.toLocaleString()}</p></div>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">👤 Har Rider ka ${monthLabel} Summary</h3>
+                            <div class="space-y-3">
+                                ${(() => {
+                                    const riders = this.data.users.filter(u=>u.role==='rider');
+                                    if(riders.length===0) return '<p class="text-gray-400 text-center py-4">No riders</p>';
+                                    return riders.map(rider => {
+                                        const rReps = monthReports.filter(r=>r.riderId===rider.id);
+                                        const rProfit = rReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0);
+                                        const rOrders = rReps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                                        const rExp = rReps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                                        const rOnline = rReps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                                        return `<div class="bg-gray-50 rounded-xl p-4">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">${rider.name.charAt(0)}</div>
+                                                    <p class="font-bold text-gray-800 text-sm">${rider.name}</p>
+                                                </div>
+                                                <span class="text-xs font-bold ${rProfit>=0?'text-green-600':'text-red-600'}">Rs ${rProfit.toLocaleString()}</span>
+                                            </div>
+                                            <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                                                <div class="bg-blue-50 rounded-lg p-1.5"><p class="text-gray-500">Days</p><p class="font-bold text-blue-600">${rReps.length}</p></div>
+                                                <div class="bg-green-50 rounded-lg p-1.5"><p class="text-gray-500">Orders</p><p class="font-bold text-green-600">${rOrders}</p></div>
+                                                <div class="bg-red-50 rounded-lg p-1.5"><p class="text-gray-500">Expenses</p><p class="font-bold text-red-500">Rs ${rExp.toLocaleString()}</p></div>
+                                                <div class="bg-orange-50 rounded-lg p-1.5"><p class="text-gray-500">Pending</p><p class="font-bold text-orange-600">Rs ${rOnline.toLocaleString()}</p></div>
+                                            </div>
+                                        </div>`;
+                                    }).join('');
+                                })()}
                             </div>
                         </div>
                         <div class="section-card">
@@ -1413,22 +1532,44 @@ if (this.data.currentUser.role === 'admin') {
                 if (!report) return;
                 const modalContent = document.getElementById('modal-content');
                 const overlay = document.getElementById('modal-overlay');
+                const paymentsHTML = (report.onlinePayments || []).map((p, i) => `
+                    <div class="bg-gray-50 rounded-lg p-3 space-y-2" id="ae-pay-${i}">
+                        <div class="flex justify-between items-center">
+                            <p class="text-xs font-semibold text-gray-700">Payment ${i+1}: ${p.detail || ''}</p>
+                            <span class="text-xs px-2 py-0.5 rounded ${p.status==='received'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}">${p.status}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">Original Amount</label>
+                                <p class="text-sm font-bold text-gray-700">Rs ${(p.amount||0).toLocaleString()}</p>
+                            </div>
+                            <div><label class="text-xs text-gray-500">Remaining / Edit Amount</label>
+                                <input type="number" id="ae-pay-amt-${i}" value="${p.amount||0}" class="w-full border border-indigo-300 rounded px-2 py-1.5 text-sm outline-none">
+                            </div>
+                        </div>
+                        <select id="ae-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none">
+                            <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+                            <option value="received" ${p.status==='received'?'selected':''}>Received</option>
+                        </select>
+                    </div>`).join('');
                 modalContent.innerHTML = `
                     <div class="p-5">
                         <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold">Edit Report</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
                         <form onsubmit="app.adminSaveReportEdit(event, '${id}')" class="space-y-3">
-                            <div><label class="text-xs text-gray-500">Opening Balance</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
-                            <div><label class="text-xs text-gray-500">Total Gross (Rs)</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
-                            <div><label class="text-xs text-gray-500">Total Expenses (Rs)</label><input type="number" id="ae-expenses" value="${report.totalExpenses || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
-                            <div><label class="text-xs text-gray-500">Final Amount (Rs)</label><input type="number" id="ae-final" value="${report.finalAmount || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1"></div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="text-xs text-gray-500">Opening Balance</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Orders Amount</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Total Expenses</label><input type="number" id="ae-expenses" value="${report.totalExpenses || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Final Cash</label><input type="number" id="ae-final" value="${report.finalAmount || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                            </div>
                             <div><label class="text-xs text-gray-500">Status</label>
-                                <select id="ae-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1">
+                                <select id="ae-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm">
                                     <option value="pending" ${report.status==='pending'?'selected':''}>Pending</option>
                                     <option value="approved" ${report.status==='approved'?'selected':''}>Approved</option>
                                     <option value="rejected" ${report.status==='rejected'?'selected':''}>Rejected</option>
                                     <option value="draft" ${report.status==='draft'?'selected':''}>Draft</option>
                                 </select>
                             </div>
+                            ${paymentsHTML ? `<div><label class="text-xs font-semibold text-gray-700 block mb-2">Online Payments (Edit amount or mark received)</label><div class="space-y-2">${paymentsHTML}</div></div>` : ''}
                             <div class="flex gap-3 pt-2">
                                 <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button>
                                 <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium">Save Changes</button>
@@ -1441,13 +1582,21 @@ if (this.data.currentUser.role === 'admin') {
 
             async adminSaveReportEdit(e, id) {
                 e.preventDefault();
+                const report = this.data.reports.find(r => r.id === id);
                 try {
+                    // Rebuild online payments with edited amounts/statuses
+                    const updatedPayments = (report.onlinePayments || []).map((p, i) => ({
+                        ...p,
+                        amount: parseFloat(document.getElementById(`ae-pay-amt-${i}`)?.value) ?? p.amount,
+                        status: document.getElementById(`ae-pay-status-${i}`)?.value ?? p.status
+                    }));
                     const updates = {
                         openingBalance: parseFloat(document.getElementById('ae-opening').value) || 0,
                         totalGross: parseFloat(document.getElementById('ae-gross').value) || 0,
                         totalExpenses: parseFloat(document.getElementById('ae-expenses').value) || 0,
                         finalAmount: parseFloat(document.getElementById('ae-final').value) || 0,
                         status: document.getElementById('ae-status').value,
+                        onlinePayments: updatedPayments,
                         adminEditedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     await window.db.collection('reports').doc(id).update(updates);
@@ -1607,6 +1756,271 @@ if (this.data.currentUser.role === 'admin') {
                     await window.db.collection('companyExpenses').doc(id).delete();
                     this.renderCompanyExpenses();
                 } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderAdminCustomers() {
+                document.getElementById('page-title').textContent = 'Customers';
+                const container = document.getElementById('main-container');
+                const customers = this.data.customers || [];
+                // Calculate per-customer payment stats from reports
+                const topCustomers = customers.map(c => {
+                    const s = this.getCustomerPaymentStats(c);
+                    return { ...s, name: c.name, id: c.id };
+                }).filter(c => c.count > 0).sort((a,b) => b.total - a.total);
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Add Customer</h3>
+                                <label class="flex items-center gap-2 text-xs bg-green-600 text-white px-3 py-2 rounded-lg cursor-pointer hover:bg-green-700 font-semibold">
+                                    <i class="fas fa-file-excel"></i> Import Excel/CSV
+                                    <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="app.importCustomersFile(this)">
+                                </label>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <input type="text" id="cust-name" placeholder="Customer Name *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <input type="tel" id="cust-phone" placeholder="Phone: 03001234567 *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <input type="text" id="cust-address" placeholder="Address (optional)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                            </div>
+                            <button onclick="app.addCustomer()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700"><i class="fas fa-plus mr-2"></i>Add Customer</button>
+                        </div>
+                        ${topCustomers.length > 0 ? `
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">🏆 Top Customers by Payment</h3>
+                            <div class="space-y-2">
+                                ${topCustomers.slice(0,5).map((c,i) => `
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full ${i===0?'bg-yellow-100 text-yellow-600':i===1?'bg-gray-200 text-gray-600':'bg-orange-100 text-orange-600'} flex items-center justify-center font-bold text-sm">${i+1}</div>
+                                        <div><p class="font-semibold text-sm">${c.name}</p><p class="text-xs text-gray-500">${c.count} orders</p></div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-sm">Rs ${c.total.toLocaleString()}</p>
+                                        ${c.pending > 0 ? `<p class="text-xs text-orange-600">Pending: Rs ${c.pending.toLocaleString()}</p>` : '<p class="text-xs text-green-600">All clear ✓</p>'}
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800">All Customers (${customers.length})</h3>
+                                <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-36">
+                            </div>
+                            <div id="customers-list" class="space-y-2">
+                                ${customers.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from Excel/CSV</p></div>` :
+                                customers.map(c => this.renderCustomerCard(c)).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            getCustomerPaymentStats(c) {
+                let total=0, pending=0, received=0, count=0;
+                this.data.reports.forEach(r => {
+                    (r.onlinePayments||[]).forEach(p => {
+                        const detail = (p.detail||'').toLowerCase();
+                        const nameMatch = c.name && detail.includes(c.name.toLowerCase());
+                        const phoneMatch = c.phone && detail.includes(c.phone.replace(/\D/g,'').slice(-10));
+                        if (nameMatch || phoneMatch) {
+                            total += p.amount||0; count++;
+                            if(p.status==='pending') pending+=p.amount||0; else received+=p.amount||0;
+                        }
+                    });
+                });
+                return {total, pending, received, count};
+            },
+
+            renderCustomerCard(c) {
+                const stats = this.getCustomerPaymentStats(c);
+                return `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">${(c.name||'?').charAt(0).toUpperCase()}</div>
+                        <div>
+                            <p class="font-semibold text-sm">${c.name}</p>
+                            <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
+                            ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'}">Rs ${stats.total.toLocaleString()} total${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ✓'}</p>` : '<p class="text-xs text-gray-400">No payments yet</p>'}
+                        </div>
+                    </div>
+                    <div class="flex gap-1 items-center">
+                        ${stats.pending > 0 ? `<button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="Send WhatsApp reminder"><i class="fab fa-whatsapp"></i></button>` : ''}
+                        <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
+            },
+
+            filterCustomers() {
+                const q = document.getElementById('cust-search')?.value.toLowerCase() || '';
+                const list = document.getElementById('customers-list');
+                if (!list) return;
+                const filtered = this.data.customers.filter(c => c.name.toLowerCase().includes(q) || (c.phone||'').includes(q));
+                list.innerHTML = filtered.length === 0 ? '<p class="text-center text-gray-400 py-4">No results</p>' : filtered.map(c => this.renderCustomerCard(c)).join('');
+            },
+
+            async addCustomer() {
+                const name = document.getElementById('cust-name').value.trim();
+                const phone = document.getElementById('cust-phone').value.trim();
+                const address = document.getElementById('cust-address').value.trim();
+                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+                try {
+                    await window.db.collection('customers').add({ name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    document.getElementById('cust-name').value = '';
+                    document.getElementById('cust-phone').value = '';
+                    document.getElementById('cust-address').value = '';
+                    alert('Customer add ho gaya!');
+                    this.renderAdminCustomers();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteCustomer(id) {
+                if (!confirm('Delete this customer?')) return;
+                try { await window.db.collection('customers').doc(id).delete(); this.renderAdminCustomers(); }
+                catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async importCustomersFile(input) {
+                const file = input.files[0];
+                if (!file) return;
+                const self = this;
+                const doImport = async () => {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const wb = XLSX.read(e.target.result, { type: 'array' });
+                            const ws = wb.Sheets[wb.SheetNames[0]];
+                            const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                            let added = 0;
+                            const batch = window.db.batch();
+                            rows.slice(1).forEach(row => {
+                                if (!row[0]) return;
+                                const ref = window.db.collection('customers').doc();
+                                batch.set(ref, {
+                                    name: String(row[0]||'').trim(),
+                                    phone: String(row[1]||'').trim(),
+                                    address: String(row[2]||'').trim(),
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                added++;
+                            });
+                            await batch.commit();
+                            alert(`${added} customers import ho gaye! ✅`);
+                            self.renderAdminCustomers();
+                        } catch(err) { alert('Import error: ' + err.message); }
+                    };
+                    reader.readAsArrayBuffer(file);
+                };
+                if (window.XLSX) { doImport(); } else {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                    script.onload = doImport;
+                    document.head.appendChild(script);
+                }
+            },
+
+            sendCustomerWhatsApp(custId) {
+                const customer = this.data.customers.find(c => c.id === custId);
+                if (!customer) return;
+                let pendingList = [];
+                this.data.reports.forEach(r => {
+                    (r.onlinePayments||[]).forEach(p => {
+                        if (p.status !== 'pending') return;
+                        const detail = (p.detail||'').toLowerCase();
+                        const nameMatch = customer.name && detail.includes(customer.name.toLowerCase());
+                        const phoneMatch = customer.phone && detail.includes(customer.phone.replace(/\D/g,'').slice(-10));
+                        if (nameMatch || phoneMatch) {
+                            pendingList.push({ date: r.date, amount: p.amount||0, detail: p.detail });
+                        }
+                    });
+                });
+                if (pendingList.length === 0) { alert('Is customer ki koi pending payment nahi'); return; }
+                const totalPending = pendingList.reduce((a,p)=>a+p.amount, 0);
+                const details = pendingList.map(p => `📅 ${new Date(p.date).toLocaleDateString('en-PK')} — Rs ${(p.amount||0).toLocaleString()}`).join('\n');
+                const message = `Assalam o Alaikum *${customer.name}*,\n\nآپ کی درج ذیل payments ابھی pending ہیں:\n\n${details}\n\n💰 *کل باقی: Rs ${totalPending.toLocaleString()}*\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ — Dastak 🙏`;
+                const phone = (customer.phone||'').replace(/\D/g,'');
+                const wa = phone.startsWith('92') ? phone : '92'+phone.replace(/^0/,'');
+                const encoded = encodeURIComponent(message);
+                const url = /iPhone|Android/i.test(navigator.userAgent)
+                    ? (wa.length > 4 ? `whatsapp://send?phone=${wa}&text=${encoded}` : `whatsapp://send?text=${encoded}`)
+                    : (wa.length > 4 ? `https://web.whatsapp.com/send?phone=${wa}&text=${encoded}` : `https://web.whatsapp.com/send?text=${encoded}`);
+                window.open(url, '_blank');
+            },
+
+            renderSettings() {
+                document.getElementById('page-title').textContent = 'Settings';
+                const container = document.getElementById('main-container');
+                const isAdmin = this.data.currentUser?.role === 'admin';
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4 max-w-lg mx-auto">
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-lock text-indigo-500 mr-2"></i>Change Password</h3>
+                            <div class="space-y-3">
+                                <div><label class="text-xs text-gray-500 mb-1 block">Current Password</label><input type="password" id="set-curr-pass" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="••••••••"></div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">New Password</label><input type="password" id="set-new-pass" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="Min 6 characters"></div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">Confirm New Password</label><input type="password" id="set-conf-pass" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="••••••••"></div>
+                                <button onclick="app.changePassword()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700"><i class="fas fa-key mr-2"></i>Update Password</button>
+                            </div>
+                        </div>
+                        ${isAdmin ? `
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-envelope text-indigo-500 mr-2"></i>Change Email</h3>
+                            <div class="space-y-3">
+                                <div><label class="text-xs text-gray-500 mb-1 block">Current Password (required)</label><input type="password" id="set-email-pass" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="••••••••"></div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">New Email Address</label><input type="email" id="set-new-email" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="new@email.com"></div>
+                                <button onclick="app.changeEmail()" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-blue-700"><i class="fas fa-envelope mr-2"></i>Update Email</button>
+                                <p class="text-xs text-gray-400 text-center">Verification email will be sent to new address</p>
+                            </div>
+                        </div>` : ''}
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-user text-indigo-500 mr-2"></i>Account Info</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Name</span><span class="font-medium">${this.data.currentUser?.name || ''}</span></div>
+                                <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Email</span><span class="font-medium">${this.data.currentUser?.email || ''}</span></div>
+                                <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Role</span><span class="font-medium capitalize">${this.data.currentUser?.role || ''}</span></div>
+                                <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Joined</span><span class="font-medium">${this.data.currentUser?.joinDate || ''}</span></div>
+                            </div>
+                        </div>
+                        <div class="section-card border border-red-200">
+                            <button onclick="app.logout()" class="w-full flex items-center justify-center gap-2 text-red-600 font-semibold py-2"><i class="fas fa-sign-out-alt"></i>Logout</button>
+                        </div>
+                    </div>`;
+            },
+
+            async changePassword() {
+                const curr = document.getElementById('set-curr-pass').value;
+                const newP = document.getElementById('set-new-pass').value;
+                const conf = document.getElementById('set-conf-pass').value;
+                if (!curr || !newP || !conf) { alert('Sab fields bharo!'); return; }
+                if (newP !== conf) { alert('New passwords match nahi karte!'); return; }
+                if (newP.length < 6) { alert('Password kam az kam 6 characters ka hona chahiye!'); return; }
+                try {
+                    const user = window.auth.currentUser;
+                    const cred = firebase.auth.EmailAuthProvider.credential(user.email, curr);
+                    await user.reauthenticateWithCredential(cred);
+                    await user.updatePassword(newP);
+                    alert('Password update ho gaya! ✅');
+                    document.getElementById('set-curr-pass').value = '';
+                    document.getElementById('set-new-pass').value = '';
+                    document.getElementById('set-conf-pass').value = '';
+                } catch(e) {
+                    if (e.code === 'auth/wrong-password') alert('Current password ghalat hai!');
+                    else alert('Error: ' + e.message);
+                }
+            },
+
+            async changeEmail() {
+                const pass = document.getElementById('set-email-pass').value;
+                const newEmail = document.getElementById('set-new-email').value.trim();
+                if (!pass || !newEmail) { alert('Sab fields bharo!'); return; }
+                try {
+                    const user = window.auth.currentUser;
+                    const cred = firebase.auth.EmailAuthProvider.credential(user.email, pass);
+                    await user.reauthenticateWithCredential(cred);
+                    await user.verifyBeforeUpdateEmail(newEmail);
+                    alert('Verification email bhej diya gaya hai! ✅\nNaya email verify karne ke baad update hoga.');
+                } catch(e) {
+                    if (e.code === 'auth/wrong-password') alert('Password ghalat hai!');
+                    else alert('Error: ' + e.message);
+                }
             },
 
             exportMonthlyExcel() {
