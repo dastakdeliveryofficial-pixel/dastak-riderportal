@@ -153,6 +153,8 @@
                 currentParsedOrder: null,
                 selectedMonth: new Date().getMonth(),
                 selectedYear: new Date().getFullYear(),
+                custPage: 1,
+                custPerPage: 50,
                 unsubscribeRiders: null,
                 unsubscribeReports: null,
                 unsubscribeAttendance: null,
@@ -717,7 +719,16 @@ if (this.data.currentUser.role === 'admin') {
                         <form onsubmit="app.submitReport(event)" class="space-y-4">
                             <div class="section-card">
                                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div><h3 class="font-bold text-lg">Daily Report</h3><p class="text-sm text-gray-500">${new Date().toLocaleDateString()}</p></div>
+                                    <div>
+                                        <h3 class="font-bold text-lg">Daily Report</h3>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <label class="text-xs text-gray-500">Report Date:</label>
+                                            <input type="date" id="report-date" 
+                                                value="${new Date().toISOString().split('T')[0]}" 
+                                                max="${new Date().toISOString().split('T')[0]}"
+                                                class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
+                                        </div>
+                                    </div>
                                     <div class="text-left md:text-right w-full md:w-auto">
                                         <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
                                         <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
@@ -947,11 +958,11 @@ if (this.data.currentUser.role === 'admin') {
                 const dailyWage = this.data.currentUser?.dailyWage || 500;
                 const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
                 const reportStatus = isDraft ? 'draft' : 'pending';
-                const today = new Date().toISOString().split('T')[0];
+                const selectedDate = document.getElementById('report-date')?.value || new Date().toISOString().split('T')[0];
                 const newReport = {
                     riderId: this.data.currentUser.id, 
                     riderName: this.data.currentUser.name,
-                    date: today, 
+                    date: selectedDate, 
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     openingBalance: opening, 
                     orders, 
@@ -971,14 +982,14 @@ if (this.data.currentUser.role === 'admin') {
                         alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
                     } else {
                         await window.db.collection('reports').add(newReport);
-                        // Auto mark present when submitting (not draft)
+                        // Auto mark present on the selected date
                         if (!isDraft) {
-                            const docId = `${this.data.currentUser.id}_${today}`;
-                            const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === today);
+                            const docId = `${this.data.currentUser.id}_${selectedDate}`;
+                            const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === selectedDate);
                             if (!existingAtt) {
                                 await window.db.collection('attendance').doc(docId).set({
                                     riderId: this.data.currentUser.id,
-                                    date: today,
+                                    date: selectedDate,
                                     status: 'present',
                                     isReliefDay: false,
                                     autoMarked: true,
@@ -986,7 +997,8 @@ if (this.data.currentUser.role === 'admin') {
                                 });
                             }
                         }
-                        alert(isDraft ? 'Draft saved!' : 'Report Submitted! ✅ Attendance auto-marked Present.');
+                        const isPast = selectedDate < new Date().toISOString().split('T')[0];
+                        alert(isDraft ? 'Draft saved!' : `Report Submitted! ✅${isPast ? ` (${new Date(selectedDate).toLocaleDateString()} ki report)` : ''} Attendance auto-marked Present.`);
                     }
                     this.navigate('rider-history');
                 } catch (error) { alert('Error: ' + error.message); }
@@ -1033,6 +1045,9 @@ if (this.data.currentUser.role === 'admin') {
                 this.renderRiderReportForm();
                 setTimeout(() => {
                     document.getElementById('report-edit-id').value = id;
+                    // Restore report date
+                    const dateEl = document.getElementById('report-date');
+                    if (dateEl && report.date) dateEl.value = report.date;
                     document.getElementById('opening-balance').value = report.openingBalance || 0;
                     [1, 2, 3].forEach((i, idx) => {
                         const order = report.orders?.[idx];
@@ -1209,28 +1224,33 @@ if (this.data.currentUser.role === 'admin') {
                 }
                 container.innerHTML = `
                     <div class="space-y-4 fade-in pb-20">
-                        ${(() => {
-                            const today = new Date().toISOString().split('T')[0];
-                            const todayReps = this.data.reports.filter(r=>r.date===today&&r.status==='approved');
-                            const todayProfit = todayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0);
-                            const todayOrders = todayReps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
-                            const todayExp = todayReps.reduce((a,r)=>a+(r.totalExpenses||0),0);
-                            const todayOnline = todayReps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
-                            const todayPending = this.data.reports.filter(r=>r.date===today&&r.status==='pending').length;
-                            return `<div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
-                                <div class="flex justify-between items-center mb-3">
-                                    <h3 class="font-bold text-base">📅 Aaj ka Summary</h3>
-                                    <span class="text-xs bg-white/20 px-2 py-1 rounded-full">${new Date().toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short'})}</span>
-                                </div>
-                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-xl font-bold ${todayProfit>=0?'text-green-300':'text-red-300'}">Rs ${todayProfit.toLocaleString()}</p></div>
-                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-xl font-bold">${todayOrders}</p></div>
-                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-xl font-bold text-red-300">Rs ${todayExp.toLocaleString()}</p></div>
-                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-xl font-bold text-yellow-300">Rs ${todayOnline.toLocaleString()}</p></div>
-                                </div>
-                                ${todayPending>0?`<div class="mt-3 bg-white/10 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${todayPending} report(s) pending approval today</div>`:''}
-                            </div>`;
-                        })()}
+                        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-base">📅 Din ka Summary</h3>
+                                <input type="date" id="dash-date-picker" 
+                                    value="${new Date().toISOString().split('T')[0]}"
+                                    max="${new Date().toISOString().split('T')[0]}"
+                                    onchange="app.updateDayView()"
+                                    class="bg-white/20 text-white text-xs px-2 py-1 rounded-lg border border-white/30 outline-none cursor-pointer">
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="day-stats-grid">
+                                ${(() => {
+                                    const today = new Date().toISOString().split('T')[0];
+                                    const reps = this.data.reports.filter(r=>r.date===today&&r.status==='approved');
+                                    const profit = reps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0);
+                                    const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                                    const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                                    const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                                    const pending = this.data.reports.filter(r=>r.date===today&&r.status==='pending').length;
+                                    return `
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-xl font-bold ${profit>=0?'text-green-300':'text-red-300'}">Rs ${profit.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-xl font-bold">${orders}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-xl font-bold text-red-300">Rs ${exp.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-xl font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>
+                                    ${pending>0?`<div class="col-span-2 md:col-span-4 bg-white/10 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} report(s) pending approval</div>`:''}`;
+                                })()}
+                            </div>
+                        </div>
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-1">
                                 <h3 class="font-bold text-gray-800">Overview</h3>
@@ -1323,6 +1343,28 @@ if (this.data.currentUser.role === 'admin') {
             },
 
             setTimeFilter(filter) { this.data.currentTimeFilter = filter; this.renderAdminDashboard(); },
+
+            updateDayView() {
+                const picker = document.getElementById('dash-date-picker');
+                const grid = document.getElementById('day-stats-grid');
+                if (!picker || !grid) return;
+                const date = picker.value;
+                const reps = this.data.reports.filter(r=>r.date===date&&r.status==='approved');
+                const profit = reps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0);
+                const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                const pending = this.data.reports.filter(r=>r.date===date&&r.status==='pending').length;
+                const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
+                grid.innerHTML = `
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-xl font-bold ${profit>=0?'text-green-300':'text-red-300'}">Rs ${profit.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-xl font-bold">${orders}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-xl font-bold text-red-300">Rs ${exp.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-xl font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>
+                    ${reps.length > 0 ? `<div class="col-span-2 md:col-span-4 bg-white/10 rounded-lg p-2 text-center text-xs">${reps.length} approved report(s) · Gross: Rs ${gross.toLocaleString()}</div>` : ''}
+                    ${pending>0?`<div class="col-span-2 md:col-span-4 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending approval</div>`:''}
+                    ${reps.length===0&&pending===0?`<div class="col-span-2 md:col-span-4 bg-white/10 rounded-lg p-2 text-center text-xs opacity-70">Is din ki koi report nahi mili</div>`:''}`;
+            },
 
             renderAdminRiders() {
                 document.getElementById('page-title').textContent = 'Manage Riders';
@@ -1555,6 +1597,9 @@ if (this.data.currentUser.role === 'admin') {
                     <div class="p-5">
                         <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold">Edit Report</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
                         <form onsubmit="app.adminSaveReportEdit(event, '${id}')" class="space-y-3">
+                            <div><label class="text-xs text-gray-500">Report Date</label>
+                                <input type="date" id="ae-date" value="${report.date || ''}" class="w-full border border-indigo-300 rounded-lg px-3 py-2 mt-1 text-sm outline-none focus:border-indigo-500">
+                            </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div><label class="text-xs text-gray-500">Opening Balance</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
                                 <div><label class="text-xs text-gray-500">Orders Amount</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
@@ -1591,6 +1636,7 @@ if (this.data.currentUser.role === 'admin') {
                         status: document.getElementById(`ae-pay-status-${i}`)?.value ?? p.status
                     }));
                     const updates = {
+                        date: document.getElementById('ae-date').value || report.date,
                         openingBalance: parseFloat(document.getElementById('ae-opening').value) || 0,
                         totalGross: parseFloat(document.getElementById('ae-gross').value) || 0,
                         totalExpenses: parseFloat(document.getElementById('ae-expenses').value) || 0,
@@ -1808,16 +1854,25 @@ if (this.data.currentUser.role === 'admin') {
                                     <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" id="cust-count">${customers.length}</span>
                                 </div>
                                 <div class="flex items-center gap-2 flex-wrap">
+                                    <select onchange="app.custChangePerPage(this.value)" class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-white">
+                                        ${[10,20,30,40,50,60,70,80,90,100].map(n => `<option value="${n}" ${n===this.data.custPerPage?'selected':''}>${n} per page</option>`).join('')}
+                                    </select>
                                     <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-28">
                                     <button onclick="app.toggleSelectAll()" id="select-all-btn" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200 whitespace-nowrap">☐ Select All</button>
                                     <button onclick="app.bulkDeleteCustomers()" id="bulk-delete-btn" class="hidden text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-red-700 whitespace-nowrap"><i class="fas fa-trash mr-1"></i>Delete (<span id="selected-count">0</span>)</button>
                                 </div>
                             </div>
                             <div id="customers-list" class="space-y-2">
-                                ${customers.length === 0 ?
-                                    `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from CSV/Excel</p></div>` :
-                                    customers.map(c => this.renderCustomerCard(c)).join('')}
+                                ${(() => {
+                                    if (customers.length === 0) return `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from CSV/Excel</p></div>`;
+                                    const page = this.data.custPage;
+                                    const perPage = this.data.custPerPage;
+                                    const start = (page - 1) * perPage;
+                                    const paginated = customers.slice(start, start + perPage);
+                                    return paginated.map(c => this.renderCustomerCard(c)).join('');
+                                })()}
                             </div>
+                            ${this.renderCustomerPagination(customers.length, this.data.custPage, this.data.custPerPage)}
                         </div>
                     </div>`;
             },
@@ -1859,13 +1914,84 @@ if (this.data.currentUser.role === 'admin') {
                     <div class="flex gap-1 flex-shrink-0">
                         ${stats.pending > 0 && phone.length >= 10 ? `
                         <a href="whatsapp://send?phone=${wa}&text=${encodeURIComponent(`Assalam o Alaikum *${c.name}*,\n\nآپ کی payment pending ہے۔\n💰 Pending: Rs ${stats.pending.toLocaleString()}\n\nبراہ کرم payment کریں۔\nShukria — Dastak 🙏`)}" 
-                           class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp">
-                            <i class="fab fa-whatsapp"></i>
-                        </a>` : stats.pending > 0 ? `
-                        <button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp"><i class="fab fa-whatsapp"></i></button>` : ''}
+                           class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>` :
+                        stats.pending > 0 ? `<button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs"><i class="fab fa-whatsapp"></i></button>` : ''}
+                        <button onclick="app.editCustomer('${c.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg text-xs" title="Edit"><i class="fas fa-edit"></i></button>
                         <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>`;
+            },
+
+            editCustomer(id) {
+                const c = this.data.customers.find(x => x.id === id);
+                if (!c) return;
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Edit Customer</h2>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+                        <div class="space-y-3">
+                            <div><label class="text-xs text-gray-500 mb-1 block">Name *</label>
+                                <input type="text" id="ec-name" value="${c.name||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Phone *</label>
+                                <input type="tel" id="ec-phone" value="${c.phone||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Address</label>
+                                <input type="text" id="ec-address" value="${c.address||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div class="flex gap-3 pt-2">
+                                <button onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium text-sm">Cancel</button>
+                                <button onclick="app.saveCustomerEdit('${id}')" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+            },
+
+            async saveCustomerEdit(id) {
+                const name = document.getElementById('ec-name').value.trim();
+                const phone = document.getElementById('ec-phone').value.trim();
+                const address = document.getElementById('ec-address').value.trim();
+                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+                try {
+                    await window.db.collection('customers').doc(id).update({ name, phone, address });
+                    this.closeModal();
+                    this.renderAdminCustomers();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderCustomerPagination(totalItems, currentPage, perPage) {
+                const totalPages = Math.ceil(totalItems / perPage);
+                if (totalPages <= 1) return '';
+                const pages = [];
+                for (let i = 1; i <= totalPages; i++) pages.push(i);
+                return `<div class="flex items-center justify-between pt-3 border-t border-gray-100 mt-3 flex-wrap gap-2">
+                    <p class="text-xs text-gray-500">Showing ${((currentPage-1)*perPage)+1}–${Math.min(currentPage*perPage, totalItems)} of ${totalItems}</p>
+                    <div class="flex gap-1 flex-wrap">
+                        <button onclick="app.custGotoPage(${currentPage-1})" ${currentPage===1?'disabled':''} class="px-2 py-1 text-xs border border-gray-300 rounded ${currentPage===1?'opacity-40 cursor-not-allowed':'hover:bg-gray-100'}">‹</button>
+                        ${pages.slice(Math.max(0,currentPage-3), Math.min(totalPages,currentPage+2)).map(p => `
+                        <button onclick="app.custGotoPage(${p})" class="px-2.5 py-1 text-xs border rounded ${p===currentPage?'bg-indigo-600 text-white border-indigo-600':'border-gray-300 hover:bg-gray-100'}">${p}</button>`).join('')}
+                        <button onclick="app.custGotoPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''} class="px-2 py-1 text-xs border border-gray-300 rounded ${currentPage===totalPages?'opacity-40 cursor-not-allowed':'hover:bg-gray-100'}">›</button>
+                    </div>
+                </div>`;
+            },
+
+            custGotoPage(page) {
+                const total = this.data.customers.length;
+                const totalPages = Math.ceil(total / this.data.custPerPage);
+                if (page < 1 || page > totalPages) return;
+                this.data.custPage = page;
+                this.renderAdminCustomers();
+                // Scroll to customers list
+                setTimeout(() => document.getElementById('customers-list')?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+            },
+
+            custChangePerPage(val) {
+                this.data.custPerPage = parseInt(val);
+                this.data.custPage = 1;
+                this.renderAdminCustomers();
             },
 
             toggleSelectAll() {
@@ -1920,6 +2046,7 @@ if (this.data.currentUser.role === 'admin') {
                     (c.address||'').toLowerCase().includes(q)
                 );
                 if (countEl) countEl.textContent = filtered.length;
+                // Show all results when searching (no pagination)
                 list.innerHTML = filtered.length === 0
                     ? '<p class="text-center text-gray-400 py-4">No results found</p>'
                     : filtered.map(c => this.renderCustomerCard(c)).join('');
