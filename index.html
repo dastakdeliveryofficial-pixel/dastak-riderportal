@@ -1187,9 +1187,86 @@ if (this.data.currentUser.role === 'admin') {
                                 <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-box"></i></div><span class="font-medium">Total Deliveries</span></div><span class="font-bold text-lg">${totalOrders}</span></div>
                                 <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><span class="font-medium">Daily Wage</span></div><span class="font-bold text-lg">Rs ${this.data.currentUser.dailyWage || 500}</span></div>
                             </div>
-                            <button class="w-full mt-4 border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors"><i class="fas fa-download mr-2"></i>Download Payslip</button>
+                            <button onclick="app.downloadPayslip()" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-download mr-2"></i>Download Payslip</button>
                         </div>
                     </div>`;
+            },
+
+            downloadPayslip() {
+                const user = this.data.currentUser;
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[currentMonth]} ${currentYear}`;
+                const monthlyReports = this.data.reports.filter(r =>
+                    r.riderId === user.id && r.status === 'approved' &&
+                    new Date(r.date).getMonth() === currentMonth &&
+                    new Date(r.date).getFullYear() === currentYear
+                ).sort((a,b) => new Date(a.date)-new Date(b.date));
+                const totalOrders = monthlyReports.reduce((acc,r) => acc+(r.orders||[]).reduce((o,x)=>o+(x.qty||0),0), 0);
+                const totalGross = monthlyReports.reduce((acc,r) => acc+(r.totalGross||0), 0);
+                const totalExp = monthlyReports.reduce((acc,r) => acc+(r.totalExpenses||0), 0);
+                const baseSalary = user.salaryBase || 15000;
+                const attendanceInfo = this.calculateAttendanceDeductions(user.id, currentMonth, currentYear);
+                const presentDays = this.data.attendance.filter(a =>
+                    a.riderId===user.id && a.status==='present' &&
+                    new Date(a.date).getMonth()===currentMonth && new Date(a.date).getFullYear()===currentYear
+                ).length;
+                const netSalary = baseSalary - attendanceInfo.totalDeduction;
+                const reportRows = monthlyReports.map(r => {
+                    const qty = (r.orders||[]).reduce((a,o)=>a+(o.qty||0),0);
+                    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.date}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${qty}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">Rs ${(r.totalGross||0).toLocaleString()}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;color:#ef4444">Rs ${(r.totalExpenses||0).toLocaleString()}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:bold">${r.status}</td></tr>`;
+                }).join('');
+                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payslip — ${user.name} — ${monthLabel}</title>
+                <style>body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#1f2937}
+                .header{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:24px;border-radius:12px;margin-bottom:20px}
+                .header h1{margin:0;font-size:22px}
+                .header p{margin:4px 0;opacity:0.85;font-size:13px}
+                .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+                .card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px}
+                .card label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px}
+                .card p{font-size:18px;font-weight:bold;margin:4px 0 0;color:#1f2937}
+                table{width:100%;border-collapse:collapse;font-size:13px}
+                thead{background:#f3f4f6}
+                th{padding:8px 10px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase}
+                .total-row{background:#eef2ff;font-weight:bold}
+                .net{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:16px;border-radius:8px;text-align:center;margin-top:16px}
+                .net p{margin:0;font-size:13px;opacity:0.9}
+                .net h2{margin:6px 0 0;font-size:28px}
+                @media print{body{padding:0}button{display:none}}
+                </style></head><body>
+                <div class="header">
+                    <h1>Dastak Delivery Service</h1>
+                    <p>Pay Slip — ${monthLabel}</p>
+                    <p style="margin-top:8px;font-size:15px;font-weight:bold">${user.name}</p>
+                    <p>${user.phone || ''} · Zone: ${user.zone || 'Unassigned'}</p>
+                </div>
+                <div class="grid">
+                    <div class="card"><label>Base Salary</label><p>Rs ${baseSalary.toLocaleString()}</p></div>
+                    <div class="card"><label>Daily Wage</label><p>Rs ${user.dailyWage || 500}</p></div>
+                    <div class="card"><label>Present Days</label><p>${presentDays} days</p></div>
+                    <div class="card"><label>Absences</label><p style="color:${attendanceInfo.totalAbsences>0?'#ef4444':'#10b981'}">${attendanceInfo.totalAbsences} days</p></div>
+                    <div class="card"><label>Total Orders</label><p>${totalOrders}</p></div>
+                    <div class="card"><label>Total Gross</label><p>Rs ${totalGross.toLocaleString()}</p></div>
+                </div>
+                ${monthlyReports.length > 0 ? `
+                <h3 style="font-size:14px;color:#374151;margin-bottom:8px">Daily Report Details</h3>
+                <table><thead><tr><th>Date</th><th style="text-align:center">Orders</th><th style="text-align:right">Gross</th><th style="text-align:right">Expenses</th><th style="text-align:right">Status</th></tr></thead>
+                <tbody>${reportRows}
+                <tr class="total-row"><td style="padding:8px 10px">TOTAL</td><td style="padding:8px 10px;text-align:center">${totalOrders}</td><td style="padding:8px 10px;text-align:right">Rs ${totalGross.toLocaleString()}</td><td style="padding:8px 10px;text-align:right;color:#ef4444">Rs ${totalExp.toLocaleString()}</td><td></td></tr>
+                </tbody></table>` : '<p style="color:#9ca3af;text-align:center;padding:20px">No approved reports this month</p>'}
+                <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px;margin-top:12px;font-size:13px">
+                    <strong>Deductions:</strong> Salary deduction: Rs ${attendanceInfo.totalDeduction.toLocaleString()}
+                    (${attendanceInfo.deductibleAbsences} absent days × Rs ${attendanceInfo.dailyWage})
+                </div>
+                <div class="net"><p>Net Salary — ${monthLabel}</p><h2>Rs ${netSalary.toLocaleString()}</h2></div>
+                <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:16px">Generated: ${new Date().toLocaleString('en-PK')} · Dastak Delivery Service</p>
+                <div style="text-align:center;margin-top:12px"><button onclick="window.print()" style="background:#4f46e5;color:white;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:14px">🖨️ Print / Save PDF</button></div>
+                </body></html>`;
+                const win = window.open('', '_blank');
+                win.document.write(html);
+                win.document.close();
+                setTimeout(() => win.print(), 500);
             },
 
             renderAdminDashboard() {
@@ -1483,14 +1560,40 @@ if (this.data.currentUser.role === 'admin') {
             },
 
             sendWhatsAppPaymentReminder(riderName, customerDetail, amount, date) {
-                const message = `Assalam o Alaikum *${customerDetail}*,\n\nآپ کی payment ابھی pending ہے۔ آپ نے *Dastak* پر order کیا تھا۔\n\n💰 *Amount: Rs ${amount.toLocaleString()}*\n📅 Date: ${new Date(date).toLocaleDateString('ur-PK')}\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ 🙏`;
-                // WhatsApp Business — no phone number so contact picker opens
+                const message = `Assalam o Alaikum,\n\nآپ کی payment ابھی pending ہے۔ آپ نے *Dastak* پر order کیا تھا۔\n\n💰 *Amount: Rs ${Number(amount).toLocaleString()}*\n📅 Date: ${new Date(date).toLocaleDateString('en-PK')}\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ — Dastak 🙏`;
                 const encoded = encodeURIComponent(message);
-                // Try WhatsApp Business app first, fallback to web
+                // Try to find customer phone from customers list
+                const detail = (customerDetail || '').toLowerCase();
+                const customers = this.data.customers || [];
+                let waNumber = '';
+                // Match by phone number in detail
+                const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+                const byPhone = customers.find(c => {
+                    const cp = (c.phone||'').replace(/\D/g,'').slice(-10);
+                    return cp.length >= 10 && cp === phoneInDetail;
+                });
+                // Match by name
+                const byName = !byPhone && customers.find(c => {
+                    const cn = (c.name||'').toLowerCase();
+                    return cn.length >= 3 && detail.includes(cn);
+                });
+                const matched = byPhone || byName;
+                if (matched && matched.phone) {
+                    const p = matched.phone.replace(/\D/g,'');
+                    waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
+                }
                 const isMobile = /iPhone|Android/i.test(navigator.userAgent);
-                const url = isMobile
-                    ? `whatsapp://send?text=${encoded}`
-                    : `https://web.whatsapp.com/send?text=${encoded}`;
+                let url;
+                if (waNumber.length >= 11) {
+                    url = isMobile
+                        ? `whatsapp://send?phone=${waNumber}&text=${encoded}`
+                        : `https://web.whatsapp.com/send?phone=${waNumber}&text=${encoded}`;
+                } else {
+                    // No number found — open without number (contact picker)
+                    url = isMobile
+                        ? `whatsapp://send?text=${encoded}`
+                        : `https://web.whatsapp.com/send?text=${encoded}`;
+                }
                 window.open(url, '_blank');
             },
 
@@ -1576,22 +1679,26 @@ if (this.data.currentUser.role === 'admin') {
                 const overlay = document.getElementById('modal-overlay');
                 const paymentsHTML = (report.onlinePayments || []).map((p, i) => `
                     <div class="bg-gray-50 rounded-lg p-3 space-y-2" id="ae-pay-${i}">
-                        <div class="flex justify-between items-center">
-                            <p class="text-xs font-semibold text-gray-700">Payment ${i+1}: ${p.detail || ''}</p>
+                        <div class="flex justify-between items-center mb-1">
+                            <p class="text-xs font-semibold text-gray-600">Payment ${i+1}</p>
                             <span class="text-xs px-2 py-0.5 rounded ${p.status==='received'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}">${p.status}</span>
                         </div>
+                        <div><label class="text-xs text-gray-500">Customer Name / Detail</label>
+                            <input type="text" id="ae-pay-detail-${i}" value="${(p.detail||'').replace(/"/g,'&quot;')}" 
+                                class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:border-indigo-400 mt-1"
+                                placeholder="Customer name or detail">
+                        </div>
                         <div class="grid grid-cols-2 gap-2">
-                            <div><label class="text-xs text-gray-500">Original Amount</label>
-                                <p class="text-sm font-bold text-gray-700">Rs ${(p.amount||0).toLocaleString()}</p>
+                            <div><label class="text-xs text-gray-500">Amount (Rs)</label>
+                                <input type="number" id="ae-pay-amt-${i}" value="${p.amount||0}" class="w-full border border-indigo-300 rounded px-2 py-1.5 text-sm outline-none mt-1">
                             </div>
-                            <div><label class="text-xs text-gray-500">Remaining / Edit Amount</label>
-                                <input type="number" id="ae-pay-amt-${i}" value="${p.amount||0}" class="w-full border border-indigo-300 rounded px-2 py-1.5 text-sm outline-none">
+                            <div><label class="text-xs text-gray-500">Status</label>
+                                <select id="ae-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none mt-1">
+                                    <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="received" ${p.status==='received'?'selected':''}>Received</option>
+                                </select>
                             </div>
                         </div>
-                        <select id="ae-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none">
-                            <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
-                            <option value="received" ${p.status==='received'?'selected':''}>Received</option>
-                        </select>
                     </div>`).join('');
                 modalContent.innerHTML = `
                     <div class="p-5">
@@ -1632,6 +1739,7 @@ if (this.data.currentUser.role === 'admin') {
                     // Rebuild online payments with edited amounts/statuses
                     const updatedPayments = (report.onlinePayments || []).map((p, i) => ({
                         ...p,
+                        detail: document.getElementById(`ae-pay-detail-${i}`)?.value ?? p.detail,
                         amount: parseFloat(document.getElementById(`ae-pay-amt-${i}`)?.value) ?? p.amount,
                         status: document.getElementById(`ae-pay-status-${i}`)?.value ?? p.status
                     }));
