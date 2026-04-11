@@ -119,14 +119,14 @@
                 <div id="month-picker-wrap" class="hidden">
                     <select id="global-month-picker" onchange="app.onMonthChange()" class="border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none cursor-pointer"></select>
                 </div>
-                <button class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
+                <button id="notif-btn" onclick="app.showNotifications()" class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
                     <i class="fas fa-bell text-lg md:text-xl"></i>
-                    <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                    <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white hidden" id="notif-dot"></span>
                 </button>
                 <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
                     <i class="fas fa-play mr-1"></i> <span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Shift</span>
                 </button>
-                <button onclick="app.logout()" title="Logout" class="md:hidden flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0 md:hidden" id="mobile-logout-btn">
                     <i class="fas fa-sign-out-alt text-base"></i>
                 </button>
             </div>
@@ -151,6 +151,7 @@
                 sidebarOpen: false,
                 currentTimeFilter: 'month',
                 currentParsedOrder: null,
+                isInitialLoad: true,
                 selectedMonth: new Date().getMonth(),
                 selectedYear: new Date().getFullYear(),
                 custPage: 1,
@@ -223,16 +224,22 @@ if (this.data.currentUser.role === 'admin') {
                 this.data.unsubscribeRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
                     self.data.users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }, (error) => { console.error('Riders error:', error); });
+                // Load notifications once + listen for new ones
+                window.db.collection('notifications').orderBy('createdAt', 'desc').limit(50).get().then(snap => {
+                    const notifs = snap.docs.map(doc => ({ id: doc.data().id || doc.id, ...doc.data() }));
+                    if (notifs.length > 0) {
+                        self.data.announcements = notifs;
+                        const dot = document.getElementById('notif-dot');
+                        if (dot) dot.classList.remove('hidden');
+                    }
+                }).catch(e => console.error('Notifications error:', e));
                 this.data.unsubscribeReports = window.db.collection('reports').onSnapshot((snapshot) => {
                     self.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    // AUTO REFRESH DASHBOARD AFTER DATA LOAD
-                    if (self.data.currentUser) {
-                        if (self.data.currentUser.role === 'admin') {
-                            self.renderAdminDashboard();
-                        } else {
-                            self.renderRiderDashboard();
-                        }
+                    // Smart refresh: only re-render if user is on dashboard page
+                    if (self.data.currentUser && self.data.isInitialLoad) {
+                        self.data.isInitialLoad = false;
+                        if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
+                        else self.renderRiderDashboard();
                     }
                 }, (error) => { console.error('Reports error:', error); });
                 this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
@@ -241,9 +248,10 @@ if (this.data.currentUser.role === 'admin') {
                 this.data.unsubscribeCompanyExpenses = window.db.collection('companyExpenses').onSnapshot((snapshot) => {
                     self.data.companyExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }, (error) => { console.error('CompanyExpenses error:', error); });
-                this.data.unsubscribeCustomers = window.db.collection('customers').onSnapshot((snapshot) => {
+                // Customers: use get() not onSnapshot (rarely changes, saves reads)
+                window.db.collection('customers').get().then(snapshot => {
                     self.data.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }, (error) => { console.error('Customers error:', error); });
+                }).catch(e => console.error('Customers error:', e));
             },
 
             stopRealtimeListeners() {
@@ -251,12 +259,12 @@ if (this.data.currentUser.role === 'admin') {
                 if (this.data.unsubscribeReports) this.data.unsubscribeReports();
                 if (this.data.unsubscribeAttendance) this.data.unsubscribeAttendance();
                 if (this.data.unsubscribeCompanyExpenses) this.data.unsubscribeCompanyExpenses();
-                if (this.data.unsubscribeCustomers) this.data.unsubscribeCustomers();
                 this.data.unsubscribeRiders = null;
                 this.data.unsubscribeReports = null;
                 this.data.unsubscribeAttendance = null;
                 this.data.unsubscribeCompanyExpenses = null;
                 this.data.unsubscribeCustomers = null;
+                this.data.isInitialLoad = true;
             },
 
             updateDate() {
@@ -475,6 +483,12 @@ if (this.data.currentUser.role === 'admin') {
                 document.getElementById('user-name').textContent = this.data.currentUser.name;
                 document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : `Rider - ${this.data.currentUser.zone || 'Unassigned'}`;
                 document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name= ${encodeURIComponent(this.data.currentUser.name)}&background=4f46e5&color=fff`;
+                // Show/hide shift button based on role
+                const shiftBtn = document.getElementById('shift-btn');
+                if (shiftBtn) shiftBtn.style.display = isAdmin ? 'none' : '';
+                // Mobile logout always visible
+                const mobileLogout = document.getElementById('mobile-logout-btn');
+                if (mobileLogout) mobileLogout.classList.remove('hidden');
             },
 
             navigate(viewId) {
@@ -561,10 +575,13 @@ if (this.data.currentUser.role === 'admin') {
                 }
                 this.data.reports.filter(r => r.status === 'approved').forEach(r => {
                     if (dailyData.hasOwnProperty(r.date)) {
-                        // Profit = Orders Amount - Expenses - Daily Wage
                         const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
                         dailyData[r.date] += profit;
                     }
+                });
+                // Subtract company expenses per day
+                (this.data.companyExpenses || []).forEach(e => {
+                    if (dailyData.hasOwnProperty(e.date)) dailyData[e.date] -= (e.amount || 0);
                 });
                 return Object.entries(dailyData).map(([date, profit]) => ({
                     date, profit,
@@ -579,9 +596,13 @@ if (this.data.currentUser.role === 'admin') {
                     const rDate = new Date(r.date);
                     return r.status === 'approved' && rDate.getFullYear() === year;
                 }).forEach(r => {
-                    // Profit = Orders Amount - Expenses - Daily Wage
                     const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
                     monthlyData[new Date(r.date).getMonth()] += profit;
+                });
+                // Subtract company expenses per month
+                (this.data.companyExpenses || []).forEach(e => {
+                    const d = new Date(e.date);
+                    if (d.getFullYear() === year) monthlyData[d.getMonth()] -= (e.amount || 0);
                 });
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 return Object.entries(monthlyData).map(([month, profit]) => ({ month: parseInt(month), monthName: monthNames[month], profit }));
@@ -591,9 +612,13 @@ if (this.data.currentUser.role === 'admin') {
                 const yearlyData = {};
                 this.data.reports.filter(r => r.status === 'approved').forEach(r => {
                     const year = new Date(r.date).getFullYear();
-                    // Profit = Orders Amount - Expenses - Daily Wage
                     const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
                     yearlyData[year] = (yearlyData[year] || 0) + profit;
+                });
+                // Subtract company expenses per year
+                (this.data.companyExpenses || []).forEach(e => {
+                    const year = new Date(e.date).getFullYear();
+                    yearlyData[year] = (yearlyData[year] || 0) - (e.amount || 0);
                 });
                 return Object.entries(yearlyData).map(([year, profit]) => ({ year: parseInt(year), profit })).sort((a, b) => a.year - b.year);
             },
@@ -1123,11 +1148,24 @@ if (this.data.currentUser.role === 'admin') {
                             <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div>
                         </div>
                         <h3 class="font-bold text-gray-700 mb-2 text-sm">Orders</h3>
-                        <div class="space-y-2 mb-4">${(report.orders || []).map(o => `
+                        <div class="space-y-2 mb-4">
+                            ${(report.orders || []).length === 0 ? '<p class="text-xs text-gray-400">No orders</p>' :
+                            (report.orders || []).map(o => `
                             <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
-                                <span>${o.type} (x${o.qty})</span>
-                                <div class="text-right"><div class="text-gray-600">Rs ${(o.gross || 0).toLocaleString()}</div></div>
-                            </div>`).join('')}</div>
+                                <div>
+                                    <span class="font-medium">${o.type}</span>
+                                    <span class="text-gray-500 text-xs ml-2">x${o.qty} × Rs ${(o.rate||0).toLocaleString()}</span>
+                                </div>
+                                <span class="font-bold text-indigo-600">Rs ${(o.gross || 0).toLocaleString()}</span>
+                            </div>`).join('')}
+                        </div>
+                        ${(report.expenses||[]).length > 0 ? `
+                        <h3 class="font-bold text-gray-700 mb-2 text-sm">Expenses</h3>
+                        <div class="space-y-1 mb-4">${(report.expenses||[]).map(e => `
+                            <div class="flex justify-between text-sm p-2 bg-red-50 rounded">
+                                <span class="text-gray-600">${e.type}</span>
+                                <span class="text-red-600 font-medium">Rs ${(e.amount||0).toLocaleString()}</span>
+                            </div>`).join('')}</div>` : ''}
                         ${(report.onlinePayments || []).length > 0 ? `
                             <h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
                             <div class="space-y-1 mb-4">${report.onlinePayments.map(p => `
@@ -1312,7 +1350,8 @@ if (this.data.currentUser.role === 'admin') {
                 const totalRiders = this.data.users.filter(u => u.role === 'rider').length;
                 const pendingReports = this.getMonthFilteredReports('pending').length;
                 // Profit: orders - expenses - wage
-                const totalProfit = monthReports.reduce((a,r) => a + (r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0), 0);
+                const totalProfit = monthReports.reduce((a,r) => a + (r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0), 0)
+                    - (this.data.companyExpenses||[]).filter(e=>{ const d=new Date(e.date); return d.getMonth()===m && d.getFullYear()===y; }).reduce((a,e)=>a+e.amount,0);
                 const totalWages = monthReports.reduce((a,r) => a + (r.dailyWage||0), 0);
                 const totalRiderExpenses = monthReports.reduce((a,r) => a + (r.totalExpenses||0), 0);
                 const fuelTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0), 0);
@@ -1471,7 +1510,8 @@ if (this.data.currentUser.role === 'admin') {
                 const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
                 const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
                 const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
-                const profit = gross - wages - exp;
+                const companyExpDay = (this.data.companyExpenses||[]).filter(e=>e.date===date).reduce((a,e)=>a+e.amount,0);
+                const profit = gross - wages - exp - companyExpDay;
                 const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
                 const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
                 const pending = this.data.reports.filter(r=>r.date===date&&r.status==='pending').length;
@@ -2079,6 +2119,19 @@ if (this.data.currentUser.role === 'admin') {
             renderAdminCustomers() {
                 document.getElementById('page-title').textContent = 'Customers';
                 const container = document.getElementById('main-container');
+                // Show loading first
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading customers...</p></div>`;
+                // Reload from Firestore
+                window.db.collection('customers').get().then(snap => {
+                    this.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this._renderCustomersPage();
+                }).catch(e => {
+                    container.innerHTML = `<div class="text-center text-red-500 py-8">Error loading customers: ${e.message}</div>`;
+                });
+            },
+
+            _renderCustomersPage() {
+                const container = document.getElementById('main-container');
                 const customers = this.data.customers || [];
                 const topCustomers = customers.map(c => {
                     const s = this.getCustomerPaymentStats(c);
@@ -2127,7 +2180,7 @@ if (this.data.currentUser.role === 'admin') {
                                 </div>
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <select onchange="app.custChangePerPage(this.value)" class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-white">
-                                        ${[10,20,30,40,50,60,70,80,90,100].map(n => `<option value="${n}" ${n===this.data.custPerPage?'selected':''}>${n} per page</option>`).join('')}
+                                        ${[10,20,30,40,50,60,70,80,90,100,1000].map(n => `<option value="${n}" ${n===this.data.custPerPage?'selected':''}>${n=== 1000?'All (1000)':n+' per page'}</option>`).join('')}
                                     </select>
                                     <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-28">
                                     <button onclick="app.toggleSelectAll()" id="select-all-btn" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200 whitespace-nowrap">☐ Select All</button>
@@ -2786,6 +2839,83 @@ if (this.data.currentUser.role === 'admin') {
                 const btn = document.getElementById('shift-btn');
                 if (!this.data.currentShift) { this.data.currentShift = { start: new Date(), isActive: true }; btn.innerHTML = '<i class="fas fa-pause mr-1"></i> <span class="hidden sm:inline">End Shift</span><span class="sm:hidden">End</span>'; btn.className = "px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors whitespace-nowrap"; alert("Shift Started!"); }
                 else { this.data.currentShift = null; btn.innerHTML = '<i class="fas fa-play mr-1"></i> <span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Start</span>'; btn.className = "px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap"; alert("Shift Ended!"); }
+            },
+
+            showNotifications() {
+                const isAdmin = this.data.currentUser?.role === 'admin';
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                const announcements = this.data.announcements || [];
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">🔔 Notifications</h2>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+                        ${isAdmin ? `
+                        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4 space-y-3">
+                            <h3 class="font-bold text-indigo-800 text-sm">✍️ New Notification Bhejo</h3>
+                            <input type="text" id="notif-title" placeholder="Title (e.g. Eid Bonus)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                            <textarea id="notif-body" rows="3" placeholder="Message likhein..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none resize-none focus:border-indigo-500"></textarea>
+                            <div class="flex gap-2">
+                                <select id="notif-priority" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white flex-1">
+                                    <option value="normal">Normal</option>
+                                    <option value="high">High Priority 🔴</option>
+                                </select>
+                                <button onclick="app.sendNotification()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Send</button>
+                            </div>
+                        </div>` : ''}
+                        <div class="space-y-3">
+                            ${announcements.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-bell-slash text-4xl mb-2"></i><p>Koi notification nahi</p></div>` :
+                            [...announcements].reverse().map(a => `
+                            <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500 bg-red-50' : 'border-indigo-400 bg-indigo-50'} pl-3 py-2 rounded-r-xl">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-semibold text-sm ${a.priority === 'high' ? 'text-red-800' : 'text-indigo-800'}">${a.title}</h4>
+                                    ${isAdmin ? `<button onclick="app.deleteNotification(${a.id})" class="text-gray-400 hover:text-red-500 text-xs ml-2"><i class="fas fa-trash"></i></button>` : ''}
+                                </div>
+                                <p class="text-xs text-gray-600 mt-1">${a.content}</p>
+                                <p class="text-xs text-gray-400 mt-1">${new Date(a.date).toLocaleDateString('en-PK')}</p>
+                            </div>`).join('')}
+                        </div>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+                // Mark as seen — hide red dot
+                const dot = document.getElementById('notif-dot');
+                if (dot) dot.classList.add('hidden');
+            },
+
+            async sendNotification() {
+                const title = document.getElementById('notif-title')?.value.trim();
+                const content = document.getElementById('notif-body')?.value.trim();
+                const priority = document.getElementById('notif-priority')?.value || 'normal';
+                if (!title || !content) { alert('Title aur message likhna zaroori hai!'); return; }
+                const newNotif = {
+                    id: Date.now(),
+                    title, content, priority,
+                    date: new Date().toISOString().split('T')[0],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                try {
+                    await window.db.collection('notifications').add(newNotif);
+                    // Also update local
+                    this.data.announcements.push(newNotif);
+                    alert('Notification bhej di! ✅');
+                    this.closeModal();
+                    // Show red dot for riders
+                    const dot = document.getElementById('notif-dot');
+                    if (dot) dot.classList.remove('hidden');
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteNotification(id) {
+                try {
+                    // Remove from Firestore
+                    const snap = await window.db.collection('notifications').where('id', '==', id).get();
+                    snap.docs.forEach(doc => doc.ref.delete());
+                    this.data.announcements = this.data.announcements.filter(a => a.id !== id);
+                    this.showNotifications();
+                } catch(e) { alert('Error: ' + e.message); }
             },
 
             closeModal() {
