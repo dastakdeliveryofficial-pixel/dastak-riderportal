@@ -219,51 +219,85 @@ if (this.data.currentUser.role === 'admin') {
                 }
             },
 
-            setupRealtimeListeners() {
+            async setupRealtimeListeners() {
                 const self = this;
-                this.data.unsubscribeRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot((snapshot) => {
-                    self.data.users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }, (error) => { console.error('Riders error:', error); });
-                // Load notifications once + listen for new ones
-                window.db.collection('notifications').orderBy('createdAt', 'desc').limit(50).get().then(snap => {
-                    const notifs = snap.docs.map(doc => ({ id: doc.data().id || doc.id, ...doc.data() }));
-                    if (notifs.length > 0) {
-                        self.data.announcements = notifs;
+                try {
+                    // 1. Load riders (get - not realtime)
+                    const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
+                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // 2. Load reports - latest 200 only (orderBy date desc)
+                    const reportsSnap = await window.db.collection('reports')
+                        .orderBy('createdAt', 'desc').limit(200).get();
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // 3. Load attendance - current month only
+                    const now = new Date();
+                    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                    const attSnap = await window.db.collection('attendance')
+                        .where('date', '>=', monthStart).get();
+                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // 4. Load company expenses
+                    const expSnap = await window.db.collection('companyExpenses').get();
+                    self.data.companyExpenses = expSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // 5. Load customers
+                    const custSnap = await window.db.collection('customers').get();
+                    self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // 6. Load notifications
+                    const notifSnap = await window.db.collection('notifications')
+                        .orderBy('createdAt', 'desc').limit(50).get();
+                    if (!notifSnap.empty) {
+                        self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
                         const dot = document.getElementById('notif-dot');
                         if (dot) dot.classList.remove('hidden');
                     }
-                }).catch(e => console.error('Notifications error:', e));
-                this.data.unsubscribeReports = window.db.collection('reports').onSnapshot((snapshot) => {
-                    self.data.reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Smart refresh: only re-render if user is on dashboard page
-                    if (self.data.currentUser && self.data.isInitialLoad) {
-                        self.data.isInitialLoad = false;
-                        if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
-                        else self.renderRiderDashboard();
+
+                    // 7. Render dashboard once after all data loaded
+                    if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
+                    else self.renderRiderDashboard();
+
+                } catch(e) {
+                    console.error('Data load error:', e);
+                    // Fallback render even if some data fails
+                    if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
+                    else self.renderRiderDashboard();
+                }
+            },
+
+            // Manual refresh - call this after save/update operations
+            async refreshData(collections = ['reports']) {
+                const self = this;
+                try {
+                    for (const col of collections) {
+                        if (col === 'reports') {
+                            const snap = await window.db.collection('reports')
+                                .orderBy('createdAt', 'desc').limit(200).get();
+                            self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'attendance') {
+                            const now = new Date();
+                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                            const snap = await window.db.collection('attendance')
+                                .where('date', '>=', monthStart).get();
+                            self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'users') {
+                            const snap = await window.db.collection('users').where('role', '==', 'rider').get();
+                            self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'customers') {
+                            const snap = await window.db.collection('customers').get();
+                            self.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'companyExpenses') {
+                            const snap = await window.db.collection('companyExpenses').get();
+                            self.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        }
                     }
-                }, (error) => { console.error('Reports error:', error); });
-                this.data.unsubscribeAttendance = window.db.collection('attendance').onSnapshot((snapshot) => {
-                    self.data.attendance = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }, (error) => { console.error('Attendance error:', error); });
-                this.data.unsubscribeCompanyExpenses = window.db.collection('companyExpenses').onSnapshot((snapshot) => {
-                    self.data.companyExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }, (error) => { console.error('CompanyExpenses error:', error); });
-                // Customers: use get() not onSnapshot (rarely changes, saves reads)
-                window.db.collection('customers').get().then(snapshot => {
-                    self.data.customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                }).catch(e => console.error('Customers error:', e));
+                } catch(e) { console.error('Refresh error:', e); }
             },
 
             stopRealtimeListeners() {
-                if (this.data.unsubscribeRiders) this.data.unsubscribeRiders();
-                if (this.data.unsubscribeReports) this.data.unsubscribeReports();
-                if (this.data.unsubscribeAttendance) this.data.unsubscribeAttendance();
-                if (this.data.unsubscribeCompanyExpenses) this.data.unsubscribeCompanyExpenses();
-                this.data.unsubscribeRiders = null;
-                this.data.unsubscribeReports = null;
-                this.data.unsubscribeAttendance = null;
-                this.data.unsubscribeCompanyExpenses = null;
-                this.data.unsubscribeCustomers = null;
+                // All listeners replaced with get() - just reset flags
                 this.data.isInitialLoad = true;
             },
 
@@ -1036,9 +1070,14 @@ if (this.data.currentUser.role === 'admin') {
                     const editId = document.getElementById('report-edit-id')?.value;
                     if (editId) {
                         await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                        // Update local data
+                        const existing = this.data.reports.find(r => r.id === editId);
+                        if (existing) Object.assign(existing, newReport);
                         alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
                     } else {
-                        await window.db.collection('reports').add(newReport);
+                        const docRef = await window.db.collection('reports').add(newReport);
+                        // Add to local data
+                        this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
                         // Auto mark present on the selected date
                         if (!isDraft) {
                             const docId = `${this.data.currentUser.id}_${selectedDate}`;
@@ -1052,6 +1091,7 @@ if (this.data.currentUser.role === 'admin') {
                                     autoMarked: true,
                                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                                 });
+                                this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
                             }
                         }
                         const isPast = selectedDate < new Date().toISOString().split('T')[0];
@@ -1552,7 +1592,12 @@ if (this.data.currentUser.role === 'admin') {
 
             async deleteRider(riderId) {
                 if (!confirm('Delete this rider? All data will be removed.')) return;
-                try { await window.db.collection('users').doc(riderId).delete(); alert('Rider deleted!'); }
+                try { 
+                    await window.db.collection('users').doc(riderId).delete();
+                    this.data.users = this.data.users.filter(u => u.id !== riderId);
+                    this.renderAdminRiders();
+                    alert('Rider deleted!'); 
+                }
                 catch (error) { alert('Error: ' + error.message); }
             },
 
@@ -1669,9 +1714,12 @@ if (this.data.currentUser.role === 'admin') {
                     wageEnabled
                 };
                 try { 
-                    await window.db.collection('users').doc(riderId).update(updates); 
+                    await window.db.collection('users').doc(riderId).update(updates);
+                    // Update local data
+                    const rider = this.data.users.find(u => u.id === riderId);
+                    if (rider) Object.assign(rider, updates);
                     this.closeModal(); 
-                    alert('Rider updated! ✅\nWage Type: ' + (wageEnabled ? wageType : 'Disabled'));
+                    alert('Rider updated! ✅\nWage Type: ' + (updates.wageEnabled ? updates.wageType : 'Disabled'));
                 }
                 catch (error) { alert('Error: ' + error.message); }
             },
@@ -1728,11 +1776,13 @@ if (this.data.currentUser.role === 'admin') {
                 if (!report || !report.onlinePayments || !report.onlinePayments[idx]) return;
                 try {
                     const updatedPayments = [...report.onlinePayments];
-                    const payment = updatedPayments[idx];
+                    const payment = { ...updatedPayments[idx] };
                     updatedPayments[idx] = { ...payment, status: 'received' };
                     await window.db.collection('reports').doc(reportId).update({ onlinePayments: updatedPayments });
-                    // Send shukriya WhatsApp
+                    // Update local data only - no re-fetch
+                    report.onlinePayments = updatedPayments;
                     this.sendReceivedThankYou(payment.detail, payment.amount, report.date);
+                    this.renderAdminOnlinePayments(); // re-render current page only
                 } catch (error) { alert('Error: ' + error.message); }
             },
 
@@ -1857,6 +1907,8 @@ if (this.data.currentUser.role === 'admin') {
                 const reason = prompt('Rejection reason (optional):');
                 try {
                     await window.db.collection('reports').doc(id).update({ status: 'rejected', rejectionReason: reason || '' });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) { r.status = 'rejected'; r.rejectionReason = reason || ''; }
                     this.renderAdminReports();
                 } catch(e) { alert('Error: ' + e.message); }
             },
@@ -1864,7 +1916,9 @@ if (this.data.currentUser.role === 'admin') {
             async adminDeleteReport(id) {
                 if (!confirm('Delete this report? It can be recovered later.')) return;
                 try {
-                    await window.db.collection('reports').doc(id).update({ status: 'deleted', deletedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    await window.db.collection('reports').doc(id).update({ status: 'deleted' });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) r.status = 'deleted';
                     this.renderAdminReports();
                 } catch(e) { alert('Error: ' + e.message); }
             },
@@ -1872,6 +1926,8 @@ if (this.data.currentUser.role === 'admin') {
             async adminRecoverReport(id) {
                 try {
                     await window.db.collection('reports').doc(id).update({ status: 'pending', deletedAt: null });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) { r.status = 'pending'; r.deletedAt = null; }
                     this.renderAdminReports();
                 } catch(e) { alert('Error: ' + e.message); }
             },
@@ -1940,7 +1996,6 @@ if (this.data.currentUser.role === 'admin') {
                 e.preventDefault();
                 const report = this.data.reports.find(r => r.id === id);
                 try {
-                    // Rebuild online payments with edited amounts/statuses
                     const updatedPayments = (report.onlinePayments || []).map((p, i) => ({
                         ...p,
                         detail: document.getElementById(`ae-pay-detail-${i}`)?.value ?? p.detail,
@@ -1958,6 +2013,8 @@ if (this.data.currentUser.role === 'admin') {
                         adminEditedAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
                     await window.db.collection('reports').doc(id).update(updates);
+                    // Update local data - no re-fetch
+                    Object.assign(report, updates);
                     this.closeModal();
                     this.renderAdminReports();
                 } catch(e) { alert('Error: ' + e.message); }
@@ -2101,9 +2158,20 @@ if (this.data.currentUser.role === 'admin') {
                 const date = document.getElementById('ce-date').value;
                 if (!amount || amount <= 0) { alert('Amount daalna zaroori hai!'); return; }
                 try {
-                    const newExp = { category, amount, description, date, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
-                    await window.db.collection('companyExpenses').add(newExp);
+                    const newExp = { category, amount, description, date };
+                    const docRef = await window.db.collection('companyExpenses').add({ ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    // Update local data
+                    this.data.companyExpenses.push({ id: docRef.id, ...newExp });
                     alert('Expense add ho gaya!');
+                    this.renderCompanyExpenses();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteCompanyExpense(id) {
+                if (!confirm('Delete this expense?')) return;
+                try {
+                    await window.db.collection('companyExpenses').doc(id).delete();
+                    this.data.companyExpenses = this.data.companyExpenses.filter(e => e.id !== id);
                     this.renderCompanyExpenses();
                 } catch(e) { alert('Error: ' + e.message); }
             },
@@ -2282,8 +2350,11 @@ if (this.data.currentUser.role === 'admin') {
                 if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
                 try {
                     await window.db.collection('customers').doc(id).update({ name, phone, address });
+                    // Update local data - no re-fetch
+                    const c = this.data.customers.find(x => x.id === id);
+                    if (c) { c.name = name; c.phone = phone; c.address = address; }
                     this.closeModal();
-                    this.renderAdminCustomers();
+                    this._renderCustomersPage();
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
@@ -2355,8 +2426,11 @@ if (this.data.currentUser.role === 'admin') {
                         });
                         await batch.commit();
                     }
+                    // Update local data - no re-fetch
+                    const idSet = new Set(ids);
+                    this.data.customers = this.data.customers.filter(c => !idSet.has(c.id));
                     alert(`✅ ${ids.length} customers delete ho gaye!`);
-                    this.renderAdminCustomers();
+                    this._renderCustomersPage();
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
@@ -2384,18 +2458,24 @@ if (this.data.currentUser.role === 'admin') {
                 const address = document.getElementById('cust-address').value.trim();
                 if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
                 try {
-                    await window.db.collection('customers').add({ name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    const docRef = await window.db.collection('customers').add({ name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    // Update local data - no re-fetch
+                    this.data.customers.push({ id: docRef.id, name, phone, address });
                     document.getElementById('cust-name').value = '';
                     document.getElementById('cust-phone').value = '';
                     document.getElementById('cust-address').value = '';
                     alert('Customer add ho gaya!');
-                    this.renderAdminCustomers();
+                    this._renderCustomersPage();
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
             async deleteCustomer(id) {
                 if (!confirm('Delete this customer?')) return;
-                try { await window.db.collection('customers').doc(id).delete(); this.renderAdminCustomers(); }
+                try {
+                    await window.db.collection('customers').doc(id).delete();
+                    this.data.customers = this.data.customers.filter(c => c.id !== id);
+                    this._renderCustomersPage();
+                }
                 catch(e) { alert('Error: ' + e.message); }
             },
 
@@ -2441,6 +2521,7 @@ if (this.data.currentUser.role === 'admin') {
                             let added = 0, skipped = 0;
                             const batchSize = 400;
                             const dataRows = rows.slice(1).filter(r => r && r.length > 0);
+                            const newCustomers = [];
 
                             for (let i = 0; i < dataRows.length; i += batchSize) {
                                 const batch = window.db.batch();
@@ -2452,12 +2533,16 @@ if (this.data.currentUser.role === 'admin') {
                                     if (!name || !phone) { skipped++; return; }
                                     const ref = window.db.collection('customers').doc();
                                     batch.set(ref, { name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                                    newCustomers.push({ id: ref.id, name, phone, address });
                                     added++;
                                 });
                                 await batch.commit();
                             }
+                            // Update local data - no re-fetch needed
+                            self.data.customers = [...self.data.customers, ...newCustomers];
+                            self.data.custPage = 1;
                             alert(`✅ ${added} customers import ho gaye!${skipped > 0 ? `\n⚠️ ${skipped} rows skip hue (name/phone missing)` : ''}`);
-                            self.renderAdminCustomers();
+                            self._renderCustomersPage();
                         } catch(err) { alert('Import error: ' + err.message); }
                     };
                     reader.readAsArrayBuffer(file);
@@ -2732,9 +2817,21 @@ if (this.data.currentUser.role === 'admin') {
                 const docId = `${riderId}_${dateStr}`;
                 try {
                     if (existing) {
-                        if (existing.status === 'present') { const monthAbsences = this.getMonthlyAbsences(riderId, month, year); const isReliefDay = monthAbsences.length === 0; await window.db.collection('attendance').doc(docId).update({ status: 'absent', isReliefDay: isReliefDay }); }
-                        else { await window.db.collection('attendance').doc(docId).delete(); }
-                    } else { await window.db.collection('attendance').doc(docId).set({ riderId, date: dateStr, status: 'present', isReliefDay: false, timestamp: firebase.firestore.FieldValue.serverTimestamp() }); }
+                        if (existing.status === 'present') {
+                            const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+                            const isReliefDay = monthAbsences.length === 0;
+                            await window.db.collection('attendance').doc(docId).update({ status: 'absent', isReliefDay });
+                            existing.status = 'absent'; existing.isReliefDay = isReliefDay;
+                        } else {
+                            await window.db.collection('attendance').doc(docId).delete();
+                            this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
+                        }
+                    } else {
+                        await window.db.collection('attendance').doc(docId).set({ riderId, date: dateStr, status: 'present', isReliefDay: false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+                        this.data.attendance.push({ id: docId, riderId, date: dateStr, status: 'present', isReliefDay: false });
+                    }
+                    // Refresh calendar without re-fetching
+                    this.showAttendanceCalendar(riderId);
                 } catch (error) { console.error('Attendance error:', error); alert('Error updating attendance'); }
             },
 
@@ -2828,7 +2925,10 @@ if (this.data.currentUser.role === 'admin') {
 
             async updateReportStatus(id, status) {
                 try { 
-                    await window.db.collection('reports').doc(id).update({ status: status }); 
+                    await window.db.collection('reports').doc(id).update({ status });
+                    // Update local data only - no re-fetch
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) r.status = status;
                     if(this.data.currentUser.role === 'admin') this.renderAdminReports(); 
                     else this.renderRiderHistory(); 
                 }
@@ -2871,7 +2971,7 @@ if (this.data.currentUser.role === 'admin') {
                             <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500 bg-red-50' : 'border-indigo-400 bg-indigo-50'} pl-3 py-2 rounded-r-xl">
                                 <div class="flex justify-between items-start">
                                     <h4 class="font-semibold text-sm ${a.priority === 'high' ? 'text-red-800' : 'text-indigo-800'}">${a.title}</h4>
-                                    ${isAdmin ? `<button onclick="app.deleteNotification(${a.id})" class="text-gray-400 hover:text-red-500 text-xs ml-2"><i class="fas fa-trash"></i></button>` : ''}
+                                    ${isAdmin ? `<button onclick="app.deleteNotification('${a._docId || a.id}')" class="text-gray-400 hover:text-red-500 text-xs ml-2"><i class="fas fa-trash"></i></button>` : ''}
                                 </div>
                                 <p class="text-xs text-gray-600 mt-1">${a.content}</p>
                                 <p class="text-xs text-gray-400 mt-1">${new Date(a.date).toLocaleDateString('en-PK')}</p>
@@ -2891,29 +2991,23 @@ if (this.data.currentUser.role === 'admin') {
                 const priority = document.getElementById('notif-priority')?.value || 'normal';
                 if (!title || !content) { alert('Title aur message likhna zaroori hai!'); return; }
                 const newNotif = {
-                    id: Date.now(),
                     title, content, priority,
                     date: new Date().toISOString().split('T')[0],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 try {
-                    await window.db.collection('notifications').add(newNotif);
-                    // Also update local
-                    this.data.announcements.push(newNotif);
+                    const docRef = await window.db.collection('notifications').add(newNotif);
+                    // Update local data
+                    this.data.announcements.unshift({ ...newNotif, _docId: docRef.id, id: docRef.id });
                     alert('Notification bhej di! ✅');
                     this.closeModal();
-                    // Show red dot for riders
-                    const dot = document.getElementById('notif-dot');
-                    if (dot) dot.classList.remove('hidden');
                 } catch(e) { alert('Error: ' + e.message); }
             },
 
-            async deleteNotification(id) {
+            async deleteNotification(docId) {
                 try {
-                    // Remove from Firestore
-                    const snap = await window.db.collection('notifications').where('id', '==', id).get();
-                    snap.docs.forEach(doc => doc.ref.delete());
-                    this.data.announcements = this.data.announcements.filter(a => a.id !== id);
+                    await window.db.collection('notifications').doc(docId).delete();
+                    this.data.announcements = this.data.announcements.filter(a => (a._docId || a.id) !== docId);
                     this.showNotifications();
                 } catch(e) { alert('Error: ' + e.message); }
             },
