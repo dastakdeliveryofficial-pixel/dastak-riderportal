@@ -58,7 +58,6 @@
         .calendar-day.empty:hover { transform: none; }
     </style>
 <base target="_blank">
-<base target="_blank">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
     <script>
@@ -131,7 +130,22 @@
                 </button>
             </div>
         </header>
-        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 relative" id="main-container"></div>
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 relative" id="main-container">
+            <div id="app-loading" class="flex flex-col items-center justify-center h-full min-h-64 gap-4">
+                <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 animate-pulse">
+                    <i class="fas fa-motorcycle text-white text-2xl"></i>
+                </div>
+                <div class="text-center">
+                    <p class="font-bold text-gray-700 text-lg">Dastak Portal</p>
+                    <p class="text-sm text-gray-400 mt-1" id="loading-msg">Loading data...</p>
+                </div>
+                <div class="flex gap-1.5">
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+                </div>
+            </div>
+        </div>
     </main>
     <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
@@ -152,6 +166,9 @@
                 currentTimeFilter: 'month',
                 currentParsedOrder: null,
                 isInitialLoad: true,
+                customersLoaded: false,
+                companyExpensesLoaded: false,
+                chartRegistry: {},
                 selectedMonth: new Date().getMonth(),
                 selectedYear: new Date().getFullYear(),
                 custPage: 1,
@@ -221,50 +238,74 @@ if (this.data.currentUser.role === 'admin') {
 
             async setupRealtimeListeners() {
                 const self = this;
+                const setMsg = (msg) => {
+                    const el = document.getElementById('loading-msg');
+                    if (el) el.textContent = msg;
+                };
                 try {
-                    // 1. Load riders (get - not realtime)
-                    const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
-                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    // 2. Load reports - latest 200 only (orderBy date desc)
-                    const reportsSnap = await window.db.collection('reports')
-                        .orderBy('createdAt', 'desc').limit(200).get();
-                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    // 3. Load attendance - current month only
+                    setMsg('Connecting...');
                     const now = new Date();
+                    // Current + last month for reports
+                    const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
                     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-                    const attSnap = await window.db.collection('attendance')
-                        .where('date', '>=', monthStart).get();
+
+                    setMsg('Loading data...');
+
+                    // Load essential data in PARALLEL — Promise.all
+                    const [ridersSnap, reportsSnap, attSnap, notifSnap] = await Promise.all([
+                        window.db.collection('users').where('role', '==', 'rider').get(),
+                        window.db.collection('reports').where('date', '>=', twoMonthsAgo)
+                            .orderBy('date', 'desc').limit(300).get(),
+                        window.db.collection('attendance').where('date', '>=', monthStart).get(),
+                        window.db.collection('notifications').orderBy('createdAt', 'desc').limit(30).get()
+                    ]);
+
+                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                    // 4. Load company expenses
-                    const expSnap = await window.db.collection('companyExpenses').get();
-                    self.data.companyExpenses = expSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    // 5. Load customers
-                    const custSnap = await window.db.collection('customers').get();
-                    self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    // 6. Load notifications
-                    const notifSnap = await window.db.collection('notifications')
-                        .orderBy('createdAt', 'desc').limit(50).get();
                     if (!notifSnap.empty) {
                         self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
                         const dot = document.getElementById('notif-dot');
                         if (dot) dot.classList.remove('hidden');
                     }
 
-                    // 7. Render dashboard once after all data loaded
+                    // Customers & companyExpenses — LAZY: loaded only when needed
+                    self.data.customers = [];
+                    self.data.companyExpenses = [];
+                    self.data.customersLoaded = false;
+                    self.data.companyExpensesLoaded = false;
+
+                    setMsg('Ready!');
+
+                    // Render dashboard — data is ready, no jhatka
                     if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
                     else self.renderRiderDashboard();
 
                 } catch(e) {
                     console.error('Data load error:', e);
-                    // Fallback render even if some data fails
-                    if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
-                    else self.renderRiderDashboard();
+                    setMsg('Error loading. Retrying...');
+                    setTimeout(() => {
+                        if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
+                        else self.renderRiderDashboard();
+                    }, 1000);
                 }
+            },
+
+            // Lazy load customers when needed
+            async ensureCustomers() {
+                if (this.data.customersLoaded) return;
+                const snap = await window.db.collection('customers').get();
+                this.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                this.data.customersLoaded = true;
+            },
+
+            // Lazy load company expenses when needed
+            async ensureCompanyExpenses() {
+                if (this.data.companyExpensesLoaded) return;
+                const snap = await window.db.collection('companyExpenses').get();
+                this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                this.data.companyExpensesLoaded = true;
             },
 
             // Manual refresh - call this after save/update operations
@@ -299,6 +340,24 @@ if (this.data.currentUser.role === 'admin') {
             stopRealtimeListeners() {
                 // All listeners replaced with get() - just reset flags
                 this.data.isInitialLoad = true;
+                this.data.customersLoaded = false;
+                this.data.companyExpensesLoaded = false;
+                // Destroy all charts
+                Object.values(this.data.chartRegistry).forEach(c => { try { c.destroy(); } catch(e){} });
+                this.data.chartRegistry = {};
+            },
+
+            // Safe chart creator — destroys old chart first
+            createChart(id, config) {
+                if (this.data.chartRegistry[id]) {
+                    try { this.data.chartRegistry[id].destroy(); } catch(e) {}
+                    delete this.data.chartRegistry[id];
+                }
+                const ctx = document.getElementById(id);
+                if (!ctx) return null;
+                const chart = new Chart(ctx.getContext('2d'), config);
+                this.data.chartRegistry[id] = chart;
+                return chart;
             },
 
             updateDate() {
@@ -523,6 +582,23 @@ if (this.data.currentUser.role === 'admin') {
                 // Mobile logout always visible
                 const mobileLogout = document.getElementById('mobile-logout-btn');
                 if (mobileLogout) mobileLogout.classList.remove('hidden');
+            },
+
+            showSkeleton(title = '') {
+                if (title) document.getElementById('page-title').textContent = title;
+                const s = `<div class="animate-pulse space-y-4 fade-in pb-20">
+                    <div class="bg-white rounded-2xl p-5 shadow-sm">
+                        <div class="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
+                        <div class="grid grid-cols-2 gap-3">
+                            ${[1,2,3,4].map(()=>`<div class="bg-gray-100 rounded-xl h-20"></div>`).join('')}
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 shadow-sm space-y-3">
+                        <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                        ${[1,2,3].map(()=>`<div class="h-14 bg-gray-100 rounded-xl"></div>`).join('')}
+                    </div>
+                </div>`;
+                document.getElementById('main-container').innerHTML = s;
             },
 
             navigate(viewId) {
@@ -1379,9 +1455,12 @@ if (this.data.currentUser.role === 'admin') {
                 setTimeout(() => win.print(), 500);
             },
 
-            renderAdminDashboard() {
+            async renderAdminDashboard() {
                 document.getElementById('page-title').textContent = 'Admin Dashboard';
                 const container = document.getElementById('main-container');
+                // Lazy load company expenses if not yet loaded
+                if (!this.data.companyExpensesLoaded) this.showSkeleton('Admin Dashboard');
+                await this.ensureCompanyExpenses();
                 const m = this.data.selectedMonth;
                 const y = this.data.selectedYear;
                 const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -1523,9 +1602,7 @@ if (this.data.currentUser.role === 'admin') {
                         </div>
                     </div>`;
                 setTimeout(() => {
-                    const ctx = document.getElementById('profitChart');
-                    if (!ctx) return;
-                    new Chart(ctx.getContext('2d'), {
+                    this.createChart('profitChart', {
                         type: 'bar',
                         data: {
                             labels: dailyLabels,
@@ -2084,9 +2161,10 @@ if (this.data.currentUser.role === 'admin') {
                     </div>`;
             },
 
-            renderCompanyExpenses() {
+            async renderCompanyExpenses() {
                 document.getElementById('page-title').textContent = 'Company Expenses';
                 const container = document.getElementById('main-container');
+                await this.ensureCompanyExpenses();
                 const expenses = this.data.companyExpenses || [];
                 const totalExp = expenses.reduce((a,e)=>a+e.amount,0);
                 const categories = ['Rent', 'Salaries', 'Utilities', 'Fuel', 'Maintenance', 'Marketing', 'Other'];
@@ -2187,14 +2265,11 @@ if (this.data.currentUser.role === 'admin') {
             renderAdminCustomers() {
                 document.getElementById('page-title').textContent = 'Customers';
                 const container = document.getElementById('main-container');
-                // Show loading first
                 container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading customers...</p></div>`;
-                // Reload from Firestore
-                window.db.collection('customers').get().then(snap => {
-                    this.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                this.ensureCustomers().then(() => {
                     this._renderCustomersPage();
                 }).catch(e => {
-                    container.innerHTML = `<div class="text-center text-red-500 py-8">Error loading customers: ${e.message}</div>`;
+                    container.innerHTML = `<div class="text-center text-red-500 py-8">Error: ${e.message}</div>`;
                 });
             },
 
@@ -2912,14 +2987,11 @@ if (this.data.currentUser.role === 'admin') {
                         <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Zone Performance</h3><canvas id="zoneChart" height="200"></canvas></div>
                     </div>`;
                 setTimeout(() => {
-                    const monthlyCtx = document.getElementById('monthlyChart');
-                    if (monthlyCtx) new Chart(monthlyCtx.getContext('2d'), { type: 'bar', data: { labels: monthlyProfits.map(m => m.monthName), datasets: [{ label: 'Monthly Profit (Rs)', data: monthlyProfits.map(m => m.profit), backgroundColor: '#4f46e5', borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
-                    const yearlyCtx = document.getElementById('yearlyChart');
-                    if (yearlyCtx) new Chart(yearlyCtx.getContext('2d'), { type: 'line', data: { labels: yearlyProfits.map(y => y.year), datasets: [{ label: 'Yearly Profit (Rs)', data: yearlyProfits.map(y => y.profit), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
+                    this.createChart('monthlyChart', { type: 'bar', data: { labels: monthlyProfits.map(m => m.monthName), datasets: [{ label: 'Monthly Profit (Rs)', data: monthlyProfits.map(m => m.profit), backgroundColor: '#4f46e5', borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
+                    this.createChart('yearlyChart', { type: 'line', data: { labels: yearlyProfits.map(y => y.year), datasets: [{ label: 'Yearly Profit (Rs)', data: yearlyProfits.map(y => y.profit), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
                     const zones = ['North', 'South', 'East', 'West'];
                     const zoneData = zones.map(zone => { return this.data.reports.filter(r => { const rider = this.data.users.find(u => u.id === r.riderId); return rider && rider.zone === zone && r.status === 'approved'; }).reduce((acc, r) => acc + ((r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0)), 0); });
-                    const zoneCtx = document.getElementById('zoneChart');
-                    if (zoneCtx) new Chart(zoneCtx.getContext('2d'), { type: 'doughnut', data: { labels: zones, datasets: [{ data: zoneData, backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
+                    this.createChart('zoneChart', { type: 'doughnut', data: { labels: zones, datasets: [{ data: zoneData, backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
                 }, 100);
             },
 
