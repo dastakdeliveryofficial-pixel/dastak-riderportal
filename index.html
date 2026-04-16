@@ -195,6 +195,12 @@
                         this.data.sidebarOpen = false;
                     }
                 });
+                // Back/forward button support
+                window.addEventListener('popstate', (e) => {
+                    if (!this.data.currentUser) return;
+                    const viewId = e.state?.viewId || location.hash.slice(1) || null;
+                    if (viewId) this._renderView(viewId);
+                });
             },
 
             async loadUserData(uid) {
@@ -224,11 +230,9 @@
                     this.setupRealtimeListeners();
                     this.renderSidebar();
                     this.initMonthPicker();
-if (this.data.currentUser.role === 'admin') {
-    this.navigate('admin-dashboard');
-} else {
-    this.navigate('rider-dashboard');
-}
+                    const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    history.replaceState({ viewId: initView }, '', '#' + initView);
+                    this._renderView(initView);
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     alert('Error loading user data: ' + error.message);
@@ -445,11 +449,9 @@ if (this.data.currentUser.role === 'admin') {
                     this.setupRealtimeListeners();
                     this.renderSidebar();
                     this.initMonthPicker();
-if (this.data.currentUser.role === 'admin') {
-    this.navigate('admin-dashboard');
-} else {
-    this.navigate('rider-dashboard');
-}
+                    const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    history.replaceState({ viewId: initView }, '', '#' + initView);
+                    this._renderView(initView);
                 } catch (error) {
                     console.error("Login error:", error);
                     if (error.code === 'auth/user-not-found') {
@@ -601,7 +603,14 @@ if (this.data.currentUser.role === 'admin') {
                 document.getElementById('main-container').innerHTML = s;
             },
 
-            navigate(viewId) {
+            navigate(viewId, addToHistory = true) {
+                if (addToHistory) {
+                    history.pushState({ viewId }, '', `#${viewId}`);
+                }
+                this._renderView(viewId);
+            },
+
+            _renderView(viewId) {
                 document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active', 'bg-indigo-600', 'text-white'));
                 const activeBtn = document.getElementById(`nav-${viewId}`);
                 if(activeBtn) activeBtn.classList.add('active');
@@ -621,7 +630,10 @@ if (this.data.currentUser.role === 'admin') {
                 else if (viewId === 'admin-analytics') this.renderAdminAnalytics();
                 else if (viewId === 'admin-settings') this.renderSettings();
                 else if (viewId === 'rider-settings') this.renderSettings();
-                else this.renderRiderDashboard();
+                else {
+                    const def = this.data.currentUser?.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    this.navigate(def);
+                }
             },
 
             showDashboard() {
@@ -656,11 +668,11 @@ if (this.data.currentUser.role === 'admin') {
                 const [year, month] = sel.value.split('-').map(Number);
                 this.data.selectedMonth = month;
                 this.data.selectedYear = year;
-                // Refresh current page
+                // Refresh current page without adding to history
                 const activeBtn = document.querySelector('.sidebar-link.active');
                 if (activeBtn) {
                     const id = activeBtn.id.replace('nav-', '');
-                    this.navigate(id);
+                    this._renderView(id);
                 } else {
                     this.renderAdminDashboard();
                 }
