@@ -1359,19 +1359,7 @@ renderRiderPayments(selectedDate = null) {
     document.getElementById('page-title').textContent = 'Online Payments';
     const container = document.getElementById('main-container');
 
-    // Last 7 days ke buttons banao
-    const dateTabs = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(Date.now() - i * 86400000);
-        const dateStr = d.toISOString().split('T')[0];
-        const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString('en-PK', { weekday: 'short' });
-        const dateLabel = d.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
-        dateTabs.push({ id: dateStr, label: dayLabel, sub: dateLabel });
-    }
-    dateTabs.push({ id: 'all', label: 'All', sub: '' });
-
-    const activeFilter = selectedDate || dateTabs[0].id;
-    this.data.riderPaymentFilter = activeFilter;
+    const activeFilter = selectedDate || new Date().toISOString().split('T')[0];
 
     const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
     let pendingPayments = [];
@@ -1394,16 +1382,26 @@ renderRiderPayments(selectedDate = null) {
     const totalPending = pendingPayments.reduce((a,b) => a+(b.amount||0), 0);
     const totalReceived = receivedPayments.reduce((a,b) => a+(b.amount||0), 0);
 
+    const dateLabel = activeFilter === 'all' ? 'All Time' : new Date(activeFilter + 'T12:00:00').toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
     container.innerHTML = `
         <div class="fade-in pb-20 space-y-4">
-            <div class="flex gap-2 overflow-x-auto pb-1">
-                ${dateTabs.map(t => `<button onclick="app.renderRiderPayments('${t.id}')"
-                    class="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors text-center min-w-[58px]
-                    ${activeFilter === t.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
-                    <span class="block leading-tight">${t.label}</span>
-                    ${t.sub ? `<span class="block text-[10px] leading-tight mt-0.5 ${activeFilter === t.id ? 'text-indigo-200' : 'text-gray-400'}">${t.sub}</span>` : ''}
-                </button>`).join('')}
+            <div class="flex items-center gap-3">
+                <div class="relative flex-1">
+                    <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                    <input type="date" 
+                        value="${activeFilter === 'all' ? '' : activeFilter}" 
+                        max="${new Date().toISOString().split('T')[0]}"
+                        onchange="app.renderRiderPayments(this.value || 'all')"
+                        class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-3 text-sm font-semibold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer">
+                </div>
+                <button onclick="app.renderRiderPayments('all')" 
+                    class="flex-shrink-0 px-4 py-3 rounded-xl text-sm font-semibold transition-colors
+                    ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
+                    All
+                </button>
             </div>
+            <p class="text-xs text-gray-500 -mt-2"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
             <div class="grid grid-cols-2 gap-3">
                 <div class="stat-card border-l-4 border-orange-500">
                     <p class="text-xs text-orange-600 font-medium mb-1">Pending (${pendingPayments.length})</p>
@@ -1459,8 +1457,7 @@ renderRiderPayments(selectedDate = null) {
                 }
             </div>
         </div>`;
-},
-            renderRiderSalary() {
+},            renderRiderSalary() {
                 document.getElementById('page-title').textContent = 'Salary & Payslip';
                 const container = document.getElementById('main-container');
                 const currentMonth = new Date().getMonth();
@@ -1956,19 +1953,7 @@ renderAdminOnlinePayments(selectedDate = null) {
     document.getElementById('page-title').textContent = 'Online Payments';
     const container = document.getElementById('main-container');
 
-    // Last 7 days ke buttons banao
-    const dateTabs = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(Date.now() - i * 86400000);
-        const dateStr = d.toISOString().split('T')[0];
-        const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString('en-PK', { weekday: 'short' });
-        const dateLabel = d.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
-        dateTabs.push({ id: dateStr, label: dayLabel, sub: dateLabel });
-    }
-    dateTabs.push({ id: 'all', label: 'All', sub: '' });
-
-    const activeFilter = selectedDate || dateTabs[0].id;
-    this.data.paymentDateFilter = activeFilter;
+    const activeFilter = selectedDate || new Date().toISOString().split('T')[0];
 
     let pendingPayments = [];
     let receivedPayments = [];
@@ -1990,16 +1975,26 @@ renderAdminOnlinePayments(selectedDate = null) {
     const totalPending = pendingPayments.reduce((a,b) => a+(b.amount||0), 0);
     const totalReceived = receivedPayments.reduce((a,b) => a+(b.amount||0), 0);
 
+    const dateLabel = activeFilter === 'all' ? 'All Time' : new Date(activeFilter + 'T12:00:00').toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
     container.innerHTML = `
         <div class="fade-in pb-20 space-y-4">
-            <div class="flex gap-2 overflow-x-auto pb-1">
-                ${dateTabs.map(t => `<button onclick="app.renderAdminOnlinePayments('${t.id}')"
-                    class="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors text-center min-w-[58px]
-                    ${activeFilter === t.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
-                    <span class="block leading-tight">${t.label}</span>
-                    ${t.sub ? `<span class="block text-[10px] leading-tight mt-0.5 ${activeFilter === t.id ? 'text-indigo-200' : 'text-gray-400'}">${t.sub}</span>` : ''}
-                </button>`).join('')}
+            <div class="flex items-center gap-3">
+                <div class="relative flex-1">
+                    <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                    <input type="date" 
+                        value="${activeFilter === 'all' ? '' : activeFilter}" 
+                        max="${new Date().toISOString().split('T')[0]}"
+                        onchange="app.renderAdminOnlinePayments(this.value || 'all')"
+                        class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-3 text-sm font-semibold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer">
+                </div>
+                <button onclick="app.renderAdminOnlinePayments('all')" 
+                    class="flex-shrink-0 px-4 py-3 rounded-xl text-sm font-semibold transition-colors
+                    ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
+                    All
+                </button>
             </div>
+            <p class="text-xs text-gray-500 -mt-2"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
             <div class="grid grid-cols-3 gap-2">
                 <div class="stat-card text-center p-3 border-l-4 border-orange-400">
                     <p class="text-xs text-orange-600">Pending (${pendingPayments.length})</p>
@@ -2069,7 +2064,6 @@ renderAdminOnlinePayments(selectedDate = null) {
             </div>
         </div>`;
 },
-
             async adminMarkReceived(reportId, idx) {
                 const report = this.data.reports.find(r => r.id === reportId);
                 if (!report || !report.onlinePayments || !report.onlinePayments[idx]) return;
