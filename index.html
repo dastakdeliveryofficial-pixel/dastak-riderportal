@@ -1104,93 +1104,132 @@
                 }
             },
 
-            async submitReport(e) {
-                e.preventDefault();
-                const isDraft = e.submitter?.dataset?.draft === 'true';
-                if(!isDraft && !confirm("Submit this report?")) return;
-                const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
-                const orders = [1, 2, 3].map(i => {
-                    const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
-                    const rate = parseFloat(document.getElementById(`order-rate-${i}`).value) || 0;
-                    const gross = qty * rate;
-                    return { type: `Type ${i}`, qty, rate, gross };
-                }).filter(o => o.qty > 0);
-                const onlinePayments = [];
-                document.querySelectorAll('#online-payments-list > div').forEach(row => {
-                    const inputs = row.querySelectorAll('input, select');
-                    if (inputs.length >= 3) onlinePayments.push({ detail: inputs[0].value, amount: parseFloat(inputs[1].value) || 0, status: inputs[2].value });
-                });
-                const expenses = [
-                    { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
-                    { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
-                    { type: 'Maintenance', amount: parseFloat(document.getElementById('exp-maint').value) || 0 }
-                ].filter(e => e.amount > 0);
-                const totalGross = orders.reduce((acc, o) => acc + o.gross, 0);
-                const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
-                const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
-                // Wage calculation based on wageType
-                const user = this.data.currentUser;
-                const wageEnabled = user?.wageEnabled !== false;
-                const wageType = user?.wageType || 'fixed';
-                let dailyWage = 0;
-                if (wageEnabled && wageType !== 'none') {
-                    if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
-                    else dailyWage = user?.dailyWage || 500;
-                }
-                const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
-                const reportStatus = isDraft ? 'draft' : 'pending';
-                const selectedDate = document.getElementById('report-date')?.value || new Date().toISOString().split('T')[0];
-                const newReport = {
-                    riderId: this.data.currentUser.id, 
-                    riderName: this.data.currentUser.name,
-                    date: selectedDate, 
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    openingBalance: opening, 
-                    orders, 
-                    onlinePayments, 
-                    expenses, 
-                    totalGross, 
-                    totalExpenses, 
-                    dailyWage,
-                    finalAmount,
-                    status: reportStatus, 
-                    proofImage: document.getElementById('proof-preview-img')?.src || null
-                };
-                try {
-                    const editId = document.getElementById('report-edit-id')?.value;
-                    if (editId) {
-                        await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-                        // Update local data
-                        const existing = this.data.reports.find(r => r.id === editId);
-                        if (existing) Object.assign(existing, newReport);
-                        alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
-                    } else {
-                        const docRef = await window.db.collection('reports').add(newReport);
-                        // Add to local data
-                        this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
-                        // Auto mark present on the selected date
-                        if (!isDraft) {
-                            const docId = `${this.data.currentUser.id}_${selectedDate}`;
-                            const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === selectedDate);
-                            if (!existingAtt) {
-                                await window.db.collection('attendance').doc(docId).set({
-                                    riderId: this.data.currentUser.id,
-                                    date: selectedDate,
-                                    status: 'present',
-                                    isReliefDay: false,
-                                    autoMarked: true,
-                                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                                });
-                                this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
-                            }
-                        }
-                        const isPast = selectedDate < new Date().toISOString().split('T')[0];
-                        alert(isDraft ? 'Draft saved!' : `Report Submitted! ✅${isPast ? ` (${new Date(selectedDate).toLocaleDateString()} ki report)` : ''} Attendance auto-marked Present.`);
-                    }
-                    this.navigate('rider-history');
-                } catch (error) { alert('Error: ' + error.message); }
-            },
+async submitReport(e) {
+    e.preventDefault();
+    
+    // 🔒 DOUBLE SUBMIT LOCK — ye line hai asli fix
+    if (this.data._isSubmitting) return;
+    this.data._isSubmitting = true;
+    
+    const isDraft = e.submitter?.dataset?.draft === 'true';
+    if (!isDraft && !confirm("Submit this report?")) {
+        this.data._isSubmitting = false;
+        return;
+    }
 
+    // Buttons disable karo — user dubara tap na sake
+    const allBtns = document.querySelectorAll('button[type="submit"]');
+    allBtns.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
+
+    try {
+        const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
+        const orders = [1, 2, 3].map(i => {
+            const qty = parseInt(document.getElementById(`order-qty-${i}`).value) || 0;
+            const rate = parseFloat(document.getElementById(`order-rate-${i}`).value) || 0;
+            const gross = qty * rate;
+            return { type: `Type ${i}`, qty, rate, gross };
+        }).filter(o => o.qty > 0);
+        const onlinePayments = [];
+        document.querySelectorAll('#online-payments-list > div').forEach(row => {
+            const inputs = row.querySelectorAll('input, select');
+            if (inputs.length >= 3) onlinePayments.push({ detail: inputs[0].value, amount: parseFloat(inputs[1].value) || 0, status: inputs[2].value });
+        });
+        const expenses = [
+            { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
+            { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
+            { type: 'Maintenance', amount: parseFloat(document.getElementById('exp-maint').value) || 0 }
+        ].filter(e => e.amount > 0);
+        const totalGross = orders.reduce((acc, o) => acc + o.gross, 0);
+        const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+        const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
+        const user = this.data.currentUser;
+        const wageEnabled = user?.wageEnabled !== false;
+        const wageType = user?.wageType || 'fixed';
+        let dailyWage = 0;
+        if (wageEnabled && wageType !== 'none') {
+            if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+            else dailyWage = user?.dailyWage || 500;
+        }
+        const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
+        const reportStatus = isDraft ? 'draft' : 'pending';
+        const selectedDate = document.getElementById('report-date')?.value || new Date().toISOString().split('T')[0];
+
+        const newReport = {
+            riderId: this.data.currentUser.id,
+            riderName: this.data.currentUser.name,
+            date: selectedDate,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            openingBalance: opening,
+            orders,
+            onlinePayments,
+            expenses,
+            totalGross,
+            totalExpenses,
+            dailyWage,
+            finalAmount,
+            status: reportStatus,
+            proofImage: document.getElementById('proof-preview-img')?.src || null
+        };
+
+        const editId = document.getElementById('report-edit-id')?.value;
+
+        if (editId) {
+            // ✏️ EDIT MODE — update existing report
+            await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            const existing = this.data.reports.find(r => r.id === editId);
+            if (existing) Object.assign(existing, newReport);
+            alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
+        } else {
+            // 🆕 DUPLICATE CHECK — same rider + same date + same status mein already hai?
+            const duplicate = this.data.reports.find(r =>
+                r.riderId === this.data.currentUser.id &&
+                r.date === selectedDate &&
+                r.status === reportStatus &&
+                r.totalGross === totalGross &&
+                r.finalAmount === finalAmount
+            );
+
+            if (duplicate && !isDraft) {
+                alert('⚠️ Same report already exists for this date!\n\nGo to "My History" to edit it.\n\nReport NOT submitted again.');
+                this.data._isSubmitting = false;
+                allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+                return;
+            }
+
+            // ✅ SAVE NEW REPORT
+            const docRef = await window.db.collection('reports').add(newReport);
+            this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
+
+            // Auto mark attendance
+            if (!isDraft) {
+                const docId = `${this.data.currentUser.id}_${selectedDate}`;
+                const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === selectedDate);
+                if (!existingAtt) {
+                    await window.db.collection('attendance').doc(docId).set({
+                        riderId: this.data.currentUser.id,
+                        date: selectedDate,
+                        status: 'present',
+                        isReliefDay: false,
+                        autoMarked: true,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
+                }
+                const isPast = selectedDate < new Date().toISOString().split('T')[0];
+                alert(isDraft ? 'Draft saved!' : `Report Submitted! ✅${isPast ? ` (${new Date(selectedDate).toLocaleDateString()} ki report)` : ''} Attendance auto-marked Present.`);
+            } else {
+                alert('Draft saved!');
+            }
+        }
+
+        this.navigate('rider-history');
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        // 🔓 LOCK RELEASE — hamesha release karo
+        this.data._isSubmitting = false;
+    }
+},
             renderRiderHistory(activeTab = 'submitted') {
                 document.getElementById('page-title').textContent = 'My History';
                 const container = document.getElementById('main-container');
