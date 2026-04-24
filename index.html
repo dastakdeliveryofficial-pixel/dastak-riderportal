@@ -1187,11 +1187,12 @@ hideOrderSuggestions(rowId) {
 // MODIFIED: Calculate totals with new order structure
 // MODIFIED: Calculate totals with Dropdown and Online deduction logic
 // MODIFIED: Calculate totals with Dropdown and Online deduction logic
+// MODIFIED: Calculate totals from Dropdown and Online deduction logic
 calculateTotals() {
     // Calculate orders total from dropdown selection
     let grossTotal = 0;
     let onlineFromOrders = 0; // Track which orders are online payments
-
+    
     document.querySelectorAll('.order-row').forEach(row => {
         // Get value from SELECT dropdown
         const amountSelect = row.querySelector('.order-amount');
@@ -1206,13 +1207,11 @@ calculateTotals() {
                 onlineFromOrders += amount;
             }
         }
-    });
     
-    // Update UI totals
     const grandGross = document.getElementById('grand-gross-total');
     if (grandGross) grandGross.textContent = `Rs ${grossTotal.toLocaleString()}`;
     
-    // Manual online payments (for collections)
+    // Online payments from manual entries
     let manualOnlineTotal = 0, manualOnlinePending = 0, manualOnlineReceived = 0;
     document.querySelectorAll('#online-payments-list > div').forEach(row => {
         const amtEl = row.querySelector('.online-amt');
@@ -1224,54 +1223,55 @@ calculateTotals() {
         if (status === 'pending') manualOnlinePending += amt; 
         else manualOnlineReceived += amt;
     });
-
-    // Calculate the FINAL Online amount correctly:
-    // Total Online = Manual + Dropdown Online (for collections)
-    const totalOnline = manualOnlineTotal + onlineFromOrders;
     
-    // Update UI - "Total Online" label ko set karo
-    const onlineDisplay = document.getElementById('online-pending-display');
-    if (onlineDisplay) onlineDisplay.textContent = `Rs ${totalOnline.toLocaleString()}`; // Sir yahan check karein
+    // Total online = manual entries + orders marked as online
+    const totalOnlinePending = manualOnlinePending + onlineFromOrders; 
+    const totalOnlineReceived = manualOnlineReceived;
     
+    const pendingDisplay = document.getElementById('online-pending-display');
+    const receivedDisplay = document.getElementById('online-received-display');
+    if (pendingDisplay) pendingDisplay.textContent = `Rs ${totalOnlinePending.toLocaleString()}`;
+    if (receivedDisplay) receivedDisplay.textContent = `Rs ${totalOnlineReceived.toLocaleString()}`;
+    
+    // Expenses
     const fuel = parseFloat(document.getElementById('exp-fuel')?.value) || 0;
     const food = parseFloat(document.getElementById('exp-food')?.value) || 0;
     const maint = parseFloat(document.getElementById('exp-maint')?.value) || 0;
     const expensesTotal = fuel + food + maint;
-
+    
+    // Opening
     const opening = parseFloat(document.getElementById('opening-balance')?.value) || 0;
-
+    
     // Wage calculation
     const user = this.data.currentUser;
     const wageEnabled = user?.wageEnabled !== false;
     const wageType = user?.wageType || 'fixed';
     let dailyWage = 0;
     if (wageEnabled && wageType !== 'none') {
-        if (wageType === 'custom') {
-            dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
-        } else {
-            dailyWage = user?.dailyWage || 500;
-        }
+        if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+        else dailyWage = user?.dailyWage || 500;
     }
-
-    // THE CORRECT FINAL LOGIC:
-    // Final = Opening + All Orders (Gross) - Total Online (Manual + Dropdown) - Expenses - Wage
-    const final = opening + grossTotal - totalOnline - expensesTotal - dailyWage;
     
-    // Update display elements
+    // FIXED LOGIC:
+    // Final = Opening + All Orders (Gross) - Online Orders (because cash not kept) - Manual Online - Expenses - Wage
+    const final = opening + grossTotal - onlineFromOrders - manualOnlineTotal - expensesTotal - dailyWage;
+    
+    // Update display
     if (document.getElementById('sum-opening')) 
         document.getElementById('sum-opening').textContent = `Rs ${opening.toLocaleString()}`;
     if (document.getElementById('sum-orders')) 
         document.getElementById('sum-orders').textContent = `+ Rs ${grossTotal.toLocaleString()}`;
     if (document.getElementById('sum-online')) 
-        document.getElementById('sum-online').textContent = `- Rs ${totalOnline.toLocaleString()}`;
+        document.getElementById('sum-online').textContent = `- Rs ${(onlineFromOrders + manualOnlineTotal).toLocaleString()}`;
     if (document.getElementById('sum-expenses')) 
         document.getElementById('sum-expenses').textContent = `- Rs ${expensesTotal.toLocaleString()}`;
     if (document.getElementById('sum-wage')) 
         document.getElementById('sum-wage').textContent = `- Rs ${dailyWage.toLocaleString()}`;
     if (document.getElementById('sum-final')) 
         document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
-}
+},
 			// MODIFIED: Submit report with new order structure
+// MODIFIED: Submit report with new order structure
 async submitReport(e) {
     e.preventDefault();
     
@@ -1292,7 +1292,6 @@ async submitReport(e) {
         const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
         
         // NEW: Build orders array from order rows
-             // NEW: Build orders array from order rows
         const orders = [];
         document.querySelectorAll('.order-row').forEach((row, idx) => {
             const custName = row.querySelector('.order-cust-name')?.value || '';
@@ -1301,8 +1300,8 @@ async submitReport(e) {
             const details = row.querySelector('.order-details')?.value || '';
             
             // FIX: Get value from Select instead of Input
-            const amountInput = row.querySelector('.order-amount'); 
-            const amount = parseFloat(amountInput?.value) || 0; // Will be 100, 150, or 200
+            const amountSelect = row.querySelector('.order-amount'); 
+            const amount = parseFloat(amountSelect?.value) || 0; // Will be 100, 150, or 200
             
             const paymentMethod = row.querySelector('input[type="radio"]:checked')?.value || 'cash';
             
@@ -1363,7 +1362,7 @@ async submitReport(e) {
             date: selectedDate,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             openingBalance: opening,
-            orders, // New structure with customer details
+            orders, // New structure with dropdown data
             onlinePayments,
             expenses,
             totalGross,
@@ -1418,11 +1417,10 @@ async submitReport(e) {
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
+                    alert(`Report Submitted! ? Attendance auto-marked Present.`);
+                } else {
+                    alert('Draft saved!');
                 }
-                alert(`Report Submitted! ? Attendance auto-marked Present.`);
-            } else {
-                alert('Draft saved!');
-            }
         }
 
         this.navigate('rider-history');
