@@ -1044,6 +1044,7 @@ renderRiderReportForm() {
 },
 
 // NEW: Render a single order row HTML
+// MODIFIED: Render a single order row HTML with Dropdown
 renderOrderRowHTML(rowNum) {
     return `
     <div class="bg-gray-50 p-4 rounded-lg space-y-3 order-row" id="order-row-${rowNum}" data-row-id="${rowNum}">
@@ -1078,15 +1079,18 @@ renderOrderRowHTML(rowNum) {
                 rows="2"></textarea>
         </div>
 
-        <!-- 3. Order Amount (Display only - shows calculation, not editable for addition) -->
+        <!-- 3. Order Amount (DROPDOWN: 100, 150, 200) -->
         <div class="grid grid-cols-2 gap-3">
             <div>
-                <label class="block text-xs text-gray-500 mb-1">Order Amount (Rs)</label>
-                <input type="number" 
+                <label class="block text-xs text-gray-500 mb-1">Order Amount</label>
+                <select 
                     class="w-full border border-indigo-200 bg-indigo-50 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 outline-none order-amount" 
-                    placeholder="0" 
-                    min="0"
                     onchange="app.calculateTotals()">
+                    <option value="0">Rs 0</option>
+                    <option value="100">Rs 100</option>
+                    <option value="150">Rs 150</option>
+                    <option value="200">Rs 200</option>
+                </select>
             </div>
             
             <!-- 4. Payment Method: Cash or Online -->
@@ -1112,7 +1116,6 @@ renderOrderRowHTML(rowNum) {
         </div>
     </div>`;
 },
-
 // NEW: Add new order row
 addOrderRow() {
     const container = document.getElementById('orders-container');
@@ -1182,20 +1185,22 @@ hideOrderSuggestions(rowId) {
 },
 
 // MODIFIED: Calculate totals with new order structure
+// MODIFIED: Calculate totals with Dropdown and Online deduction logic
 calculateTotals() {
-    // Calculate orders total from new structure
+    // Calculate orders total from dropdown selection
     let grossTotal = 0;
     let onlineFromOrders = 0; // Track which orders are online payments
     
     document.querySelectorAll('.order-row').forEach(row => {
-        const amountInput = row.querySelector('.order-amount');
+        // Get value from SELECT dropdown
+        const amountSelect = row.querySelector('.order-amount');
         const paymentMethod = row.querySelector('input[type="radio"]:checked')?.value || 'cash';
         
-        if (amountInput) {
-            const amount = parseFloat(amountInput.value) || 0;
+        if (amountSelect) {
+            const amount = parseFloat(amountSelect.value) || 0;
             grossTotal += amount;
             
-            // If payment method is online, add to online collections
+            // FIX: If payment method is online, add to online collections (Subtract from Final)
             if (paymentMethod === 'online') {
                 onlineFromOrders += amount;
             }
@@ -1219,7 +1224,7 @@ calculateTotals() {
     });
     
     // Total online = manual entries + orders marked as online
-    const totalOnlinePending = manualOnlinePending + onlineFromOrders; // Online orders are "pending" until collected
+    const totalOnlinePending = manualOnlinePending + onlineFromOrders; 
     const totalOnlineReceived = manualOnlineReceived;
     
     const pendingDisplay = document.getElementById('online-pending-display');
@@ -1249,10 +1254,9 @@ calculateTotals() {
         }
     }
     
-    // Final = Opening + All Orders - Online Payments - Expenses - Wage
-    // Note: Online orders are NOT subtracted from final cash (rider still has the cash)
-    // Only when online is "received" it's adjusted. For now, online orders = pending
-    const final = opening + grossTotal - manualOnlineTotal - expensesTotal - dailyWage;
+    // FIXED LOGIC:
+    // Final = Opening + All Orders (Gross) - Online Orders (because cash not kept) - Manual Online - Expenses - Wage
+    const final = opening + grossTotal - onlineFromOrders - manualOnlineTotal - expensesTotal - dailyWage;
     
     // Update display
     if (document.getElementById('sum-opening')) 
@@ -1260,7 +1264,7 @@ calculateTotals() {
     if (document.getElementById('sum-orders')) 
         document.getElementById('sum-orders').textContent = `+ Rs ${grossTotal.toLocaleString()}`;
     if (document.getElementById('sum-online')) 
-        document.getElementById('sum-online').textContent = `- Rs ${manualOnlineTotal.toLocaleString()}`;
+        document.getElementById('sum-online').textContent = `- Rs ${(onlineFromOrders + manualOnlineTotal).toLocaleString()}`;
     if (document.getElementById('sum-expenses')) 
         document.getElementById('sum-expenses').textContent = `- Rs ${expensesTotal.toLocaleString()}`;
     if (document.getElementById('sum-wage')) 
@@ -1268,8 +1272,7 @@ calculateTotals() {
     if (document.getElementById('sum-final')) 
         document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
 },
-
-// MODIFIED: Submit report with new order structure
+			// MODIFIED: Submit report with new order structure
 async submitReport(e) {
     e.preventDefault();
     
@@ -1290,13 +1293,18 @@ async submitReport(e) {
         const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
         
         // NEW: Build orders array from order rows
+             // NEW: Build orders array from order rows
         const orders = [];
         document.querySelectorAll('.order-row').forEach((row, idx) => {
             const custName = row.querySelector('.order-cust-name')?.value || '';
             const custId = row.querySelector('.order-cust-id')?.value || '';
             const custPhone = row.querySelector('.order-cust-phone')?.value || '';
             const details = row.querySelector('.order-details')?.value || '';
-            const amount = parseFloat(row.querySelector('.order-amount')?.value) || 0;
+            
+            // FIX: Get value from Select instead of Input
+            const amountInput = row.querySelector('.order-amount'); 
+            const amount = parseFloat(amountInput?.value) || 0; // Will be 100, 150, or 200
+            
             const paymentMethod = row.querySelector('input[type="radio"]:checked')?.value || 'cash';
             
             if (amount > 0 || details.trim()) { // Include if amount > 0 or has details
@@ -1304,17 +1312,16 @@ async submitReport(e) {
                     type: `Order ${idx + 1}`,
                     customerName: custName,
                     customerId: custId,
-                    customerPhone: custPhone, // Stored but not shown to rider in UI
+                    customerPhone: custPhone,
                     details: details,
-                    amount: amount,
-                    paymentMethod: paymentMethod, // 'cash' or 'online'
-                    qty: 1, // For backward compatibility
+                    amount: amount, // Dropdown value stored
+                    paymentMethod: paymentMethod, 
+                    qty: 1, 
                     rate: amount,
                     gross: amount
                 });
             }
         });
-        
         // Manual online payments (for collections)
         const onlinePayments = [];
         document.querySelectorAll('#online-payments-list > div').forEach(row => {
@@ -1491,6 +1498,7 @@ async submitReport(e) {
                         });
                     } else {
                         // Add rows based on actual data
+                                              // Add rows based on actual data
                         orders.forEach((order, idx) => {
                             const rowNum = idx + 1;
                             const tempDiv = document.createElement('div');
@@ -1503,21 +1511,29 @@ async submitReport(e) {
                             const idInput = rowEl.querySelector('.order-cust-id');
                             const phoneInput = rowEl.querySelector('.order-cust-phone');
                             const detailsInput = rowEl.querySelector('.order-details');
-                            const amountInput = rowEl.querySelector('.order-amount');
+                            
+                            // FIX: Handle Dropdown Selection
+                            const amountSelect = rowEl.querySelector('.order-amount'); // Now it's a select
+                            
                             const radioInputs = rowEl.querySelectorAll('input[type="radio"]');
                             
                             if(nameInput) nameInput.value = order.customerName || '';
                             if(idInput) idInput.value = order.customerId || '';
                             if(phoneInput) phoneInput.value = order.customerPhone || '';
                             if(detailsInput) detailsInput.value = order.details || '';
-                            if(amountInput) amountInput.value = order.amount || 0;
+                            
+                            // Logic: Try to match 100, 150, or 200. If old data was custom, default to 100 or 150.
+                            if(amountSelect) {
+                                if(order.amount === 200) amountSelect.value = "200";
+                                else if(order.amount === 150) amountSelect.value = "150";
+                                else if(order.amount === 100) amountSelect.value = "100";
+                                else amountSelect.value = "100"; // Default fallback for legacy data
+                            }
                             
                             radioInputs.forEach(r => {
                                 if(r.value === (order.paymentMethod || 'cash')) r.checked = true;
                             });
                         });
-                    }
-
                     // Restore Online Payments
                     const onlineContainer = document.getElementById('online-payments-list');
                     onlineContainer.innerHTML = '';
