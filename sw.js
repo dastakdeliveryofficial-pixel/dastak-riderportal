@@ -1,17 +1,3410 @@
-const CACHE_NAME = 'dastak-v5';
-self.addEventListener('install', e => {
-    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(['./', './index.html'])));
-    self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-    e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))));
-    self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-    if (e.request.url.includes('firebaseio.com') || e.request.url.includes('googleapis.com') || e.request.url.includes('gstatic.com')) return;
-    if (e.request.url.includes('cdn.') || e.request.url.includes('cdnjs.cloudflare.com')) {
-        e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const cl = res.clone(); caches.open(CACHE_NAME).then(c => c.put(e.request, cl)); return res; })));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dastak Portal | Dastak Delivery Service</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .sidebar-link { transition: all 0.3s ease; }
+        .sidebar-link:hover, .sidebar-link.active { background: #4f46e5; color: white; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .status-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-approved { background: #d1fae5; color: #065f46; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
+        .status-present { background: #d1fae5; color: #065f46; }
+        .status-absent { background: #fee2e2; color: #991b1b; }
+        .status-relief { background: #dbeafe; color: #1e40af; }
+        .status-draft { background: #fef9c3; color: #854d0e; }
+        .status-deleted { background: #f3f4f6; color: #6b7280; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+        .ai-processing { background: linear-gradient(90deg, #4f46e5, #7c3aed, #4f46e5); background-size: 200% 100%; animation: gradient-shift 2s ease infinite; }
+        @keyframes gradient-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        #sidebar { transition: transform 0.3s ease-in-out; }
+        #sidebar.mobile-hidden { transform: translateX(-100%); }
+        #sidebar-overlay { transition: opacity 0.3s ease; }
+        @media (max-width: 768px) {
+            #sidebar { position: fixed; left: 0; top: 0; height: 100vh; z-index: 50; transform: translateX(-100%); }
+            #sidebar.mobile-visible { transform: translateX(0); }
+            .main-content-shift { margin-left: 0 !important; }
+        }
+        .stat-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.04); }
+        .quick-action-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 16px; text-align: center; transition: transform 0.2s, box-shadow 0.2s; }
+        .quick-action-btn:active { transform: scale(0.98); }
+        .section-card { background: white; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .time-filter-btn { padding: 8px 16px; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; border: 1px solid #e5e7eb; background: white; color: #6b7280; }
+        .time-filter-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .time-filter-btn:hover:not(.active) { background: #f3f4f6; }
+        .attendance-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; border: 1px solid #e5e7eb; }
+        .calendar-day:hover { transform: scale(1.05); }
+        .calendar-day.present { background: #d1fae5; color: #065f46; border-color: #10b981; }
+        .calendar-day.absent { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
+        .calendar-day.relief { background: #dbeafe; color: #1e40af; border-color: #3b82f6; }
+        .calendar-day.empty { background: #f9fafb; border-color: #f3f4f6; cursor: default; }
+        .calendar-day.empty:hover { transform: none; }
+    </style>
+<base target="_blank">
+</head>
+<body class="text-gray-800 h-screen overflow-hidden flex">
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBdKbba0NjNmW2LNxEILiIcjv3DU3LTnks",
+            authDomain: "dastak-rider-portal-1b9d9.firebaseapp.com",
+            projectId: "dastak-rider-portal-1b9d9",
+            storageBucket: "dastak-rider-portal-1b9d9.firebasestorage.app",
+            messagingSenderId: "714540074485",
+            appId: "1:714540074485:web:cf393ebd7edbedae518cbc"
+        };
+        
+        // FIX 1: Prevent duplicate app initialization
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        window.auth = firebase.auth();
+        window.db = firebase.firestore();
+    </script>
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden" onclick="app.toggleSidebar()"></div>
+    <aside class="w-64 bg-white shadow-xl z-50 flex flex-col h-full hidden" id="sidebar">
+        <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+                    <i class="fas fa-motorcycle"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-gray-800 leading-tight">Dastak Portal</h1>
+                    <p class="text-xs text-gray-500">Dastak Delivery Service</p>
+                </div>
+            </div>
+            <button onclick="app.toggleSidebar()" class="md:hidden text-gray-500 hover:text-gray-700 p-2">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <nav class="flex-1 overflow-y-auto p-3 space-y-1" id="nav-menu"></nav>
+        <div class="p-4 border-t border-gray-100">
+            <div class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                <img id="user-avatar" src="https://ui-avatars.com/api/?name=Rider&background=4f46e5&color=fff" class="w-10 h-10 rounded-full border-2 border-white shadow-sm">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate" id="user-name">Loading...</p>
+                    <p class="text-xs text-gray-500 truncate" id="user-role">Rider</p>
+                </div>
+                <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors flex-shrink-0">
+                    <i class="fas fa-sign-out-alt text-base"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+    <main class="flex-1 flex flex-col h-full relative overflow-hidden w-full">
+        <header class="bg-white shadow-sm z-30 px-4 py-3 flex justify-between items-center hidden" id="main-header">
+            <div class="flex items-center gap-3">
+                <button onclick="app.toggleSidebar()" class="md:hidden p-2 text-gray-600 hover:text-indigo-600 transition-colors">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                <div>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800" id="page-title">Dashboard</h2>
+                    <p class="text-xs text-gray-500 hidden sm:block" id="current-date">Loading date...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 md:gap-3">
+                <div id="month-picker-wrap" class="hidden">
+                    <select id="global-month-picker" onchange="app.onMonthChange()" class="border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none cursor-pointer"></select>
+                </div>
+                <button id="notif-btn" onclick="app.showNotifications()" class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
+                    <i class="fas fa-bell text-lg md:text-xl"></i>
+                    <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white hidden" id="notif-dot"></span>
+                </button>
+                <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
+                    <i class="fas fa-play mr-1"></i> <span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Shift</span>
+                </button>
+                <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0 md:hidden" id="mobile-logout-btn">
+                    <i class="fas fa-sign-out-alt text-base"></i>
+                </button>
+            </div>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-50 relative" id="main-container">
+            <div id="app-loading" class="flex flex-col items-center justify-center h-full min-h-64 gap-4">
+                <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 animate-pulse">
+                    <i class="fas fa-motorcycle text-white text-2xl"></i>
+                </div>
+                <div class="text-center">
+                    <p class="font-bold text-gray-700 text-lg">Dastak Portal</p>
+                    <p class="text-sm text-gray-400 mt-1" id="loading-msg">Loading data...</p>
+                </div>
+                <div class="flex gap-1.5">
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
+    </div>
+
+    <script>
+        const app = {
+            data: {
+                currentUser: null,
+                users: [],
+                reports: [],
+                attendance: [],
+                announcements: [
+                    { id: 1, title: 'Eid Bonus Policy', content: 'All riders delivering 50+ orders this week get a Rs. 2000 bonus.', date: '2023-10-25', priority: 'high' }
+                ],
+                currentShift: null,
+                sidebarOpen: false,
+                currentTimeFilter: 'month',
+                currentParsedOrder: null,
+                isInitialLoad: true,
+                customersLoaded: false,
+                companyExpensesLoaded: false,
+                chartRegistry: {},
+                selectedMonth: new Date().getMonth(),
+                selectedYear: new Date().getFullYear(),
+                custPage: 1,
+                custPerPage: 50,
+                paymentDateFilter: 'today',
+                riderPaymentFilter: 'all',
+                unsubscribeRiders: null,
+                unsubscribeReports: null,
+                unsubscribeAttendance: null,
+                unsubscribeCompanyExpenses: null,
+                unsubscribeCustomers: null,
+                companyExpenses: [],
+                customers: []
+            },
+
+            init() {
+                this.updateDate();
+                window.auth.onAuthStateChanged((user) => {
+                    if (user) { this.loadUserData(user.uid); } 
+                    else { this.showLogin(); }
+                });
+                window.addEventListener('resize', () => {
+                    if (window.innerWidth >= 768) {
+                        document.getElementById('sidebar').classList.remove('mobile-visible');
+                        document.getElementById('sidebar-overlay').classList.add('hidden');
+                        this.data.sidebarOpen = false;
+                    }
+                });
+                // Back/forward button support
+                window.addEventListener('popstate', (e) => {
+                    if (!this.data.currentUser) return;
+                    const viewId = e.state?.viewId || location.hash.slice(1) || null;
+                    if (viewId) this._renderView(viewId);
+                });
+            },
+
+            async loadUserData(uid) {
+                try {
+                    const userDoc = await window.db.collection('users').doc(uid).get();
+                    if (userDoc.exists) {
+                        this.data.currentUser = { id: uid, ...userDoc.data() };
+                    } else {
+                        const user = window.auth.currentUser;
+                        const isAdmin = user.email === "admin@portal.com";
+                        const newUserData = {
+                            email: user.email,
+                            name: isAdmin ? "Administrator" : user.displayName || "New User",
+                            phone: user.phoneNumber || "",
+                            zone: isAdmin ? "Head Office" : "Unassigned",
+                            vehicle: isAdmin ? "Admin" : "",
+                            role: isAdmin ? "admin" : "rider",
+                            joinDate: new Date().toISOString().split('T')[0],
+                            salaryBase: isAdmin ? 50000 : 15000,
+                            dailyWage: isAdmin ? 1000 : 500
+                        };
+                        await window.db.collection('users').doc(uid).set(newUserData);
+                        this.data.currentUser = { id: uid, ...newUserData };
+                    }
+                    document.getElementById('sidebar').classList.remove('hidden');
+                    document.getElementById('main-header').classList.remove('hidden');
+                    this.setupRealtimeListeners();
+                    this.renderSidebar();
+                    this.initMonthPicker();
+                    const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    history.replaceState({ viewId: initView }, '', '#' + initView);
+                    this._renderView(initView);
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    alert('Error loading user data: ' + error.message);
+                    this.logout();
+                }
+            },
+
+            async setupRealtimeListeners() {
+                const self = this;
+                const setMsg = (msg) => {
+                    const el = document.getElementById('loading-msg');
+                    if (el) el.textContent = msg;
+                };
+                try {
+                    setMsg('Connecting...');
+                    const now = new Date();
+                    // Current + last month for reports
+                    const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+                    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+                    setMsg('Loading data...');
+
+                    // FIX 2: Load essential data safely individually so one permission error doesn't stop everything
+                    let ridersSnap = { empty: true, docs: [] };
+                    let reportsSnap = { empty: true, docs: [] };
+                    let attSnap = { empty: true, docs: [] };
+                    let notifSnap = { empty: true, docs: [] };
+
+                    try {
+                        ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
+                    } catch (e) { console.warn('Riders load error (permissions?)', e); }
+                    
+                    try {
+                        reportsSnap = await window.db.collection('reports').where('date', '>=', twoMonthsAgo)
+                            .orderBy('date', 'desc').limit(300).get();
+                    } catch (e) { console.warn('Reports load error', e); }
+
+                    try {
+                        attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
+                    } catch (e) { console.warn('Attendance load error', e); }
+
+                    try {
+                        notifSnap = await window.db.collection('notifications').orderBy('createdAt', 'desc').limit(30).get();
+                    } catch (e) { console.warn('Notifications load error', e); }
+
+                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    if (!notifSnap.empty) {
+                        self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
+                        const dot = document.getElementById('notif-dot');
+                        if (dot) dot.classList.remove('hidden');
+                    }
+
+                    // Customers & companyExpenses — LAZY: loaded only when needed
+                    self.data.customers = [];
+                    self.data.companyExpenses = [];
+                    self.data.customersLoaded = false;
+                    self.data.companyExpensesLoaded = false;
+
+                    setMsg('Ready!');
+
+                    // Render dashboard — data is ready, no jhatka
+                    if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
+                    else self.renderRiderDashboard();
+
+                } catch(e) {
+                    console.error('Data load error:', e);
+                    setMsg('Error loading. Retrying...');
+                    setTimeout(() => {
+                        if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
+                        else self.renderRiderDashboard();
+                    }, 1000);
+                }
+            },
+
+            // Lazy load customers when needed
+            async ensureCustomers() {
+                if (this.data.customersLoaded) return;
+                try {
+                    const snap = await window.db.collection('customers').get();
+                    this.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this.data.customersLoaded = true;
+                } catch(e) { console.error("Could not load customers", e); }
+            },
+
+            // Lazy load company expenses when needed
+            async ensureCompanyExpenses() {
+                if (this.data.companyExpensesLoaded) return;
+                try {
+                    const snap = await window.db.collection('companyExpenses').get();
+                    this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this.data.companyExpensesLoaded = true;
+                } catch(e) { console.error("Could not load expenses", e); }
+            },
+
+            // Manual refresh - call this after save/update operations
+            async refreshData(collections = ['reports']) {
+                const self = this;
+                try {
+                    for (const col of collections) {
+                        if (col === 'reports') {
+                            const snap = await window.db.collection('reports')
+                                .orderBy('createdAt', 'desc').limit(200).get();
+                            self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'attendance') {
+                            const now = new Date();
+                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                            const snap = await window.db.collection('attendance')
+                                .where('date', '>=', monthStart).get();
+                            self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'users') {
+                            const snap = await window.db.collection('users').where('role', '==', 'rider').get();
+                            self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'customers') {
+                            const snap = await window.db.collection('customers').get();
+                            self.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        } else if (col === 'companyExpenses') {
+                            const snap = await window.db.collection('companyExpenses').get();
+                            self.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        }
+                    }
+                } catch(e) { console.error('Refresh error:', e); }
+            },
+
+            stopRealtimeListeners() {
+                // All listeners replaced with get() - just reset flags
+                this.data.isInitialLoad = true;
+                this.data.customersLoaded = false;
+                this.data.companyExpensesLoaded = false;
+                // Destroy all charts
+                Object.values(this.data.chartRegistry).forEach(c => { try { c.destroy(); } catch(e){} });
+                this.data.chartRegistry = {};
+            },
+
+            // Safe chart creator — destroys old chart first
+            createChart(id, config) {
+                if (this.data.chartRegistry[id]) {
+                    try { this.data.chartRegistry[id].destroy(); } catch(e) {}
+                    delete this.data.chartRegistry[id];
+                }
+                const ctx = document.getElementById(id);
+                if (!ctx) return null;
+                const chart = new Chart(ctx.getContext('2d'), config);
+                this.data.chartRegistry[id] = chart;
+                return chart;
+            },
+
+            updateDate() {
+                const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                const dateEl = document.getElementById('current-date');
+                if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-PK', options);
+            },
+
+            toggleSidebar() {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                this.data.sidebarOpen = !this.data.sidebarOpen;
+                if (this.data.sidebarOpen) {
+                    sidebar.classList.add('mobile-visible');
+                    overlay.classList.remove('hidden');
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    sidebar.classList.remove('mobile-visible');
+                    overlay.classList.add('hidden');
+                    document.body.style.overflow = '';
+                }
+            },
+
+            showLogin() {
+                const container = document.getElementById('main-container');
+                container.innerHTML = `
+                    <div class="min-h-full flex items-center justify-center fade-in p-4">
+                        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
+                            <div class="text-center mb-6 md:mb-8">
+                                <div class="w-14 h-14 md:w-16 md:h-16 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xl md:text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
+                                    <i class="fas fa-motorcycle"></i>
+                                </div>
+                                <h2 class="text-xl md:text-2xl font-bold text-gray-800">Welcome Back</h2>
+                                <p class="text-gray-500 text-sm">Sign in to access your portal</p>
+                            </div>
+                            <form onsubmit="app.handleLogin(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                                    <input type="email" id="login-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="rider@example.com" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                    <input type="password" id="login-pass" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" required>
+                                </div>
+                                <button type="submit" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Sign In</button>
+                            </form>
+                            <div class="mt-4 text-center space-y-2">
+                                <p class="text-sm text-gray-500">Don't have an account? <button onclick="app.showSignup()" class="text-indigo-600 font-semibold hover:underline">Sign Up</button></p>
+                                <button onclick="app.showForgotPassword()" class="text-sm text-gray-500 hover:text-indigo-600">Forgot Password?</button>
+                            </div>
+                        </div>
+                    </div>`;
+                document.getElementById('sidebar').classList.add('hidden');
+                document.getElementById('main-header').classList.add('hidden');
+            },
+
+            async handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-pass').value;
+                try {
+                    const userCredential = await window.auth.signInWithEmailAndPassword(email, password);
+                    const user = userCredential.user;
+                    const userDoc = await window.db.collection('users').doc(user.uid).get();
+                    if (userDoc.exists) {
+                        this.data.currentUser = { id: user.uid, ...userDoc.data() };
+                    } else {
+                        const isAdmin = email === "admin@portal.com";
+                        const newUserData = {
+                            email: user.email,
+                            name: isAdmin ? "Administrator" : "New User",
+                            phone: "",
+                            zone: isAdmin ? "Head Office" : "Unassigned",
+                            vehicle: isAdmin ? "Admin" : "",
+                            role: isAdmin ? "admin" : "rider",
+                            joinDate: new Date().toISOString().split('T')[0],
+                            salaryBase: isAdmin ? 50000 : 15000,
+                            dailyWage: isAdmin ? 1000 : 500
+                        };
+                        await window.db.collection('users').doc(user.uid).set(newUserData);
+                        this.data.currentUser = { id: user.uid, ...newUserData };
+                    }
+                    document.getElementById('sidebar').classList.remove('hidden');
+                    document.getElementById('main-header').classList.remove('hidden');
+                    this.setupRealtimeListeners();
+                    this.renderSidebar();
+                    this.initMonthPicker();
+                    const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    history.replaceState({ viewId: initView }, '', '#' + initView);
+                    this._renderView(initView);
+                } catch (error) {
+                    console.error("Login error:", error);
+                    if (error.code === 'auth/user-not-found') {
+                        alert('User not found. Please sign up first or check your email.');
+                    } else if (error.code === 'auth/wrong-password') {
+                        alert('Incorrect password!');
+                    } else if (error.code === 'auth/invalid-credential') {
+                        alert('Invalid email or password. Please check your credentials.');
+                    } else if (error.code === 'auth/too-many-requests') {
+                        alert('Too many failed attempts. Please try again later.');
+                    } else {
+                        alert('Login failed: ' + error.message);
+                    }
+                }
+            },
+
+            showForgotPassword() {
+                const container = document.getElementById('main-container');
+                container.innerHTML = `
+                    <div class="min-h-full flex items-center justify-center fade-in p-4">
+                        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md">
+                            <div class="text-center mb-6">
+                                <div class="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 text-xl mx-auto mb-4"><i class="fas fa-key"></i></div>
+                                <h2 class="text-xl font-bold text-gray-800">Reset Password</h2>
+                            </div>
+                            <form onsubmit="app.handleForgotPassword(event)" class="space-y-4">
+                                <input type="email" id="reset-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="your@email.com" required>
+                                <button type="submit" class="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold">Send Reset Link</button>
+                            </form>
+                            <div class="mt-4 text-center"><button onclick="app.showLogin()" class="text-orange-600 font-semibold">Back to Sign In</button></div>
+                        </div>
+                    </div>`;
+            },
+
+            async handleForgotPassword(e) {
+                e.preventDefault();
+                try {
+                    await window.auth.sendPasswordResetEmail(document.getElementById('reset-email').value);
+                    alert('Password reset email sent!');
+                    this.showLogin();
+                } catch (error) { alert('Error: ' + error.message); }
+            },
+
+            showSignup() {
+                const container = document.getElementById('main-container');
+                container.innerHTML = `
+                    <div class="min-h-full flex items-center justify-center fade-in p-4">
+                        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md">
+                            <div class="text-center mb-6">
+                                <div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4"><i class="fas fa-user-plus"></i></div>
+                                <h2 class="text-xl font-bold text-gray-800">Join as Rider</h2>
+                            </div>
+                            <form onsubmit="app.handleSignup(event)" class="space-y-4">
+                                <input type="text" id="signup-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Full Name" required>
+                                <input type="email" id="signup-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Email" required>
+                                <input type="password" id="signup-pass" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Password (min 6 chars)" minlength="6" required>
+                                <div class="flex gap-2">
+                                    <input type="text" value="+92" readonly class="w-14 px-2 py-3 border border-gray-300 rounded-lg bg-gray-100 text-center text-sm">
+                                    <input type="tel" id="signup-phone" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="300 1234567" required>
+                                </div>
+                                <input type="text" id="signup-vehicle" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Vehicle Details">
+                                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700">Create Account</button>
+                            </form>
+                            <div class="mt-4 text-center"><button onclick="app.showLogin()" class="text-green-600 font-semibold">Back to Sign In</button></div>
+                        </div>
+                    </div>`;
+            },
+
+            async handleSignup(e) {
+                e.preventDefault();
+                const name = document.getElementById('signup-name').value;
+                const email = document.getElementById('signup-email').value;
+                const password = document.getElementById('signup-pass').value;
+                const phone = '+92 ' + document.getElementById('signup-phone').value;
+                const vehicle = document.getElementById('signup-vehicle').value;
+                try {
+                    const existing = await window.db.collection('users').where('email', '==', email).get();
+                    if (!existing.empty) { alert('Email already registered!'); return; }
+                    const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
+                    const uid = userCredential.user.uid;
+                    await window.db.collection('users').doc(uid).set({
+                        name, email, phone, zone: 'Unassigned', vehicle, role: 'rider',
+                        joinDate: new Date().toISOString().split('T')[0], salaryBase: 15000,
+                        dailyWage: 500
+                    });
+                    alert('Account created! Please sign in.');
+                    this.showLogin();
+                } catch (error) { alert('Error: ' + error.message); }
+            },
+
+            logout() {
+                this.stopRealtimeListeners();
+                this.data.currentUser = null;
+                window.auth.signOut().then(() => { location.reload(); });
+            },
+
+            renderSidebar() {
+                const nav = document.getElementById('nav-menu');
+                if (!nav || !this.data.currentUser) return;
+                const isAdmin = this.data.currentUser.role === 'admin';
+                const menuItems = isAdmin ? [
+                    { id: 'admin-dashboard', icon: 'fa-chart-line', label: 'Dashboard' },
+                    { id: 'admin-riders', icon: 'fa-users', label: 'Manage Riders' },
+                    { id: 'admin-reports', icon: 'fa-clipboard-check', label: 'Review Reports' },
+                    { id: 'admin-online-payments', icon: 'fa-credit-card', label: 'Online Payments' },
+                    { id: 'admin-expenses', icon: 'fa-receipt', label: 'Rider Expenses' },
+                    { id: 'admin-company-expenses', icon: 'fa-building', label: 'Company Expenses' },
+                    { id: 'admin-customers', icon: 'fa-address-book', label: 'Customers' },
+                    { id: 'admin-attendance', icon: 'fa-calendar-check', label: 'Attendance' },
+                    { id: 'admin-analytics', icon: 'fa-chart-pie', label: 'Analytics' },
+                    { id: 'admin-settings', icon: 'fa-cog', label: 'Settings' }
+                ] : [
+                    { id: 'rider-dashboard', icon: 'fa-home', label: 'Dashboard' },
+                    { id: 'rider-report', icon: 'fa-file-invoice-dollar', label: 'Daily Report' },
+                    { id: 'rider-history', icon: 'fa-history', label: 'My History' },
+                    { id: 'rider-payments', icon: 'fa-wallet', label: 'Online Payments' },
+                    { id: 'rider-salary', icon: 'fa-money-bill-wave', label: 'Salary & Slips' },
+                    { id: 'rider-settings', icon: 'fa-cog', label: 'Settings' }
+                ];
+                nav.innerHTML = menuItems.map(item => `
+                    <button onclick="app.navigate('${item.id}'); if(window.innerWidth < 768) app.toggleSidebar();" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}">
+                        <i class="fas ${item.icon} w-5 text-center"></i><span class="truncate">${item.label}</span>
+                    </button>`).join('');
+                document.getElementById('user-name').textContent = this.data.currentUser.name;
+                document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : `Rider - ${this.data.currentUser.zone || 'Unassigned'}`;
+                document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(this.data.currentUser.name)}&background=4f46e5&color=fff`;
+                // Show/hide shift button based on role
+                const shiftBtn = document.getElementById('shift-btn');
+                if (shiftBtn) shiftBtn.style.display = isAdmin ? 'none' : '';
+                // Mobile logout always visible
+                const mobileLogout = document.getElementById('mobile-logout-btn');
+                if (mobileLogout) mobileLogout.classList.remove('hidden');
+            },
+
+            showSkeleton(title = '') {
+                if (title) document.getElementById('page-title').textContent = title;
+                const s = `<div class="animate-pulse space-y-4 fade-in pb-20">
+                    <div class="bg-white rounded-2xl p-5 shadow-sm">
+                        <div class="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
+                        <div class="grid grid-cols-2 gap-3">
+                            ${[1,2,3,4].map(()=>`<div class="bg-gray-100 rounded-xl h-20"></div>`).join('')}
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 shadow-sm space-y-3">
+                        <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                        ${[1,2,3].map(()=>`<div class="h-14 bg-gray-100 rounded-xl"></div>`).join('')}
+                    </div>
+                </div>`;
+                document.getElementById('main-container').innerHTML = s;
+            },
+
+            navigate(viewId, addToHistory = true) {
+                if (addToHistory) {
+                    history.pushState({ viewId }, '', `#${viewId}`);
+                }
+                this._renderView(viewId);
+            },
+
+            _renderView(viewId) {
+                document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active', 'bg-indigo-600', 'text-white'));
+                const activeBtn = document.getElementById(`nav-${viewId}`);
+                if(activeBtn) activeBtn.classList.add('active');
+                if (viewId === 'rider-dashboard') this.renderRiderDashboard();
+                else if (viewId === 'rider-report') this.renderRiderReportForm();
+                else if (viewId === 'rider-history') this.renderRiderHistory();
+                else if (viewId === 'rider-payments') this.renderRiderPayments();
+                else if (viewId === 'rider-salary') this.renderRiderSalary();
+                else if (viewId === 'admin-dashboard') this.renderAdminDashboard();
+                else if (viewId === 'admin-riders') this.renderAdminRiders();
+                else if (viewId === 'admin-reports') this.renderAdminReports();
+                else if (viewId === 'admin-online-payments') this.renderAdminOnlinePayments();
+                else if (viewId === 'admin-expenses') this.renderAdminExpenses();
+                else if (viewId === 'admin-company-expenses') this.renderCompanyExpenses();
+                else if (viewId === 'admin-customers') this.renderAdminCustomers();
+                else if (viewId === 'admin-attendance') this.renderAdminAttendance();
+                else if (viewId === 'admin-analytics') this.renderAdminAnalytics();
+                else if (viewId === 'admin-settings') this.renderSettings();
+                else if (viewId === 'rider-settings') this.renderSettings();
+                else {
+                    const def = this.data.currentUser?.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                    this.navigate(def);
+                }
+            },
+
+            showDashboard() {
+                this.renderSidebar();
+                if (this.data.currentUser.role === 'admin') this.renderAdminDashboard();
+                else this.renderRiderDashboard();
+            },
+
+            initMonthPicker() {
+                const wrap = document.getElementById('month-picker-wrap');
+                const sel = document.getElementById('global-month-picker');
+                if (!wrap || !sel) return;
+                if (this.data.currentUser?.role !== 'admin') { wrap.classList.add('hidden'); return; }
+                wrap.classList.remove('hidden');
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                // Build last 24 months options
+                sel.innerHTML = '';
+                const now = new Date();
+                for (let i = 0; i < 24; i++) {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const opt = document.createElement('option');
+                    opt.value = `${d.getFullYear()}-${d.getMonth()}`;
+                    opt.textContent = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                    if (d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+            },
+
+            onMonthChange() {
+                const sel = document.getElementById('global-month-picker');
+                if (!sel) return;
+                const [year, month] = sel.value.split('-').map(Number);
+                this.data.selectedMonth = month;
+                this.data.selectedYear = year;
+                // Refresh current page without adding to history
+                const activeBtn = document.querySelector('.sidebar-link.active');
+                if (activeBtn) {
+                    const id = activeBtn.id.replace('nav-', '');
+                    this._renderView(id);
+                } else {
+                    this.renderAdminDashboard();
+                }
+            },
+
+            getMonthFilteredReports(status = null) {
+                return this.data.reports.filter(r => {
+                    const d = new Date(r.date);
+                    const monthMatch = d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear;
+                    const statusMatch = status ? r.status === status : r.status !== 'deleted';
+                    return monthMatch && statusMatch;
+                });
+            },
+
+            getDailyProfits(days = 30) {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                const dailyData = {};
+                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                    dailyData[d.toISOString().split('T')[0]] = 0;
+                }
+                this.data.reports.filter(r => r.status === 'approved').forEach(r => {
+                    if (dailyData.hasOwnProperty(r.date)) {
+                        const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                        dailyData[r.date] += profit;
+                    }
+                });
+                // Subtract company expenses per day
+                (this.data.companyExpenses || []).forEach(e => {
+                    if (dailyData.hasOwnProperty(e.date)) dailyData[e.date] -= (e.amount || 0);
+                });
+                return Object.entries(dailyData).map(([date, profit]) => ({
+                    date, profit,
+                    displayDate: new Date(date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })
+                })).sort((a, b) => new Date(a.date) - new Date(b.date));
+            },
+
+            getMonthlyProfits(year = new Date().getFullYear()) {
+                const monthlyData = {};
+                for (let i = 0; i < 12; i++) monthlyData[i] = 0;
+                this.data.reports.filter(r => {
+                    const rDate = new Date(r.date);
+                    return r.status === 'approved' && rDate.getFullYear() === year;
+                }).forEach(r => {
+                    const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                    monthlyData[new Date(r.date).getMonth()] += profit;
+                });
+                // Subtract company expenses per month
+                (this.data.companyExpenses || []).forEach(e => {
+                    const d = new Date(e.date);
+                    if (d.getFullYear() === year) monthlyData[d.getMonth()] -= (e.amount || 0);
+                });
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return Object.entries(monthlyData).map(([month, profit]) => ({ month: parseInt(month), monthName: monthNames[month], profit }));
+            },
+
+            getYearlyProfits() {
+                const yearlyData = {};
+                this.data.reports.filter(r => r.status === 'approved').forEach(r => {
+                    const year = new Date(r.date).getFullYear();
+                    const profit = (r.totalGross || 0) - (r.totalExpenses || 0) - (r.dailyWage || 0);
+                    yearlyData[year] = (yearlyData[year] || 0) + profit;
+                });
+                // Subtract company expenses per year
+                (this.data.companyExpenses || []).forEach(e => {
+                    const year = new Date(e.date).getFullYear();
+                    yearlyData[year] = (yearlyData[year] || 0) - (e.amount || 0);
+                });
+                return Object.entries(yearlyData).map(([year, profit]) => ({ year: parseInt(year), profit })).sort((a, b) => a.year - b.year);
+            },
+
+            getMonthlyAbsences(riderId, month, year) {
+                return this.data.attendance.filter(a => {
+                    const aDate = new Date(a.date);
+                    return a.riderId === riderId && a.status === 'absent' && aDate.getMonth() === month && aDate.getFullYear() === year;
+                });
+            },
+
+            calculateAttendanceDeductions(riderId, month, year) {
+                const absences = this.getMonthlyAbsences(riderId, month, year);
+                const rider = this.data.users.find(u => u.id === riderId);
+                const dailyWage = rider?.dailyWage || 500;
+                const deductibleAbsences = Math.max(0, absences.length - 1);
+                return { totalAbsences: absences.length, reliefDays: Math.min(1, absences.length), deductibleAbsences, dailyWage, totalDeduction: deductibleAbsences * dailyWage };
+            },
+
+            renderRiderDashboard() {
+                document.getElementById('page-title').textContent = 'Dashboard';
+                const container = document.getElementById('main-container');
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && r.status !== 'draft' && r.status !== 'deleted');
+                const pendingOnline = myReports.flatMap(r => r.onlinePayments || []).filter(p => p.status === 'pending').reduce((acc, p) => acc + p.amount, 0);
+                const totalDeliveries = myReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const attendanceInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, currentMonth, currentYear);
+                const baseSalary = this.data.currentUser.salaryBase || 15000;
+                const netSalary = baseSalary - attendanceInfo.totalDeduction;
+
+                container.innerHTML = `
+                    <div class="space-y-4 fade-in pb-20">
+                        <div class="grid grid-cols-2 gap-3 md:gap-4">
+                            <div class="stat-card">
+                                <div class="flex items-center justify-between mb-2"><div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet text-lg"></i></div><span class="text-xs text-gray-500">Today</span></div>
+                                <p class="text-xs text-gray-500 mb-1">Online Pending</p>
+                                <h3 class="text-lg md:text-xl font-bold text-gray-800">Rs. ${pendingOnline.toLocaleString()}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <div class="flex items-center justify-between mb-2"><div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box text-lg"></i></div><span class="text-xs text-gray-500">Total</span></div>
+                                <p class="text-xs text-gray-500 mb-1">Deliveries</p>
+                                <h3 class="text-lg md:text-xl font-bold text-gray-800">${totalDeliveries}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <div class="flex items-center justify-between mb-2"><div class="p-2 bg-purple-100 rounded-lg text-purple-600"><i class="fas fa-money-bill-wave text-lg"></i></div><span class="text-xs text-gray-500">Monthly</span></div>
+                                <p class="text-xs text-gray-500 mb-1">Base Salary</p>
+                                <h3 class="text-lg md:text-xl font-bold text-purple-600">Rs ${baseSalary.toLocaleString()}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <div class="flex items-center justify-between mb-2"><div class="p-2 ${attendanceInfo.totalDeduction > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} rounded-lg"><i class="fas fa-calculator text-lg"></i></div><span class="text-xs text-gray-500">Net Salary</span></div>
+                                <p class="text-xs text-gray-500 mb-1">After Deductions</p>
+                                <h3 class="text-lg md:text-xl font-bold ${attendanceInfo.totalDeduction > 0 ? 'text-red-600' : 'text-green-600'}">Rs ${netSalary.toLocaleString()}</h3>
+                            </div>
+                        </div>
+                        <div class="section-card border-l-4 border-indigo-500">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800 text-sm md:text-base">Attendance Status</h3>
+                                <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">This Month</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div class="text-center p-2 bg-green-50 rounded-lg">
+                                    <p class="text-xs text-green-600 mb-1">Present</p>
+                                    <p class="text-lg font-bold text-green-700">${this.data.attendance.filter(a => a.riderId === this.data.currentUser.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length}</p>
+                                </div>
+                                <div class="text-center p-2 bg-red-50 rounded-lg">
+                                    <p class="text-xs text-red-600 mb-1">Absences</p>
+                                    <p class="text-lg font-bold text-red-700">${attendanceInfo.totalAbsences}</p>
+                                </div>
+                            </div>
+                            ${attendanceInfo.deductibleAbsences > 0 ? `
+                                <div class="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
+                                    <div><p class="text-xs text-red-600 font-medium">Wage Deduction</p><p class="text-xs text-red-500">${attendanceInfo.deductibleAbsences} days x Rs ${attendanceInfo.dailyWage}</p></div>
+                                    <p class="text-lg font-bold text-red-700">-Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p>
+                                </div>` : attendanceInfo.totalAbsences > 0 ? `
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex justify-between items-center">
+                                    <div><p class="text-xs text-blue-600 font-medium">Relief Applied</p><p class="text-xs text-blue-500">First absence is relief - no deduction</p></div>
+                                    <p class="text-lg font-bold text-blue-700">Rs 0</p>
+                                </div>` : `
+                                <div class="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center">
+                                    <p class="text-xs text-green-600 font-medium">Perfect Attendance!</p><p class="text-lg font-bold text-green-700">Rs 0</p>
+                                </div>`}
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3 text-sm md:text-base">Quick Actions</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button onclick="app.navigate('rider-report')" class="quick-action-btn"><i class="fas fa-plus-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Submit Report</span></button>
+                                <button onclick="app.toggleShift()" class="quick-action-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"><i class="fas fa-play-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Start Shift</span></button>
+                                <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Cash</span></button>
+                                <button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">My Salary</span></button>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800 text-sm md:text-base">Recent Reports</h3>
+                                <button onclick="app.navigate('rider-history')" class="text-xs text-indigo-600 font-medium">View All</button>
+                            </div>
+                            ${myReports.length === 0 ? `<div class="text-center py-6 text-gray-400"><i class="fas fa-clipboard-list text-3xl mb-2"></i><p class="text-sm">No reports submitted yet</p></div>` : `
+                                <div class="space-y-2">${myReports.slice(0, 3).map(r => `
+                                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <div><p class="font-medium text-sm text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${(r.orders || []).reduce((a,o) => a + (o.qty || 0), 0)} orders</p></div>
+                                        <span class="status-badge status-${r.status} text-xs">${r.status}</span>
+                                    </div>`).join('')}</div>`}
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3 text-sm md:text-base">Announcements</h3>
+                            <div class="space-y-3">${this.data.announcements.map(a => `
+                                <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500 bg-red-50' : 'border-indigo-500 bg-indigo-50'} pl-3 py-2 rounded-r-lg">
+                                    <h4 class="font-semibold text-sm ${a.priority === 'high' ? 'text-red-800' : 'text-indigo-800'}">${a.title}</h4>
+                                    <p class="text-xs text-gray-600 mt-1">${a.content}</p>
+                                    <p class="text-xs text-gray-400 mt-1">${new Date(a.date).toLocaleDateString()}</p>
+                                </div>`).join('')}</div>
+                        </div>
+                    </div>`;
+            },
+
+renderRiderReportForm() {
+    document.getElementById('page-title').textContent = 'Daily Report';
+    const container = document.getElementById('main-container');
+    const user = this.data.currentUser;
+    const wageType = user?.wageType || 'fixed';
+    const wageEnabled = user?.wageEnabled !== false;
+    let dailyWage = 0;
+    if (wageEnabled && wageType !== 'none') dailyWage = user?.dailyWage || 500;
+    const showCustomWage = wageEnabled && wageType === 'custom';
+    
+    container.innerHTML = `
+        <div class="max-w-4xl mx-auto fade-in pb-20">
+            <form onsubmit="app.submitReport(event)" class="space-y-4">
+                <!-- Opening Balance & Date -->
+                <div class="section-card">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="font-bold text-lg">Daily Report</h3>
+                            <div class="flex items-center gap-2 mt-1">
+                                <label class="text-xs text-gray-500">Report Date:</label>
+                                <input type="date" id="report-date" 
+                                    value="${new Date().toISOString().split('T')[0]}" 
+                                    max="${new Date().toISOString().split('T')[0]}"
+                                    class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
+                            </div>
+                        </div>
+                        <div class="text-left md:text-right w-full md:w-auto">
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
+                            <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Per-Order Details Section -->
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-gray-800 text-sm md:text-base">?? Order Details</h3>
+                        <button type="button" onclick="app.addOrderRow()" class="text-sm text-indigo-600 font-medium hover:underline">
+                            <i class="fas fa-plus mr-1"></i>Add Order
+                        </button>
+                    </div>
+                    <div id="orders-container" class="space-y-3">
+                        <!-- Default 3 empty order rows -->
+                        ${[1, 2, 3].map(i => this.renderOrderRowHTML(i)).join('')}
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 font-medium text-sm">Total Orders Amount</span>
+                            <span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Online Collections (from customers who paid online) -->
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-gray-800 text-sm md:text-base">?? Online Collections</h3>
+                        <button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add</button>
+                    </div>
+                    <div id="online-payments-list" class="space-y-2"></div>
+                    <div class="mt-4 grid grid-cols-2 gap-3">
+                        <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center">
+                            <p class="text-xs text-orange-600 font-medium">Pending</p>
+                            <p class="text-lg font-bold text-orange-700" id="online-pending-display">Rs 0</p>
+                        </div>
+                        <div class="bg-green-50 p-3 rounded-lg border border-green-200 text-center">
+                            <p class="text-xs text-green-600 font-medium">Received</p>
+                            <p class="text-lg font-bold text-green-700" id="online-received-display">Rs 0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expenses -->
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Expenses</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label>
+                            <input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Food (Rs)</label>
+                            <input type="number" id="exp-food" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label>
+                            <input type="number" id="exp-maint" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delivery Proof -->
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Delivery Proof</h3>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                        <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
+                        <div id="proof-preview-area">
+                            <i class="fas fa-camera text-3xl text-gray-400 mb-2"></i>
+                            <p class="text-sm text-gray-500">Tap to upload photo</p>
+                        </div>
+                        <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
+                    </div>
+                </div>
+
+                <!-- Final Calculation -->
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-2xl shadow-lg">
+                    <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span>Opening Balance</span>
+                            <span id="sum-opening">Rs 0</span>
+                        </div>
+                        <div class="flex justify-between text-green-300">
+                            <span>+ Orders Amount</span>
+                            <span id="sum-orders">Rs 0</span>
+                        </div>
+                        <div class="flex justify-between text-red-300">
+                            <span>- Online Payments (Collected)</span>
+                            <span id="sum-online">Rs 0</span>
+                        </div>
+                        <div class="flex justify-between text-red-300">
+                            <span>- Expenses</span>
+                            <span id="sum-expenses">Rs 0</span>
+                        </div>
+                        ${wageEnabled && wageType !== 'none' ? `
+                        <div class="flex justify-between text-yellow-200 items-center">
+                            <span>- Daily Wage</span>
+                            ${showCustomWage ? 
+                                `<input type="number" id="wage-input" value="${dailyWage}" min="0" 
+                                    class="w-28 text-right bg-white/20 border border-white/30 rounded px-2 py-0.5 text-sm outline-none text-yellow-100"
+                                    onchange="app.calculateTotals()" placeholder="0">` : 
+                                `<span id="sum-wage">Rs ${dailyWage.toLocaleString()}</span>`
+                            }
+                        </div>` : `
+                        <div class="flex justify-between text-gray-300 opacity-60">
+                            <span>- Daily Wage</span>
+                            <span>Rs 0 (No Wage)</span>
+                        </div>`}
+                        <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30">
+                            <span>Final Cash</span>
+                            <span id="sum-final">Rs 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <input type="hidden" id="report-edit-id" value="">
+                <div class="flex gap-3 pb-4">
+                    <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors">
+                        <i class="fas fa-save mr-2"></i>Save Draft
+                    </button>
+                    <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg">
+                        <i class="fas fa-paper-plane mr-2"></i>Submit Report
+                    </button>
+                </div>
+            </form>
+        </div>`;
+    
+    // Initialize with 1 online payment row
+    this.addOnlinePaymentRow();
+},
+
+// NEW: Render a single order row HTML
+renderOrderRowHTML(rowNum) {
+    return `
+    <div class="bg-gray-50 p-4 rounded-lg space-y-3 order-row" id="order-row-${rowNum}" data-row-id="${rowNum}">
+        <div class="flex justify-between items-center">
+            <span class="text-sm font-medium text-gray-700">Order #${rowNum}</span>
+            <button type="button" onclick="app.removeOrderRow('order-row-${rowNum}')" class="text-red-400 hover:text-red-600 text-xs">
+                <i class="fas fa-trash"></i> Remove
+            </button>
+        </div>
+        
+        <!-- 1. Customer Name (Search from customers, number hidden) -->
+        <div class="relative">
+            <label class="block text-xs text-gray-500 mb-1">Customer Name</label>
+            <input type="text" 
+                placeholder="Search customer..." 
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 order-cust-name"
+                autocomplete="off"
+                oninput="app.showOrderCustomerSuggestions(this, 'order-row-${rowNum}')"
+                onblur="setTimeout(()=>app.hideOrderSuggestions('order-row-${rowNum}'),200)">
+            <!-- Hidden fields to store customer info -->
+            <input type="hidden" class="order-cust-id">
+            <input type="hidden" class="order-cust-phone">
+            <div id="order-sugg-order-row-${rowNum}" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-full hidden max-h-48 overflow-y-auto"></div>
+        </div>
+
+        <!-- 2. Order Details Box -->
+        <div>
+            <label class="block text-xs text-gray-500 mb-1">Order Details</label>
+            <textarea 
+                placeholder="e.g. 2 kg aloo, 1 dozen ande..." 
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none order-details"
+                rows="2"></textarea>
+        </div>
+
+        <!-- 3. Order Amount (Display only - shows calculation, not editable for addition) -->
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Order Amount (Rs)</label>
+                <input type="number" 
+                    class="w-full border border-indigo-200 bg-indigo-50 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 outline-none order-amount" 
+                    placeholder="0" 
+                    min="0"
+                    onchange="app.calculateTotals()">
+            </div>
+            
+            <!-- 4. Payment Method: Cash or Online -->
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Payment Method</label>
+                <div class="flex gap-2">
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" name="payment-order-row-${rowNum}" value="cash" class="sr-only peer" checked onchange="app.calculateTotals()">
+                        <div class="text-center py-2 rounded-lg border-2 border-gray-200 peer-checked:border-green-500 peer-checked:bg-green-50 peer-checked:text-green-700 transition-all">
+                            <i class="fas fa-money-bill-wave text-sm"></i>
+                            <span class="text-xs font-medium block">Cash</span>
+                        </div>
+                    </label>
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" name="payment-order-row-${rowNum}" value="online" class="sr-only peer" onchange="app.calculateTotals()">
+                        <div class="text-center py-2 rounded-lg border-2 border-gray-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 peer-checked:text-indigo-700 transition-all">
+                            <i class="fas fa-credit-card text-sm"></i>
+                            <span class="text-xs font-medium block">Online</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>`;
+},
+
+// NEW: Add new order row
+addOrderRow() {
+    const container = document.getElementById('orders-container');
+    if (!container) return;
+    const rowCount = container.querySelectorAll('.order-row').length + 1;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = this.renderOrderRowHTML(rowCount);
+    container.appendChild(tempDiv.firstElementChild);
+},
+
+// NEW: Remove order row
+removeOrderRow(rowId) {
+    const row = document.getElementById(rowId);
+    if (row) {
+        row.remove();
+        this.calculateTotals();
+    }
+},
+
+// NEW: Show customer suggestions for order rows
+showOrderCustomerSuggestions(input, rowId) {
+    const q = input.value.trim().toLowerCase();
+    const suggBox = document.getElementById('order-sugg-' + rowId);
+    if (!suggBox) return;
+    if (q.length < 1) { suggBox.classList.add('hidden'); return; }
+    
+    const customers = this.data.customers || [];
+    const matches = customers.filter(c =>
+        c.name.toLowerCase().includes(q) || (c.phone || '').includes(q)
+    ).slice(0, 8);
+    
+    if (matches.length === 0) { suggBox.classList.add('hidden'); return; }
+    
+    suggBox.innerHTML = matches.map(c => `
+        <div class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0"
+            onmousedown="app.selectOrderCustomer('${c.id}', '${rowId}')">
+            <p class="text-sm font-medium text-gray-800">${c.name}</p>
+            <p class="text-xs text-gray-500">${c.phone ? '? Verified' : 'No phone'}${c.address ? ' · ' + c.address : ''}</p>
+        </div>`).join('');
+    suggBox.classList.remove('hidden');
+},
+
+// NEW: Select customer for order row (number hidden, only name shown)
+selectOrderCustomer(custId, rowId) {
+    const customer = (this.data.customers || []).find(c => c.id === custId);
+    if (!customer) return;
+    
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    
+    const nameInput = row.querySelector('.order-cust-name');
+    const idInput = row.querySelector('.order-cust-id');
+    const phoneInput = row.querySelector('.order-cust-phone');
+    
+    if (nameInput) nameInput.value = customer.name; // Sirf naam dikhega
+    if (idInput) idInput.value = customer.id;
+    if (phoneInput) phoneInput.value = customer.phone || ''; // Hidden mein store
+    
+    const suggBox = document.getElementById('order-sugg-' + rowId);
+    if (suggBox) suggBox.classList.add('hidden');
+},
+
+// NEW: Hide suggestions
+hideOrderSuggestions(rowId) {
+    const suggBox = document.getElementById('order-sugg-' + rowId);
+    if (suggBox) suggBox.classList.add('hidden');
+},
+
+// MODIFIED: Calculate totals with new order structure
+calculateTotals() {
+    // Calculate orders total from new structure
+    let grossTotal = 0;
+    let onlineFromOrders = 0; // Track which orders are online payments
+    
+    document.querySelectorAll('.order-row').forEach(row => {
+        const amountInput = row.querySelector('.order-amount');
+        const paymentMethod = row.querySelector('input[type="radio"]:checked')?.value || 'cash';
+        
+        if (amountInput) {
+            const amount = parseFloat(amountInput.value) || 0;
+            grossTotal += amount;
+            
+            // If payment method is online, add to online collections
+            if (paymentMethod === 'online') {
+                onlineFromOrders += amount;
+            }
+        }
+    });
+    
+    const grandGross = document.getElementById('grand-gross-total');
+    if (grandGross) grandGross.textContent = `Rs ${grossTotal.toLocaleString()}`;
+    
+    // Online payments from manual entries
+    let manualOnlineTotal = 0, manualOnlinePending = 0, manualOnlineReceived = 0;
+    document.querySelectorAll('#online-payments-list > div').forEach(row => {
+        const amtEl = row.querySelector('.online-amt');
+        const statusEl = row.querySelector('.online-status');
+        if (!amtEl || !statusEl) return;
+        const amt = parseFloat(amtEl.value) || 0;
+        const status = statusEl.value;
+        manualOnlineTotal += amt;
+        if (status === 'pending') manualOnlinePending += amt; 
+        else manualOnlineReceived += amt;
+    });
+    
+    // Total online = manual entries + orders marked as online
+    const totalOnlinePending = manualOnlinePending + onlineFromOrders; // Online orders are "pending" until collected
+    const totalOnlineReceived = manualOnlineReceived;
+    
+    const pendingDisplay = document.getElementById('online-pending-display');
+    const receivedDisplay = document.getElementById('online-received-display');
+    if (pendingDisplay) pendingDisplay.textContent = `Rs ${totalOnlinePending.toLocaleString()}`;
+    if (receivedDisplay) receivedDisplay.textContent = `Rs ${totalOnlineReceived.toLocaleString()}`;
+    
+    // Expenses
+    const fuel = parseFloat(document.getElementById('exp-fuel')?.value) || 0;
+    const food = parseFloat(document.getElementById('exp-food')?.value) || 0;
+    const maint = parseFloat(document.getElementById('exp-maint')?.value) || 0;
+    const expensesTotal = fuel + food + maint;
+    
+    // Opening
+    const opening = parseFloat(document.getElementById('opening-balance')?.value) || 0;
+    
+    // Wage calculation
+    const user = this.data.currentUser;
+    const wageEnabled = user?.wageEnabled !== false;
+    const wageType = user?.wageType || 'fixed';
+    let dailyWage = 0;
+    if (wageEnabled && wageType !== 'none') {
+        if (wageType === 'custom') {
+            dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+        } else {
+            dailyWage = user?.dailyWage || 500;
+        }
+    }
+    
+    // Final = Opening + All Orders - Online Payments - Expenses - Wage
+    // Note: Online orders are NOT subtracted from final cash (rider still has the cash)
+    // Only when online is "received" it's adjusted. For now, online orders = pending
+    const final = opening + grossTotal - manualOnlineTotal - expensesTotal - dailyWage;
+    
+    // Update display
+    if (document.getElementById('sum-opening')) 
+        document.getElementById('sum-opening').textContent = `Rs ${opening.toLocaleString()}`;
+    if (document.getElementById('sum-orders')) 
+        document.getElementById('sum-orders').textContent = `+ Rs ${grossTotal.toLocaleString()}`;
+    if (document.getElementById('sum-online')) 
+        document.getElementById('sum-online').textContent = `- Rs ${manualOnlineTotal.toLocaleString()}`;
+    if (document.getElementById('sum-expenses')) 
+        document.getElementById('sum-expenses').textContent = `- Rs ${expensesTotal.toLocaleString()}`;
+    if (document.getElementById('sum-wage')) 
+        document.getElementById('sum-wage').textContent = `- Rs ${dailyWage.toLocaleString()}`;
+    if (document.getElementById('sum-final')) 
+        document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
+},
+
+// MODIFIED: Submit report with new order structure
+async submitReport(e) {
+    e.preventDefault();
+    
+    // Double submit lock
+    if (this.data._isSubmitting) return;
+    this.data._isSubmitting = true;
+    
+    const isDraft = e.submitter?.dataset?.draft === 'true';
+    if (!isDraft && !confirm("Submit this report?")) {
+        this.data._isSubmitting = false;
         return;
     }
-    e.respondWith(fetch(e.request).then(res => { const cl = res.clone(); caches.open(CACHE_NAME).then(c => c.put(e.request, cl)); return res; }).catch(() => caches.match(e.request)));
-});
+
+    const allBtns = document.querySelectorAll('button[type="submit"]');
+    allBtns.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
+
+    try {
+        const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
+        
+        // NEW: Build orders array from order rows
+        const orders = [];
+        document.querySelectorAll('.order-row').forEach((row, idx) => {
+            const custName = row.querySelector('.order-cust-name')?.value || '';
+            const custId = row.querySelector('.order-cust-id')?.value || '';
+            const custPhone = row.querySelector('.order-cust-phone')?.value || '';
+            const details = row.querySelector('.order-details')?.value || '';
+            const amount = parseFloat(row.querySelector('.order-amount')?.value) || 0;
+            const paymentMethod = row.querySelector('input[type="radio"]:checked')?.value || 'cash';
+            
+            if (amount > 0 || details.trim()) { // Include if amount > 0 or has details
+                orders.push({
+                    type: `Order ${idx + 1}`,
+                    customerName: custName,
+                    customerId: custId,
+                    customerPhone: custPhone, // Stored but not shown to rider in UI
+                    details: details,
+                    amount: amount,
+                    paymentMethod: paymentMethod, // 'cash' or 'online'
+                    qty: 1, // For backward compatibility
+                    rate: amount,
+                    gross: amount
+                });
+            }
+        });
+        
+        // Manual online payments (for collections)
+        const onlinePayments = [];
+        document.querySelectorAll('#online-payments-list > div').forEach(row => {
+            const inputs = row.querySelectorAll('input, select');
+            if (inputs.length >= 3) {
+                onlinePayments.push({ 
+                    detail: inputs[0].value, 
+                    amount: parseFloat(inputs[1].value) || 0, 
+                    status: inputs[2].value 
+                });
+            }
+        });
+        
+        const expenses = [
+            { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
+            { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
+            { type: 'Maintenance', amount: parseFloat(document.getElementById('exp-maint').value) || 0 }
+        ].filter(e => e.amount > 0);
+        
+        const totalGross = orders.reduce((acc, o) => acc + o.amount, 0);
+        const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+        const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
+        
+        const user = this.data.currentUser;
+        const wageEnabled = user?.wageEnabled !== false;
+        const wageType = user?.wageType || 'fixed';
+        let dailyWage = 0;
+        if (wageEnabled && wageType !== 'none') {
+            if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+            else dailyWage = user?.dailyWage || 500;
+        }
+        
+        const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
+        const reportStatus = isDraft ? 'draft' : 'pending';
+        const selectedDate = document.getElementById('report-date')?.value || new Date().toISOString().split('T')[0];
+
+        const newReport = {
+            riderId: this.data.currentUser.id,
+            riderName: this.data.currentUser.name,
+            date: selectedDate,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            openingBalance: opening,
+            orders, // New structure with customer details
+            onlinePayments,
+            expenses,
+            totalGross,
+            totalExpenses,
+            dailyWage,
+            finalAmount,
+            status: reportStatus,
+            proofImage: document.getElementById('proof-preview-img')?.src || null
+        };
+
+        const editId = document.getElementById('report-edit-id')?.value;
+
+        if (editId) {
+            await window.db.collection('reports').doc(editId).update({ 
+                ...newReport, 
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+            });
+            const existing = this.data.reports.find(r => r.id === editId);
+            if (existing) Object.assign(existing, newReport);
+            alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
+        } else {
+            // Duplicate check
+            const duplicate = this.data.reports.find(r =>
+                r.riderId === this.data.currentUser.id &&
+                r.date === selectedDate &&
+                r.status === reportStatus &&
+                r.totalGross === totalGross &&
+                r.finalAmount === finalAmount
+            );
+
+            if (duplicate && !isDraft) {
+                alert('?? Same report already exists for this date!\n\nGo to "My History" to edit it.');
+                this.data._isSubmitting = false;
+                allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+                return;
+            }
+
+            const docRef = await window.db.collection('reports').add(newReport);
+            this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
+
+            // Auto mark attendance
+            if (!isDraft) {
+                const docId = `${this.data.currentUser.id}_${selectedDate}`;
+                const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === selectedDate);
+                if (!existingAtt) {
+                    await window.db.collection('attendance').doc(docId).set({
+                        riderId: this.data.currentUser.id,
+                        date: selectedDate,
+                        status: 'present',
+                        isReliefDay: false,
+                        autoMarked: true,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
+                }
+                alert(`Report Submitted! ? Attendance auto-marked Present.`);
+            } else {
+                alert('Draft saved!');
+            }
+        }
+
+        this.navigate('rider-history');
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        this.data._isSubmitting = false;
+        allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+    }
+},
+            renderRiderHistory(activeTab = 'submitted') {
+                document.getElementById('page-title').textContent = 'My History';
+                const container = document.getElementById('main-container');
+                const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+                const submittedReports = myReports.filter(r => r.status !== 'draft');
+                const draftReports = myReports.filter(r => r.status === 'draft');
+                const displayReports = activeTab === 'draft' ? draftReports : submittedReports;
+                container.innerHTML = `
+                    <div class="fade-in pb-20">
+                        <div class="flex gap-2 mb-4">
+                            <button onclick="app.renderRiderHistory('submitted')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'submitted' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300'}"><i class="fas fa-clipboard-check mr-1"></i>Submitted (${submittedReports.length})</button>
+                            <button onclick="app.renderRiderHistory('draft')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'draft' ? 'bg-yellow-500 text-white' : 'bg-white text-gray-600 border border-gray-300'}"><i class="fas fa-folder mr-1"></i>Drafts (${draftReports.length})</button>
+                        </div>
+                        ${displayReports.length === 0 ? `
+                        <div class="text-center py-12 text-gray-400"><i class="fas fa-${activeTab === 'draft' ? 'folder-open' : 'history'} text-5xl mb-4"></i><p>${activeTab === 'draft' ? 'No drafts saved' : 'No reports found'}</p></div>` : `
+                        <div class="space-y-3">${displayReports.map(r => {
+                            const totalQty = (r.orders || []).reduce((acc, o) => acc + (o.qty || 0), 0);
+                            return `
+                            <div class="section-card">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders - ${(r.orders || []).length} types</p></div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="status-badge status-${r.status === 'draft' ? 'pending' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'draft' ? '?? Draft' : r.status}</span>
+                                        ${(r.status === 'draft' || r.status === 'pending' || r.status === 'rejected') ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center">
+                                    <div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross || 0).toLocaleString()}</p></div>
+                                    <div><p class="text-xs text-gray-500">Expenses</p><p class="font-semibold text-sm text-red-600">Rs ${(r.totalExpenses || 0).toLocaleString()}</p></div>
+                                    <div><p class="text-xs text-gray-500">Final</p><p class="font-bold text-sm text-green-600">Rs ${(r.finalAmount || 0).toLocaleString()}</p></div>
+                                </div>
+                            </div>`;}).join('')}</div>`}
+                    </div>`;
+            },
+
+            editReport(id) {
+                const report = this.data.reports.find(r => r.id === id);
+                if (!report) return;
+                
+                // FIX 3: Re-render the form cleanly with the report data instead of trying to patch HTML
+                this.renderRiderReportForm();
+                
+                setTimeout(() => {
+                    document.getElementById('report-edit-id').value = id;
+                    
+                    // Restore basic fields
+                    const dateEl = document.getElementById('report-date');
+                    if (dateEl && report.date) dateEl.value = report.date;
+                    document.getElementById('opening-balance').value = report.openingBalance || 0;
+                    
+                    // Re-build order rows dynamically from report data
+                    const container = document.getElementById('orders-container');
+                    container.innerHTML = ''; // Clear default rows
+                    
+                    const orders = report.orders || [];
+                    if (orders.length === 0) {
+                        // Add 3 empty rows if no data
+                         [1, 2, 3].forEach(i => {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = this.renderOrderRowHTML(i);
+                            container.appendChild(tempDiv.firstElementChild);
+                        });
+                    } else {
+                        // Add rows based on actual data
+                        orders.forEach((order, idx) => {
+                            const rowNum = idx + 1;
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = this.renderOrderRowHTML(rowNum);
+                            const rowEl = tempDiv.firstElementChild;
+                            container.appendChild(rowEl);
+                            
+                            // Populate row data
+                            const nameInput = rowEl.querySelector('.order-cust-name');
+                            const idInput = rowEl.querySelector('.order-cust-id');
+                            const phoneInput = rowEl.querySelector('.order-cust-phone');
+                            const detailsInput = rowEl.querySelector('.order-details');
+                            const amountInput = rowEl.querySelector('.order-amount');
+                            const radioInputs = rowEl.querySelectorAll('input[type="radio"]');
+                            
+                            if(nameInput) nameInput.value = order.customerName || '';
+                            if(idInput) idInput.value = order.customerId || '';
+                            if(phoneInput) phoneInput.value = order.customerPhone || '';
+                            if(detailsInput) detailsInput.value = order.details || '';
+                            if(amountInput) amountInput.value = order.amount || 0;
+                            
+                            radioInputs.forEach(r => {
+                                if(r.value === (order.paymentMethod || 'cash')) r.checked = true;
+                            });
+                        });
+                    }
+
+                    // Restore Online Payments
+                    const onlineContainer = document.getElementById('online-payments-list');
+                    onlineContainer.innerHTML = '';
+                    (report.onlinePayments || []).forEach(p => {
+                        this.addOnlinePaymentRow();
+                        const rows = onlineContainer.querySelectorAll('div');
+                        const lastRow = rows[rows.length - 1];
+                        if (lastRow) {
+                            const inputs = lastRow.querySelectorAll('input, select');
+                            if (inputs[0]) inputs[0].value = p.detail || '';
+                            if (inputs[1]) inputs[1].value = p.amount || 0;
+                            if (inputs[2]) inputs[2].value = p.status || 'pending';
+                        }
+                    });
+
+                    // Restore Expenses
+                    const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
+                    (report.expenses || []).forEach(e => { 
+                        const el = document.getElementById(expMap[e.type]); 
+                        if (el) el.value = e.amount || 0; 
+                    });
+                    
+                    // Restore Wage (if custom)
+                    const user = this.data.currentUser;
+                    if (user?.wageType === 'custom' && report.dailyWage) {
+                        const wageInput = document.getElementById('wage-input');
+                        if(wageInput) wageInput.value = report.dailyWage;
+                    }
+
+                    this.calculateTotals();
+                    document.getElementById('page-title').textContent = report.status === 'draft' ? 'Edit Draft' : 'Edit Report';
+                }, 100);
+            },
+
+            viewReportDetails(id) {
+                const report = this.data.reports.find(r => r.id === id);
+                if(!report) return;
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold text-gray-800">Report Details</h2><button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button></div>
+                        <div class="grid grid-cols-2 gap-3 mb-4">
+                            <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Date</p><p class="font-semibold">${new Date(report.date).toLocaleDateString()}</p></div>
+                            <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div>
+                        </div>
+                        <h3 class="font-bold text-gray-700 mb-2 text-sm">Orders</h3>
+                        <div class="space-y-2 mb-4">
+                            ${(report.orders || []).length === 0 ? '<p class="text-xs text-gray-400">No orders</p>' :
+                            (report.orders || []).map(o => `
+                            <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
+                                <div>
+                                    <span class="font-medium">${o.type}</span>
+                                    <span class="text-gray-500 text-xs ml-2">x${o.qty} × Rs ${(o.rate||0).toLocaleString()}</span>
+                                </div>
+                                <span class="font-bold text-indigo-600">Rs ${(o.gross || 0).toLocaleString()}</span>
+                            </div>`).join('')}
+                        </div>
+                        ${(report.expenses||[]).length > 0 ? `
+                        <h3 class="font-bold text-gray-700 mb-2 text-sm">Expenses</h3>
+                        <div class="space-y-1 mb-4">${(report.expenses||[]).map(e => `
+                            <div class="flex justify-between text-sm p-2 bg-red-50 rounded">
+                                <span class="text-gray-600">${e.type}</span>
+                                <span class="text-red-600 font-medium">Rs ${(e.amount||0).toLocaleString()}</span>
+                            </div>`).join('')}</div>` : ''}
+                        ${(report.onlinePayments || []).length > 0 ? `
+                            <h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
+                            <div class="space-y-1 mb-4">${report.onlinePayments.map(p => `
+                                <div class="flex justify-between text-sm p-2 bg-gray-50 rounded">
+                                    <span>${p.detail}</span><span class="${p.status === 'received' ? 'text-green-600' : 'text-orange-600'}">Rs ${(p.amount || 0).toLocaleString()}</span>
+                                </div>`).join('')}</div>` : ''}
+                        <div class="bg-indigo-50 p-4 rounded-xl space-y-1 mt-4">
+                            <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance || 0).toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm text-green-600"><span>+ Orders:</span><span>Rs ${(report.totalGross || 0).toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm text-red-500"><span>- Online:</span><span>-Rs ${(report.onlinePayments || []).reduce((a,p) => a + (p.amount || 0), 0).toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm text-red-500"><span>- Expenses:</span><span>-Rs ${(report.totalExpenses || 0).toLocaleString()}</span></div>
+                            <div class="flex justify-between text-sm text-red-500"><span>- Daily Wage:</span><span>-Rs ${(report.dailyWage || 500).toLocaleString()}</span></div>
+                            <div class="flex justify-between font-bold text-indigo-900 text-lg pt-2 border-t border-indigo-200"><span>Final</span><span>Rs ${(report.finalAmount || 0).toLocaleString()}</span></div>
+                        </div>
+                        ${report.proofImage ? `<div class="mt-4"><img src="${report.proofImage}" class="rounded-lg w-full max-h-60 object-cover"></div>` : ''}
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
+            },
+
+renderRiderPayments(selectedDate = null) {
+    // ? SAVE FILTER so re-renders stay on same date
+    const activeFilter = selectedDate || this.data.riderPaymentFilter || new Date().toISOString().split('T')[0];
+    this.data.riderPaymentFilter = activeFilter;
+
+    document.getElementById('page-title').textContent = 'Online Payments';
+    const container = document.getElementById('main-container');
+
+    const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
+    let pendingPayments = [];
+    let receivedPayments = [];
+
+    myReports.forEach(r => {
+        let include = activeFilter === 'all' || r.date === activeFilter;
+        if (include) {
+            (r.onlinePayments || []).forEach((p, idx) => {
+                const payment = { ...p, reportId: r.id, date: r.date, idx };
+                if (p.status === 'pending') pendingPayments.push(payment);
+                else receivedPayments.push(payment);
+            });
+        }
+    });
+
+    pendingPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+    receivedPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const totalPending = pendingPayments.reduce((a,b) => a+(b.amount||0), 0);
+    const totalReceived = receivedPayments.reduce((a,b) => a+(b.amount||0), 0);
+
+    const dateLabel = activeFilter === 'all' ? 'All Time' : new Date(activeFilter + 'T12:00:00').toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    container.innerHTML = `
+        <div class="fade-in pb-20 space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="relative flex-1">
+                    <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                    <input type="date" 
+                        value="${activeFilter === 'all' ? '' : activeFilter}" 
+                        max="${new Date().toISOString().split('T')[0]}"
+                        onchange="app.renderRiderPayments(this.value || 'all')"
+                        class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-3 text-sm font-semibold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer">
+                </div>
+                <button onclick="app.renderRiderPayments('all')" 
+                    class="flex-shrink-0 px-4 py-3 rounded-xl text-sm font-semibold transition-colors
+                    ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
+                    All
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 -mt-2"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="stat-card border-l-4 border-orange-500">
+                    <p class="text-xs text-orange-600 font-medium mb-1">Pending (${pendingPayments.length})</p>
+                    <h3 class="text-xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</h3>
+                </div>
+                <div class="stat-card border-l-4 border-green-500">
+                    <p class="text-xs text-green-600 font-medium mb-1">Received (${receivedPayments.length})</p>
+                    <h3 class="text-xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</h3>
+                </div>
+            </div>
+            <div class="section-card">
+                ${pendingPayments.length === 0 && receivedPayments.length === 0 ?
+                    `<div class="text-center py-8 text-gray-400">
+                        <i class="fas fa-credit-card text-4xl mb-2"></i>
+                        <p class="text-sm">Is din koi payment nahi</p>
+                    </div>` :
+                    `<div>
+                        ${pendingPayments.length > 0 ? `
+                        <div class="mb-4">
+                            <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="fas fa-clock"></i> Pending (${pendingPayments.length})</h4>
+                            <div class="space-y-2">
+                                ${pendingPayments.map(p => `
+                                <div class="flex justify-between items-center p-3 rounded-xl border bg-orange-50 border-orange-200">
+                                    <div>
+                                        <p class="font-medium text-sm">${p.detail || '—'}</p>
+                                        <p class="text-xs text-gray-500">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold">Rs ${(p.amount||0).toLocaleString()}</p>
+                                        <span class="text-xs text-orange-600 font-medium">? Pending</span>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                        ${receivedPayments.length > 0 ? `
+                        <div>
+                            <h4 class="text-xs font-bold text-green-600 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="fas fa-check-circle"></i> Received (${receivedPayments.length})</h4>
+                            <div class="space-y-2">
+                                ${receivedPayments.map(p => `
+                                <div class="flex justify-between items-center p-3 rounded-xl border bg-gray-50 border-gray-200 opacity-70">
+                                    <div>
+                                        <p class="font-medium text-sm text-gray-500">${p.detail || '—'}</p>
+                                        <p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-gray-400">Rs ${(p.amount||0).toLocaleString()}</p>
+                                        <span class="text-xs text-green-600 font-medium">? Received</span>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                    </div>`
+                }
+            </div>
+        </div>`;
+},            renderRiderSalary() {
+                document.getElementById('page-title').textContent = 'Salary & Payslip';
+                const container = document.getElementById('main-container');
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const monthlyReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && new Date(r.date).getMonth() === currentMonth);
+                const totalOrders = monthlyReports.reduce((acc, r) => acc + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
+                const baseSalary = this.data.currentUser.salaryBase || 15000;
+                const attendanceInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, currentMonth, currentYear);
+                const netSalary = baseSalary - attendanceInfo.totalDeduction;
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-2xl shadow-lg text-center">
+                            <p class="text-indigo-100 text-sm mb-1">Net Salary (This Month)</p>
+                            <h2 class="text-4xl font-bold mb-4">Rs ${netSalary.toLocaleString()}</h2>
+                            <div class="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div class="bg-white/20 rounded-lg p-2"><p class="text-indigo-100">Base Salary</p><p class="font-semibold">Rs ${baseSalary.toLocaleString()}</p></div>
+                                <div class="bg-white/20 rounded-lg p-2"><p class="text-indigo-100">Deductions</p><p class="font-semibold ${attendanceInfo.totalDeduction > 0 ? 'text-red-300' : 'text-green-300'}">-Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p></div>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">Attendance Breakdown</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center p-3 ${attendanceInfo.totalAbsences > 0 ? 'bg-red-50' : 'bg-green-50'} rounded-lg">
+                                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full ${attendanceInfo.totalAbsences > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} flex items-center justify-center"><i class="fas ${attendanceInfo.totalAbsences > 0 ? 'fa-times' : 'fa-check'}"></i></div><span class="font-medium">Total Absences</span></div>
+                                    <span class="font-bold text-lg">${attendanceInfo.totalAbsences} days</span>
+                                </div>
+                                ${attendanceInfo.reliefDays > 0 ? `
+                                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-heart"></i></div><span class="font-medium">Relief Days Applied</span></div>
+                                    <span class="font-bold text-lg text-blue-700">${attendanceInfo.reliefDays}</span>
+                                </div>` : ''}
+                                ${attendanceInfo.deductibleAbsences > 0 ? `
+                                <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-minus-circle"></i></div><div><span class="font-medium block">Deductible Absences</span><span class="text-xs text-red-600">${attendanceInfo.deductibleAbsences} days x Rs ${attendanceInfo.dailyWage}</span></div></div>
+                                    <span class="font-bold text-lg text-red-700">-Rs ${attendanceInfo.totalDeduction.toLocaleString()}</span>
+                                </div>` : ''}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">This Month Summary</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-box"></i></div><span class="font-medium">Total Deliveries</span></div><span class="font-bold text-lg">${totalOrders}</span></div>
+                                <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><span class="font-medium">Daily Wage</span></div><span class="font-bold text-lg">Rs ${this.data.currentUser.dailyWage || 500}</span></div>
+                            </div>
+                            <button onclick="app.downloadPayslip()" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-download mr-2"></i>Download Payslip</button>
+                        </div>
+                    </div>`;
+            },
+
+            downloadPayslip() {
+                const user = this.data.currentUser;
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[currentMonth]} ${currentYear}`;
+                const monthlyReports = this.data.reports.filter(r =>
+                    r.riderId === user.id && r.status === 'approved' &&
+                    new Date(r.date).getMonth() === currentMonth &&
+                    new Date(r.date).getFullYear() === currentYear
+                ).sort((a,b) => new Date(a.date)-new Date(b.date));
+                const totalOrders = monthlyReports.reduce((acc,r) => acc+(r.orders||[]).reduce((o,x)=>o+(x.qty||0),0), 0);
+                const totalGross = monthlyReports.reduce((acc,r) => acc+(r.totalGross||0), 0);
+                const totalExp = monthlyReports.reduce((acc,r) => acc+(r.totalExpenses||0), 0);
+                const baseSalary = user.salaryBase || 15000;
+                const attendanceInfo = this.calculateAttendanceDeductions(user.id, currentMonth, currentYear);
+                const presentDays = this.data.attendance.filter(a =>
+                    a.riderId===user.id && a.status==='present' &&
+                    new Date(a.date).getMonth()===currentMonth && new Date(a.date).getFullYear()===currentYear
+                ).length;
+                const netSalary = baseSalary - attendanceInfo.totalDeduction;
+                const reportRows = monthlyReports.map(r => {
+                    const qty = (r.orders||[]).reduce((a,o)=>a+(o.qty||0),0);
+                    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${r.date}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center">${qty}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">Rs ${(r.totalGross||0).toLocaleString()}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;color:#ef4444">Rs ${(r.totalExpenses||0).toLocaleString()}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:bold">${r.status}</td></tr>`;
+                }).join('');
+                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payslip — ${user.name} — ${monthLabel}</title>
+                <style>body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#1f2937}
+                .header{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:24px;border-radius:12px;margin-bottom:20px}
+                .header h1{margin:0;font-size:22px}
+                .header p{margin:4px 0;opacity:0.85;font-size:13px}
+                .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+                .card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px}
+                .card label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px}
+                .card p{font-size:18px;font-weight:bold;margin:4px 0 0;color:#1f2937}
+                table{width:100%;border-collapse:collapse;font-size:13px}
+                thead{background:#f3f4f6}
+                th{padding:8px 10px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase}
+                .total-row{background:#eef2ff;font-weight:bold}
+                .net{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:16px;border-radius:8px;text-align:center;margin-top:16px}
+                .net p{margin:0;font-size:13px;opacity:0.9}
+                .net h2{margin:6px 0 0;font-size:28px}
+                @media print{body{padding:0}button{display:none}}
+                </style></head><body>
+                <div class="header">
+                    <h1>Dastak Delivery Service</h1>
+                    <p>Pay Slip — ${monthLabel}</p>
+                    <p style="margin-top:8px;font-size:15px;font-weight:bold">${user.name}</p>
+                    <p>${user.phone || ''} · Zone: ${user.zone || 'Unassigned'}</p>
+                </div>
+                <div class="grid">
+                    <div class="card"><label>Base Salary</label><p>Rs ${baseSalary.toLocaleString()}</p></div>
+                    <div class="card"><label>Daily Wage</label><p>Rs ${user.dailyWage || 500}</p></div>
+                    <div class="card"><label>Present Days</label><p>${presentDays} days</p></div>
+                    <div class="card"><label>Absences</label><p style="color:${attendanceInfo.totalAbsences>0?'#ef4444':'#10b981'}">${attendanceInfo.totalAbsences} days</p></div>
+                    <div class="card"><label>Total Orders</label><p>${totalOrders}</p></div>
+                    <div class="card"><label>Total Gross</label><p>Rs ${totalGross.toLocaleString()}</p></div>
+                </div>
+                ${monthlyReports.length > 0 ? `
+                <h3 style="font-size:14px;color:#374151;margin-bottom:8px">Daily Report Details</h3>
+                <table><thead><tr><th>Date</th><th style="text-align:center">Orders</th><th style="text-align:right">Gross</th><th style="text-align:right">Expenses</th><th style="text-align:right">Status</th></tr></thead>
+                <tbody>${reportRows}
+                <tr class="total-row"><td style="padding:8px 10px">TOTAL</td><td style="padding:8px 10px;text-align:center">${totalOrders}</td><td style="padding:8px 10px;text-align:right">Rs ${totalGross.toLocaleString()}</td><td style="padding:8px 10px;text-align:right;color:#ef4444">Rs ${totalExp.toLocaleString()}</td><td></td></tr>
+                </tbody></table>` : '<p style="color:#9ca3af;text-align:center;padding:20px">No approved reports this month</p>'}
+                <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px;margin-top:12px;font-size:13px">
+                    <strong>Deductions:</strong> Salary deduction: Rs ${attendanceInfo.totalDeduction.toLocaleString()}
+                    (${attendanceInfo.deductibleAbsences} absent days × Rs ${attendanceInfo.dailyWage})
+                </div>
+                <div class="net"><p>Net Salary — ${monthLabel}</p><h2>Rs ${netSalary.toLocaleString()}</h2></div>
+                <p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:16px">Generated: ${new Date().toLocaleString('en-PK')} · Dastak Delivery Service</p>
+                <div style="text-align:center;margin-top:12px"><button onclick="window.print()" style="background:#4f46e5;color:white;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:14px">??? Print / Save PDF</button></div>
+                </body></html>`;
+                const win = window.open('', '_blank');
+                win.document.write(html);
+                win.document.close();
+                setTimeout(() => win.print(), 500);
+            },
+
+            async renderAdminDashboard() {
+                document.getElementById('page-title').textContent = 'Admin Dashboard';
+                const container = document.getElementById('main-container');
+                // Lazy load company expenses if not yet loaded
+                if (!this.data.companyExpensesLoaded) this.showSkeleton('Admin Dashboard');
+                await this.ensureCompanyExpenses();
+                const m = this.data.selectedMonth;
+                const y = this.data.selectedYear;
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[m]} ${y}`;
+                const monthReports = this.getMonthFilteredReports('approved');
+                const totalRiders = this.data.users.filter(u => u.role === 'rider').length;
+                const pendingReports = this.getMonthFilteredReports('pending').length;
+                // Profit: orders - expenses - wage
+                const totalProfit = monthReports.reduce((a,r) => a + (r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0), 0)
+                    - (this.data.companyExpenses||[]).filter(e=>{ const d=new Date(e.date); return d.getMonth()===m && d.getFullYear()===y; }).reduce((a,e)=>a+e.amount,0);
+                const totalWages = monthReports.reduce((a,r) => a + (r.dailyWage||0), 0);
+                const totalRiderExpenses = monthReports.reduce((a,r) => a + (r.totalExpenses||0), 0);
+                const fuelTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0), 0);
+                const foodTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Food').reduce((s,e)=>s+e.amount,0), 0);
+                const maintTotal = monthReports.reduce((a,r) => a + (r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((s,e)=>s+e.amount,0), 0);
+                const allOnlinePayments = this.getMonthFilteredReports().flatMap(r => r.onlinePayments || []);
+                const totalOnlinePending = allOnlinePayments.filter(p=>p.status==='pending').reduce((a,b)=>a+(b.amount||0),0);
+                const companyExp = (this.data.companyExpenses||[]).filter(e=>{ const d=new Date(e.date); return d.getMonth()===m && d.getFullYear()===y; });
+                const totalCompanyExp = companyExp.reduce((a,e)=>a+e.amount,0);
+                // Daily data for chart (all days in selected month)
+                const daysInMonth = new Date(y, m+1, 0).getDate();
+                const dailyLabels = [], dailyProfit = [], dailyExp = [];
+                for (let d=1; d<=daysInMonth; d++) {
+                    const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const dayReps = monthReports.filter(r=>r.date===dateStr);
+                    dailyLabels.push(d);
+                    dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0));
+                    dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
+                }
+                container.innerHTML = `
+                    <div class="space-y-4 fade-in pb-20">
+                        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-base">?? Din ka Summary</h3>
+                                <input type="date" id="dash-date-picker" 
+                                    value="${new Date().toISOString().split('T')[0]}"
+                                    max="${new Date().toISOString().split('T')[0]}"
+                                    onchange="app.updateDayView()"
+                                    class="bg-white/20 text-white text-xs px-2 py-1 rounded-lg border border-white/30 outline-none cursor-pointer">
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="day-stats-grid">
+                                ${(() => {
+                                    const today = new Date().toISOString().split('T')[0];
+                                    const reps = this.data.reports.filter(r=>r.date===today&&r.status==='approved');
+                                    const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
+                                    const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
+                                    const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                                    const profit = gross - exp - wages;
+                                    const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                                    const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                                    const pending = this.data.reports.filter(r=>r.date===today&&r.status==='pending').length;
+                                    return `
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross Amount</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div>
+                                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>
+                                    ${pending>0?`<div class="col-span-2 md:col-span-6 bg-white/10 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} report(s) pending approval</div>`:''}
+                                    ${reps.length===0&&pending===0?`<div class="col-span-2 md:col-span-6 bg-white/10 rounded-lg p-2 text-center text-xs opacity-70">Aaj ki koi approved report nahi</div>`:''}`;
+                                })()}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-1">
+                                <h3 class="font-bold text-gray-800">Overview</h3>
+                                <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mb-4">Change month from the top picker</p>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                                <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400 mt-1">Gross - Wages - Exp</p></div>
+                                <div class="stat-card border-l-4 border-yellow-500"><p class="text-xs text-gray-500">Total Wages</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalWages.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-red-400 cursor-pointer" onclick="app.navigate('admin-expenses')"><p class="text-xs text-gray-500">Rider Expenses</p><h3 class="text-lg font-bold text-red-500">Rs ${totalRiderExpenses.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-purple-400 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">Company Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3></div>
+                                <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold text-gray-800">${totalRiders}</h3></div>
+                                <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200"><canvas id="profitChart" height="220"></canvas></div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Rider Expenses — ${monthLabel}</h3><button onclick="app.navigate('admin-expenses')" class="text-xs text-indigo-600">View All</button></div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="bg-orange-50 rounded-xl p-3 text-center border border-orange-100"><i class="fas fa-gas-pump text-orange-500 mb-1"></i><p class="text-xs text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${fuelTotal.toLocaleString()}</p></div>
+                                <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100"><i class="fas fa-utensils text-green-500 mb-1"></i><p class="text-xs text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${foodTotal.toLocaleString()}</p></div>
+                                <div class="bg-blue-50 rounded-xl p-3 text-center border border-blue-100"><i class="fas fa-wrench text-blue-500 mb-1"></i><p class="text-xs text-gray-500">Maintenance</p><p class="font-bold text-blue-600">Rs ${maintTotal.toLocaleString()}</p></div>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">?? Har Rider ka ${monthLabel} Summary</h3>
+                            <div class="space-y-3">
+                                ${(() => {
+                                    const riders = this.data.users.filter(u=>u.role==='rider');
+                                    if(riders.length===0) return '<p class="text-gray-400 text-center py-4">No riders</p>';
+                                    return riders.map(rider => {
+                                        const rReps = monthReports.filter(r=>r.riderId===rider.id);
+                                        const rGross = rReps.reduce((a,r)=>a+(r.totalGross||0),0);
+                                        const rWages = rReps.reduce((a,r)=>a+(r.dailyWage||0),0);
+                                        const rExp = rReps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                                        const rProfit = rGross - rWages - rExp;
+                                        const rOrders = rReps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                                        const rOnline = rReps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                                        return `<div class="bg-gray-50 rounded-xl p-4">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">${rider.name.charAt(0)}</div>
+                                                    <p class="font-bold text-gray-800 text-sm">${rider.name}</p>
+                                                </div>
+                                                <span class="text-xs font-bold ${rProfit>=0?'text-green-600':'text-red-600'}">Profit: Rs ${rProfit.toLocaleString()}</span>
+                                            </div>
+                                            <div class="grid grid-cols-3 md:grid-cols-5 gap-2 text-center text-xs">
+                                                <div class="bg-blue-50 rounded-lg p-1.5"><p class="text-gray-500">Days</p><p class="font-bold text-blue-600">${rReps.length}</p></div>
+                                                <div class="bg-green-50 rounded-lg p-1.5"><p class="text-gray-500">Gross</p><p class="font-bold text-green-600">Rs ${rGross.toLocaleString()}</p></div>
+                                                <div class="bg-yellow-50 rounded-lg p-1.5"><p class="text-gray-500">Wages</p><p class="font-bold text-yellow-600">Rs ${rWages.toLocaleString()}</p></div>
+                                                <div class="bg-red-50 rounded-lg p-1.5"><p class="text-gray-500">Expenses</p><p class="font-bold text-red-500">Rs ${rExp.toLocaleString()}</p></div>
+                                                <div class="bg-orange-50 rounded-lg p-1.5"><p class="text-gray-500">Pending</p><p class="font-bold text-orange-600">Rs ${rOnline.toLocaleString()}</p></div>
+                                            </div>
+                                        </div>`;
+                                    }).join('');
+                                })()}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800">Pending Reports</h3>
+                                <div class="flex gap-2">
+                                    <button onclick="app.exportMonthlyExcel()" class="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700"><i class="fas fa-file-excel mr-1"></i>Export Excel</button>
+                                    <button onclick="app.navigate('admin-reports')" class="text-xs text-indigo-600">View All</button>
+                                </div>
+                            </div>
+                            ${this.getMonthFilteredReports('pending').length === 0 ? `<p class="text-gray-400 text-center py-4">No pending reports this month</p>` : `
+                                <div class="space-y-2">${this.getMonthFilteredReports('pending').slice(0,5).map(r => `
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${r.riderName.charAt(0)}</div><div><p class="font-semibold text-sm">${r.riderName}</p><p class="text-xs text-gray-500">Rs ${(r.finalAmount||0).toLocaleString()}</p></div></div>
+                                        <div class="flex gap-1">
+                                            <button onclick="app.updateReportStatus('${r.id}','approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button>
+                                            <button onclick="app.updateReportStatus('${r.id}','rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>`).join('')}</div>`}
+                        </div>
+                    </div>`;
+                setTimeout(() => {
+                    this.createChart('profitChart', {
+                        type: 'bar',
+                        data: {
+                            labels: dailyLabels,
+                            datasets: [
+                                { label: 'Profit', data: dailyProfit, backgroundColor: dailyProfit.map(v=>v>=0?'rgba(79,70,229,0.7)':'rgba(239,68,68,0.7)'), borderRadius: 4 },
+                                { label: 'Expenses', data: dailyExp, backgroundColor: 'rgba(239,68,68,0.3)', borderRadius: 4 }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position:'top' }, tooltip: { callbacks: { label: ctx => ctx.dataset.label+': Rs '+ctx.parsed.y.toLocaleString() } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => 'Rs '+v.toLocaleString() } }, x: { title: { display:true, text:'Day of Month' } } } }
+                    });
+                }, 100);
+            },
+
+            setTimeFilter(filter) { this.data.currentTimeFilter = filter; this.renderAdminDashboard(); },
+
+            updateDayView() {
+                const picker = document.getElementById('dash-date-picker');
+                const grid = document.getElementById('day-stats-grid');
+                if (!picker || !grid) return;
+                const date = picker.value;
+                const reps = this.data.reports.filter(r=>r.date===date&&r.status==='approved');
+                const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
+                const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
+                const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                const companyExpDay = (this.data.companyExpenses||[]).filter(e=>e.date===date).reduce((a,e)=>a+e.amount,0);
+                const profit = gross - wages - exp - companyExpDay;
+                const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+                const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
+                const pending = this.data.reports.filter(r=>r.date===date&&r.status==='pending').length;
+                grid.innerHTML = `
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross Amount</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div>
+                    <div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>
+                    ${pending>0?`<div class="col-span-2 md:col-span-6 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending approval</div>`:''}
+                    ${reps.length===0&&pending===0?`<div class="col-span-2 md:col-span-6 bg-white/10 rounded-lg p-2 text-center text-xs opacity-70">Is din ki koi report nahi mili</div>`:''}`;
+            },
+
+            renderAdminRiders() {
+                document.getElementById('page-title').textContent = 'Manage Riders';
+                const container = document.getElementById('main-container');
+                const riders = this.data.users.filter(u => u.role === 'rider');
+                container.innerHTML = `
+                    <div class="fade-in pb-20">
+                        <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">All Riders</h3><button onclick="app.showSignup()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium"><i class="fas fa-plus mr-1"></i>Add</button></div>
+                        <div class="space-y-3">${riders.map(r => `
+                            <div class="section-card">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex items-center gap-3"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(r.name)}&background=random" class="w-12 h-12 rounded-full"><div><p class="font-bold text-gray-800">${r.name}</p><p class="text-xs text-gray-500">${r.phone} - ${r.zone || 'Unassigned'}</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <p class="text-xs text-purple-600 font-semibold">Base: Rs ${r.salaryBase || 15000}</p>
+                                        ${r.wageEnabled === false ? `<span class="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">Wage OFF</span>` :
+                                          r.wageType === 'none' ? `<span class="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded font-semibold">No Wage</span>` :
+                                          r.wageType === 'custom' ? `<span class="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">Custom Wage</span>` :
+                                          `<span class="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">Rs ${r.dailyWage || 500}/day</span>`}
+                                    </div></div></div>
+                                    <div class="flex gap-2"><button onclick="app.editRider('${r.id}')" class="p-2 text-indigo-600 hover:bg-indigo-50 rounded"><i class="fas fa-edit"></i></button><button onclick="app.deleteRider('${r.id}')" class="p-2 text-red-600 hover:bg-red-50 rounded"><i class="fas fa-trash"></i></button></div>
+                                </div>
+                            </div>`).join('')}${riders.length === 0 ? '<p class="text-center text-gray-400 py-8">No riders found</p>' : ''}</div>
+                    </div>`;
+            },
+
+            async deleteRider(riderId) {
+                if (!confirm('Delete this rider? All data will be removed.')) return;
+                try { 
+                    await window.db.collection('users').doc(riderId).delete();
+                    this.data.users = this.data.users.filter(u => u.id !== riderId);
+                    this.renderAdminRiders();
+                    alert('Rider deleted!'); 
+                }
+                catch (error) { alert('Error: ' + error.message); }
+            },
+
+            editRider(riderId) {
+                const rider = this.data.users.find(u => u.id === riderId);
+                if (!rider) return;
+                const wageType = rider.wageType || 'fixed';
+                const wageEnabled = rider.wageEnabled !== false; // default true
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Edit Rider</h2>
+                            <button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times"></i></button>
+                        </div>
+                        <form onsubmit="app.saveRiderEdit(event, '${riderId}')" class="space-y-3">
+                            <input type="text" id="edit-name" value="${rider.name}" placeholder="Full Name" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" required>
+                            <input type="email" id="edit-email" value="${rider.email}" placeholder="Email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" required>
+                            <input type="tel" id="edit-phone" value="${rider.phone}" placeholder="Phone" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" required>
+                            <input type="text" id="edit-vehicle" value="${rider.vehicle || ''}" placeholder="Vehicle Details" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none">
+                            <input type="number" id="edit-salary" value="${rider.salaryBase || 15000}" placeholder="Base Salary" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" required>
+                            
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-3">
+                                <h4 class="font-semibold text-gray-800 text-sm">?? Wage Settings</h4>
+                                
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-700">Wage Enable/Disable</p>
+                                        <p class="text-xs text-gray-500">Band karo to koi wage nahi kategi</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="edit-wage-enabled" ${wageEnabled ? 'checked' : ''} 
+                                            class="sr-only peer" onchange="app.toggleWageFields()">
+                                        <div class="w-11 h-6 bg-gray-300 peer-checked:bg-indigo-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                                    </label>
+                                </div>
+
+                                <div id="wage-type-section" class="${wageEnabled ? '' : 'opacity-40 pointer-events-none'}">
+                                    <p class="text-xs font-medium text-gray-600 mb-2">Wage Type:</p>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="edit-wage-type" value="fixed" ${wageType==='fixed'?'checked':''} 
+                                                class="accent-indigo-600" onchange="app.toggleWageFields()">
+                                            <span class="text-xs text-center font-medium text-gray-700">Fixed Daily<br><span class="text-gray-400 font-normal">Har din same</span></span>
+                                        </label>
+                                        <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="edit-wage-type" value="none" ${wageType==='none'?'checked':''} 
+                                                class="accent-indigo-600" onchange="app.toggleWageFields()">
+                                            <span class="text-xs text-center font-medium text-gray-700">No Wage<br><span class="text-gray-400 font-normal">Hamesha zero</span></span>
+                                        </label>
+                                        <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="edit-wage-type" value="custom" ${wageType==='custom'?'checked':''} 
+                                                class="accent-indigo-600" onchange="app.toggleWageFields()">
+                                            <span class="text-xs text-center font-medium text-gray-700">Custom<br><span class="text-gray-400 font-normal">Rider choose kare</span></span>
+                                        </label>
+                                    </div>
+                                    <div id="fixed-wage-field" class="mt-3 ${wageType==='fixed'?'':'hidden'}">
+                                        <label class="text-xs text-gray-500 mb-1 block">Daily Wage Amount (Rs)</label>
+                                        <input type="number" id="edit-dailywage" value="${rider.dailyWage || 500}" 
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" min="0">
+                                    </div>
+                                    <div id="none-wage-info" class="mt-3 ${wageType==='none'?'':'hidden'}">
+                                        <p class="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">? Is rider ki koi wage nahi kategi — report mein wage = 0 hogi</p>
+                                    </div>
+                                    <div id="custom-wage-info" class="mt-3 ${wageType==='custom'?'':'hidden'}">
+                                        <label class="text-xs text-gray-500 mb-1 block">Default Wage (rider change kar sakta hai)</label>
+                                        <input type="number" id="edit-dailywage-custom" value="${rider.dailyWage || 500}" 
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" min="0">
+                                        <p class="text-xs text-blue-600 mt-1">?? Rider report form mein wage khud set kar sakta hai</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3 pt-2">
+                                <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button>
+                                <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium">Save</button>
+                            </div>
+                        </form>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
+            },
+
+            toggleWageFields() {
+                const enabled = document.getElementById('edit-wage-enabled')?.checked;
+                const typeSection = document.getElementById('wage-type-section');
+                if (typeSection) typeSection.className = `${enabled ? '' : 'opacity-40 pointer-events-none'}`;
+                const wageType = document.querySelector('input[name="edit-wage-type"]:checked')?.value || 'fixed';
+                const fixedField = document.getElementById('fixed-wage-field');
+                const noneInfo = document.getElementById('none-wage-info');
+                const customInfo = document.getElementById('custom-wage-info');
+                if (fixedField) fixedField.className = `mt-3 ${wageType==='fixed'?'':'hidden'}`;
+                if (noneInfo) noneInfo.className = `mt-3 ${wageType==='none'?'':'hidden'}`;
+                if (customInfo) customInfo.className = `mt-3 ${wageType==='custom'?'':'hidden'}`;
+            },
+
+            async saveRiderEdit(e, riderId) {
+                e.preventDefault();
+                const wageEnabled = document.getElementById('edit-wage-enabled')?.checked !== false;
+                const wageType = document.querySelector('input[name="edit-wage-type"]:checked')?.value || 'fixed';
+                let dailyWage = 0;
+                if (wageType === 'fixed') dailyWage = parseInt(document.getElementById('edit-dailywage')?.value) || 0;
+                else if (wageType === 'custom') dailyWage = parseInt(document.getElementById('edit-dailywage-custom')?.value) || 0;
+                else dailyWage = 0; // none
+                const updates = { 
+                    name: document.getElementById('edit-name').value, 
+                    email: document.getElementById('edit-email').value, 
+                    phone: document.getElementById('edit-phone').value, 
+                    vehicle: document.getElementById('edit-vehicle').value, 
+                    salaryBase: parseInt(document.getElementById('edit-salary').value),
+                    dailyWage,
+                    wageType,
+                    wageEnabled
+                };
+                try { 
+                    await window.db.collection('users').doc(riderId).update(updates);
+                    // Update local data
+                    const rider = this.data.users.find(u => u.id === riderId);
+                    if (rider) Object.assign(rider, updates);
+                    this.closeModal(); 
+                    alert('Rider updated! ?\nWage Type: ' + (updates.wageEnabled ? updates.wageType : 'Disabled'));
+                }
+                catch (error) { alert('Error: ' + error.message); }
+            },
+
+            renderAdminReports() {
+                document.getElementById('page-title').textContent = 'Review Reports';
+                const container = document.getElementById('main-container');
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthLabel = `${monthNames[this.data.selectedMonth]} ${this.data.selectedYear}`;
+                container.innerHTML = `
+                    <div class="fade-in pb-20">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span>
+                            <button onclick="app.exportMonthlyExcel()" class="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700"><i class="fas fa-file-excel mr-1"></i>Export Excel</button>
+                        </div>
+                        <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+                            <select id="filter-zone" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Zones</option><option>North</option><option>South</option><option>East</option><option>West</option></select>
+                            <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
+                        </div>
+                        <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.getFilteredAdminReports().length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found for this month</p>' : ''}</div>
+                    </div>`;
+            },
+
+renderAdminOnlinePayments(selectedDate = null) {
+    // ? SAVE FILTER so re-renders stay on same date
+    const activeFilter = selectedDate || this.data.paymentDateFilter || new Date().toISOString().split('T')[0];
+    this.data.paymentDateFilter = activeFilter;
+
+    document.getElementById('page-title').textContent = 'Online Payments';
+    const container = document.getElementById('main-container');
+
+    let pendingPayments = [];
+    let receivedPayments = [];
+
+    this.data.reports.forEach(r => {
+        let include = activeFilter === 'all' || r.date === activeFilter;
+        if (include) {
+            (r.onlinePayments || []).forEach((p, idx) => {
+                const payment = { ...p, reportId: r.id, riderId: r.riderId, riderName: r.riderName, date: r.date, idx };
+                if (p.status === 'pending') pendingPayments.push(payment);
+                else receivedPayments.push(payment);
+            });
+        }
+    });
+
+    pendingPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+    receivedPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const totalPending = pendingPayments.reduce((a,b) => a+(b.amount||0), 0);
+    const totalReceived = receivedPayments.reduce((a,b) => a+(b.amount||0), 0);
+
+    const dateLabel = activeFilter === 'all' ? 'All Time' : new Date(activeFilter + 'T12:00:00').toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    container.innerHTML = `
+        <div class="fade-in pb-20 space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="relative flex-1">
+                    <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                    <input type="date" 
+                        value="${activeFilter === 'all' ? '' : activeFilter}" 
+                        max="${new Date().toISOString().split('T')[0]}"
+                        onchange="app.renderAdminOnlinePayments(this.value || 'all')"
+                        class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-3 text-sm font-semibold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer">
+                </div>
+                <button onclick="app.renderAdminOnlinePayments('all')" 
+                    class="flex-shrink-0 px-4 py-3 rounded-xl text-sm font-semibold transition-colors
+                    ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}">
+                    All
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 -mt-2"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
+            <div class="grid grid-cols-3 gap-2">
+                <div class="stat-card text-center p-3 border-l-4 border-orange-400">
+                    <p class="text-xs text-orange-600">Pending (${pendingPayments.length})</p>
+                    <p class="text-lg font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</p>
+                </div>
+                <div class="stat-card text-center p-3 border-l-4 border-green-400">
+                    <p class="text-xs text-green-600">Received</p>
+                    <p class="text-lg font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</p>
+                </div>
+                <div class="stat-card text-center p-3 border-l-4 border-blue-400">
+                    <p class="text-xs text-blue-600">Total</p>
+                    <p class="text-lg font-bold text-blue-700">Rs ${(totalPending+totalReceived).toLocaleString()}</p>
+                </div>
+            </div>
+            <div class="section-card">
+                ${pendingPayments.length === 0 && receivedPayments.length === 0 ?
+                    `<div class="text-center py-10 text-gray-400">
+                        <i class="fas fa-credit-card text-4xl mb-3"></i>
+                        <p class="text-sm">Is din koi payment nahi</p>
+                    </div>` :
+                    `<div>
+                        ${pendingPayments.length > 0 ? `
+                        <div class="mb-4">
+                            <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="fas fa-clock"></i> Pending (${pendingPayments.length})</h4>
+                            <div class="space-y-2">
+                                ${pendingPayments.map(p => `
+                                <div class="flex justify-between items-center p-3 rounded-xl border bg-orange-50 border-orange-200">
+                                    <div class="min-w-0 flex-1">
+                                        <p class="font-semibold text-sm truncate">${p.riderName}</p>
+                                        <p class="text-xs text-gray-500 truncate">${p.detail || '—'}</p>
+                                        <p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p>
+                                    </div>
+                                    <div class="text-right ml-2 flex-shrink-0">
+                                        <p class="font-bold text-sm">Rs ${(p.amount||0).toLocaleString()}</p>
+                                        <div class="flex gap-1 mt-1 justify-end">
+                                            <button onclick="app.sendWhatsAppPaymentReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}',${p.amount},'${p.date}')"
+                                                class="text-xs bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1">
+                                                <i class="fab fa-whatsapp"></i>
+                                            </button>
+                                            <button onclick="app.adminMarkReceived('${p.reportId}',${p.idx})"
+                                                class="text-xs bg-indigo-600 text-white px-2 py-1 rounded">?</button>
+                                        </div>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                        ${receivedPayments.length > 0 ? `
+                        <div>
+                            <h4 class="text-xs font-bold text-green-600 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="fas fa-check-circle"></i> Received (${receivedPayments.length})</h4>
+                            <div class="space-y-2">
+                                ${receivedPayments.map(p => `
+                                <div class="flex justify-between items-center p-3 rounded-xl border bg-gray-50 border-gray-200 opacity-70">
+                                    <div class="min-w-0 flex-1">
+                                        <p class="font-semibold text-sm truncate text-gray-500">${p.riderName}</p>
+                                        <p class="text-xs text-gray-400 truncate">${p.detail || '—'}</p>
+                                        <p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p>
+                                    </div>
+                                    <div class="text-right ml-2 flex-shrink-0">
+                                        <p class="font-bold text-sm text-gray-400">Rs ${(p.amount||0).toLocaleString()}</p>
+                                        <span class="text-xs text-green-600 font-medium">? Received</span>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                    </div>`
+                }
+            </div>
+        </div>`;
+},
+            async adminMarkReceived(reportId, idx) {
+                const report = this.data.reports.find(r => r.id === reportId);
+                if (!report || !report.onlinePayments || !report.onlinePayments[idx]) return;
+                
+                // ?? SAVE CURRENT FILTER DATE before any changes
+                const currentFilterDate = this.data.paymentDateFilter || 'today';
+                
+                try {
+                    const updatedPayments = [...report.onlinePayments];
+                    const payment = { ...updatedPayments[idx] };
+                    updatedPayments[idx] = { ...payment, status: 'received' };
+                    await window.db.collection('reports').doc(reportId).update({ onlinePayments: updatedPayments });
+                    
+                    // Update local data only
+                    report.onlinePayments = updatedPayments;
+                    
+                    this.sendReceivedThankYou(payment.detail, payment.amount, report.date);
+                    
+                    // ? RE-RENDER WITH SAVED DATE — no jump to today!
+                    this.renderAdminOnlinePayments(currentFilterDate);
+                    
+                } catch (error) { alert('Error: ' + error.message); }
+            },
+
+            sendReceivedThankYou(customerDetail, amount, date) {
+                const customers = this.data.customers || [];
+                const detail = (customerDetail || '').toLowerCase();
+                const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+                const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
+                const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
+                const matched = byPhone || byName;
+                const custName = matched ? matched.name : (customerDetail || 'Customer');
+                const message = `Assalam o Alaikum *${custName}*! ??\n\n?? ?? payment ????? ?? ???? ?????!\n\n? *Rs ${Number(amount).toLocaleString()} Received*\n?? Date: ${new Date(date).toLocaleDateString('en-PK')}\n\nDastak ?? order ???? ?? ?????? ?? ?? ???? ??? ???? ???! ??\n— Dastak Delivery Service`;
+                const encoded = encodeURIComponent(message);
+                let waNumber = '';
+                if (matched && matched.phone) {
+                    const p = matched.phone.replace(/\D/g,'');
+                    waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
+                }
+                const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+                let url;
+                if (waNumber.length >= 11) {
+                    url = isMobile
+                        ? `whatsapp://send?phone=${waNumber}&text=${encoded}`
+                        : `https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`;
+                } else {
+                    url = isMobile
+                        ? `whatsapp://send?text=${encoded}`
+                        : `https://api.whatsapp.com/send?text=${encoded}`;
+                }
+                window.open(url, '_blank');
+            },
+
+            sendWhatsAppPaymentReminder(riderName, customerDetail, amount, date) {
+                const message = `Assalam o Alaikum,\n\n?? ?? payment ???? pending ??? ?? ?? *Dastak* ?? order ??? ????\n\n?? *Amount: Rs ${Number(amount).toLocaleString()}*\n?? Date: ${new Date(date).toLocaleDateString('en-PK')}\n\n???? ??? ??? ?? ??? payment ?????\n????? — Dastak ??`;
+                const encoded = encodeURIComponent(message);
+                // Try to find customer phone from customers list
+                const detail = (customerDetail || '').toLowerCase();
+                const customers = this.data.customers || [];
+                let waNumber = '';
+                // Match by phone number in detail
+                const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+                const byPhone = customers.find(c => {
+                    const cp = (c.phone||'').replace(/\D/g,'').slice(-10);
+                    return cp.length >= 10 && cp === phoneInDetail;
+                });
+                // Match by name
+                const byName = !byPhone && customers.find(c => {
+                    const cn = (c.name||'').toLowerCase();
+                    return cn.length >= 3 && detail.includes(cn);
+                });
+                const matched = byPhone || byName;
+                if (matched && matched.phone) {
+                    const p = matched.phone.replace(/\D/g,'');
+                    waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
+                }
+                const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+                let url;
+                if (waNumber.length >= 11) {
+                    // api.whatsapp.com works on both mobile and desktop — opens direct chat
+                    url = `https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`;
+					                } else {
+                    url = isMobile
+                        ? `whatsapp://send?text=${encoded}`
+                        : `https://web.whatsapp.com/send?text=${encoded}`;
+                }
+                window.open(url, '_blank');
+            },
+
+            getFilteredAdminReports() {
+                const m = this.data.selectedMonth;
+                const y = this.data.selectedYear;
+                let reports = this.data.reports.filter(r => {
+                    const d = new Date(r.date);
+                    return d.getMonth() === m && d.getFullYear() === y;
+                });
+                const zoneFilter = document.getElementById('filter-zone')?.value;
+                const statusFilter = document.getElementById('filter-status')?.value;
+                if (zoneFilter) {
+                    reports = reports.filter(r => {
+                        const rider = this.data.users.find(u => u.id === r.riderId);
+                        return rider?.zone === zoneFilter;
+                    });
+                }
+                if (statusFilter) {
+                    reports = reports.filter(r => r.status === statusFilter);
+                } else {
+                    reports = reports.filter(r => r.status !== 'deleted');
+                }
+                return reports.sort((a,b) => new Date(b.date) - new Date(a.date));
+            },
+
+            renderAdminReportCard(r) {
+                const isDeleted = r.status === 'deleted';
+                return `
+                <div class="section-card ${isDeleted ? 'opacity-60 border-l-4 border-red-300' : ''}">
+                    <div class="flex justify-between items-start mb-2">
+                        <div><p class="font-bold text-gray-800">${r.riderName}</p><p class="text-xs text-gray-500">${new Date(r.date).toLocaleDateString()}</p></div>
+                        <span class="status-badge status-${r.status === 'deleted' ? 'rejected' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'deleted' ? '?? Deleted' : r.status}</span>
+                    </div>
+                    <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                        <div class="text-sm"><span class="text-gray-500">Total: </span><span class="text-gray-800 font-semibold">Rs ${(r.totalGross || 0).toLocaleString()}</span></div>
+                        <div class="flex gap-1 flex-wrap justify-end">
+                            <button onclick="app.viewReportDetails('${r.id}')" class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded font-medium">View</button>
+                            ${isDeleted ? `
+                                <button onclick="app.adminRecoverReport('${r.id}')" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded font-medium">? Recover</button>
+                            ` : `
+                                ${r.status !== 'approved' ? `<button onclick="app.adminApproveReport('${r.id}')" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded font-medium">? Approve</button>` : ''}
+                                ${r.status !== 'rejected' ? `<button onclick="app.adminRejectReport('${r.id}')" class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded font-medium">? Reject</button>` : ''}
+                                <button onclick="app.adminEditReport('${r.id}')" class="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded font-medium">? Edit</button>
+                                <button onclick="app.adminDeleteReport('${r.id}')" class="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded font-medium">??</button>
+                            `}
+                        </div>
+                    </div>
+                </div>`;
+            },
+
+            async adminApproveReport(id) {
+                await this.updateReportStatus(id, 'approved');
+            },
+
+            async adminRejectReport(id) {
+                const reason = prompt('Rejection reason (optional):');
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'rejected', rejectionReason: reason || '' });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) { r.status = 'rejected'; r.rejectionReason = reason || ''; }
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async adminDeleteReport(id) {
+                if (!confirm('Delete this report? It can be recovered later.')) return;
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'deleted' });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) r.status = 'deleted';
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async adminRecoverReport(id) {
+                try {
+                    await window.db.collection('reports').doc(id).update({ status: 'pending', deletedAt: null });
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) { r.status = 'pending'; r.deletedAt = null; }
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            adminEditReport(id) {
+                const report = this.data.reports.find(r => r.id === id);
+                if (!report) return;
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                const paymentsHTML = (report.onlinePayments || []).map((p, i) => `
+                    <div class="bg-gray-50 rounded-lg p-3 space-y-2" id="ae-pay-${i}">
+                        <div class="flex justify-between items-center mb-1">
+                            <p class="text-xs font-semibold text-gray-600">Payment ${i+1}</p>
+                            <span class="text-xs px-2 py-0.5 rounded ${p.status==='received'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}">${p.status}</span>
+                        </div>
+                        <div><label class="text-xs text-gray-500">Customer Name / Detail</label>
+                            <input type="text" id="ae-pay-detail-${i}" value="${(p.detail||'').replace(/"/g,'&quot;')}" 
+                                class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:border-indigo-400 mt-1"
+                                placeholder="Customer name or detail">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">Amount (Rs)</label>
+                                <input type="number" id="ae-pay-amt-${i}" value="${p.amount||0}" class="w-full border border-indigo-300 rounded px-2 py-1.5 text-sm outline-none mt-1">
+                            </div>
+                            <div><label class="text-xs text-gray-500">Status</label>
+                                <select id="ae-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none mt-1">
+                                    <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="received" ${p.status==='received'?'selected':''}>Received</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>`).join('');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold">Edit Report</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
+                        <form onsubmit="app.adminSaveReportEdit(event, '${id}')" class="space-y-3">
+                            <div><label class="text-xs text-gray-500">Report Date</label>
+                                <input type="date" id="ae-date" value="${report.date || ''}" class="w-full border border-indigo-300 rounded-lg px-3 py-2 mt-1 text-sm outline-none focus:border-indigo-500">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="text-xs text-gray-500">Opening Balance</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Orders Amount</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Total Expenses</label><input type="number" id="ae-expenses" value="${report.totalExpenses || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                                <div><label class="text-xs text-gray-500">Final Cash</label><input type="number" id="ae-final" value="${report.finalAmount || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div>
+                            </div>
+                            <div><label class="text-xs text-gray-500">Status</label>
+                                <select id="ae-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                    <option value="pending" ${report.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="approved" ${report.status==='approved'?'selected':''}>Approved</option>
+                                    <option value="rejected" ${report.status==='rejected'?'selected':''}>Rejected</option>
+                                    <option value="draft" ${report.status==='draft'?'selected':''}>Draft</option>
+                                </select>
+                            </div>
+                            ${paymentsHTML ? `<div><label class="text-xs font-semibold text-gray-700 block mb-2">Online Payments (Edit amount or mark received)</label><div class="space-y-2">${paymentsHTML}</div></div>` : ''}
+                            <div class="flex gap-3 pt-2">
+                                <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button>
+                                <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+            },
+
+            async adminSaveReportEdit(e, id) {
+                e.preventDefault();
+                const report = this.data.reports.find(r => r.id === id);
+                try {
+                    const updatedPayments = (report.onlinePayments || []).map((p, i) => ({
+                        ...p,
+                        detail: document.getElementById(`ae-pay-detail-${i}`)?.value ?? p.detail,
+                        amount: parseFloat(document.getElementById(`ae-pay-amt-${i}`)?.value) ?? p.amount,
+                        status: document.getElementById(`ae-pay-status-${i}`)?.value ?? p.status
+                    }));
+                    const updates = {
+                        date: document.getElementById('ae-date').value || report.date,
+                        openingBalance: parseFloat(document.getElementById('ae-opening').value) || 0,
+                        totalGross: parseFloat(document.getElementById('ae-gross').value) || 0,
+                        totalExpenses: parseFloat(document.getElementById('ae-expenses').value) || 0,
+                        finalAmount: parseFloat(document.getElementById('ae-final').value) || 0,
+                        status: document.getElementById('ae-status').value,
+                        onlinePayments: updatedPayments,
+                        adminEditedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await window.db.collection('reports').doc(id).update(updates);
+                    // Update local data - no re-fetch
+                    Object.assign(report, updates);
+                    this.closeModal();
+                    this.renderAdminReports();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderAdminExpenses() {
+                document.getElementById('page-title').textContent = 'Rider Expenses';
+                const container = document.getElementById('main-container');
+                // Collect all expenses from all approved reports
+                let allExpenses = [];
+                this.data.reports.filter(r => r.status === 'approved').forEach(r => {
+                    (r.expenses || []).forEach(e => {
+                        allExpenses.push({ ...e, riderName: r.riderName, riderId: r.riderId, date: r.date, reportId: r.id });
+                    });
+                });
+                allExpenses.sort((a,b) => new Date(b.date) - new Date(a.date));
+                const totalFuel = allExpenses.filter(e=>e.type==='Fuel').reduce((a,e)=>a+e.amount,0);
+                const totalFood = allExpenses.filter(e=>e.type==='Food').reduce((a,e)=>a+e.amount,0);
+                const totalMaint = allExpenses.filter(e=>e.type==='Maintenance').reduce((a,e)=>a+e.amount,0);
+                const grandTotal = totalFuel + totalFood + totalMaint;
+                // Per rider breakdown
+                const riderExp = {};
+                allExpenses.forEach(e => {
+                    if (!riderExp[e.riderId]) riderExp[e.riderId] = { name: e.riderName, fuel:0, food:0, maint:0 };
+                    if(e.type==='Fuel') riderExp[e.riderId].fuel += e.amount;
+                    if(e.type==='Food') riderExp[e.riderId].food += e.amount;
+                    if(e.type==='Maintenance') riderExp[e.riderId].maint += e.amount;
+                });
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="stat-card border-l-4 border-red-500 col-span-2 md:col-span-1"><p class="text-xs text-gray-500">Total Expenses</p><h3 class="text-xl font-bold text-red-600">Rs ${grandTotal.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">? Fuel</p><h3 class="text-lg font-bold text-orange-600">Rs ${totalFuel.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">?? Food</p><h3 class="text-lg font-bold text-green-600">Rs ${totalFood.toLocaleString()}</h3></div>
+                            <div class="stat-card border-l-4 border-blue-400"><p class="text-xs text-gray-500">?? Maintenance</p><h3 class="text-lg font-bold text-blue-600">Rs ${totalMaint.toLocaleString()}</h3></div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">Per Rider Breakdown</h3>
+                            <div class="space-y-3">
+                                ${Object.values(riderExp).length === 0 ? `<p class="text-center text-gray-400 py-4">No expense data yet</p>` : Object.values(riderExp).map(r => `
+                                <div class="bg-gray-50 rounded-xl p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <div class="flex items-center gap-2"><div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">${r.name.charAt(0)}</div><p class="font-bold text-gray-800">${r.name}</p></div>
+                                        <p class="font-bold text-red-600">Rs ${(r.fuel+r.food+r.maint).toLocaleString()}</p>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                                        <div class="bg-orange-50 rounded-lg p-2"><p class="text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${r.fuel.toLocaleString()}</p></div>
+                                        <div class="bg-green-50 rounded-lg p-2"><p class="text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${r.food.toLocaleString()}</p></div>
+                                        <div class="bg-blue-50 rounded-lg p-2"><p class="text-gray-500">Maint.</p><p class="font-bold text-blue-600">Rs ${r.maint.toLocaleString()}</p></div>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-4">All Expense Entries</h3>
+                            <div class="space-y-2">
+                                ${allExpenses.length === 0 ? `<p class="text-center text-gray-400 py-4">No expenses found</p>` : allExpenses.map(e => `
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-sm">${e.riderName}</p>
+                                        <p class="text-xs text-gray-500">${e.type} — ${new Date(e.date).toLocaleDateString()}</p>
+                                    </div>
+                                    <p class="font-bold text-red-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            async renderCompanyExpenses() {
+                document.getElementById('page-title').textContent = 'Company Expenses';
+                const container = document.getElementById('main-container');
+                await this.ensureCompanyExpenses();
+                const expenses = this.data.companyExpenses || [];
+                const totalExp = expenses.reduce((a,e)=>a+e.amount,0);
+                const categories = ['Rent', 'Salaries', 'Utilities', 'Fuel', 'Maintenance', 'Marketing', 'Other'];
+                const catTotals = {};
+                categories.forEach(c => { catTotals[c] = expenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="stat-card border-l-4 border-purple-500 col-span-2"><p class="text-xs text-gray-500">Total Company Expenses</p><h3 class="text-2xl font-bold text-purple-600">Rs ${totalExp.toLocaleString()}</h3></div>
+                        </div>
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Add New Expense</h3>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
+                                        <select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                            ${categories.map(c=>`<option value="${c}">${c}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
+                                        <input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
+                                    </div>
+                                </div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
+                                    <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent January 2026">
+                                </div>
+                                <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
+                                    <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <button onclick="app.addCompanyExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors"><i class="fas fa-plus mr-2"></i>Add Expense</button>
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">By Category</h3>
+                            <div class="grid grid-cols-2 gap-2">
+                                ${categories.filter(c=>catTotals[c]>0).map(c=>`
+                                <div class="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                                    <p class="text-xs text-gray-500">${c}</p>
+                                    <p class="font-bold text-purple-700">Rs ${catTotals[c].toLocaleString()}</p>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">All Entries</h3>
+                            <div class="space-y-2">
+                                ${expenses.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-building text-4xl mb-2"></i><p class="text-sm">No company expenses added yet</p><p class="text-xs mt-1">Add your first expense above (rent, utilities, etc.)</p></div>` :
+                                [...expenses].reverse().map(e=>`
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-sm">${e.description || e.category}</p>
+                                        <p class="text-xs text-gray-500">${e.category} — ${new Date(e.date).toLocaleDateString()}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                        <button onclick="app.deleteCompanyExpense('${e.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            async addCompanyExpense() {
+                const category = document.getElementById('ce-category').value;
+                const amount = parseFloat(document.getElementById('ce-amount').value) || 0;
+                const description = document.getElementById('ce-desc').value.trim();
+                const date = document.getElementById('ce-date').value;
+                if (!amount || amount <= 0) { alert('Amount daalna zaroori hai!'); return; }
+                try {
+                    const newExp = { category, amount, description, date };
+                    const docRef = await window.db.collection('companyExpenses').add({ ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    // Update local data
+                    this.data.companyExpenses.push({ id: docRef.id, ...newExp });
+                    alert('Expense add ho gaya!');
+                    this.renderCompanyExpenses();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteCompanyExpense(id) {
+                if (!confirm('Delete this expense?')) return;
+                try {
+                    await window.db.collection('companyExpenses').doc(id).delete();
+                    this.data.companyExpenses = this.data.companyExpenses.filter(e => e.id !== id);
+                    this.renderCompanyExpenses();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderAdminCustomers() {
+                document.getElementById('page-title').textContent = 'Customers';
+                const container = document.getElementById('main-container');
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading customers...</p></div>`;
+                this.ensureCustomers().then(() => {
+                    this._renderCustomersPage();
+                }).catch(e => {
+                    container.innerHTML = `<div class="text-center text-red-500 py-8">Error: ${e.message}</div>`;
+                });
+            },
+
+            _renderCustomersPage() {
+                const container = document.getElementById('main-container');
+                const customers = this.data.customers || [];
+                const topCustomers = customers.map(c => {
+                    const s = this.getCustomerPaymentStats(c);
+                    return { ...s, name: c.name, id: c.id };
+                }).filter(c => c.count > 0).sort((a,b) => b.total - a.total);
+
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-gray-800">Add Customer</h3>
+                                <label class="flex items-center gap-2 text-xs bg-green-600 text-white px-3 py-2 rounded-lg cursor-pointer hover:bg-green-700 font-semibold">
+                                    <i class="fas fa-file-excel"></i> Import CSV/Excel
+                                    <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="app.importCustomersFile(this)">
+                                </label>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <input type="text" id="cust-name" placeholder="Customer Name *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <input type="tel" id="cust-phone" placeholder="03001234567 *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <input type="text" id="cust-address" placeholder="Address (optional)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                            </div>
+                            <button onclick="app.addCustomer()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700"><i class="fas fa-plus mr-2"></i>Add Customer</button>
+                        </div>
+                        ${topCustomers.length > 0 ? `
+                        <div class="section-card">
+                            <h3 class="font-bold text-gray-800 mb-3">?? Top Customers by Payment</h3>
+                            <div class="space-y-2">
+                                ${topCustomers.slice(0,5).map((c,i) => `
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full ${i===0?'bg-yellow-100 text-yellow-600':i===1?'bg-gray-200 text-gray-600':'bg-orange-100 text-orange-600'} flex items-center justify-center font-bold text-sm">${i+1}</div>
+                                        <div><p class="font-semibold text-sm">${c.name}</p><p class="text-xs text-gray-500">${c.count} orders</p></div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-sm">Rs ${c.total.toLocaleString()}</p>
+                                        ${c.pending > 0 ? `<p class="text-xs text-orange-600">Pending: Rs ${c.pending.toLocaleString()}</p>` : '<p class="text-xs text-green-600">All clear ?</p>'}
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-bold text-gray-800">All Customers</h3>
+                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" id="cust-count">${customers.length}</span>
+                                </div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <select onchange="app.custChangePerPage(this.value)" class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-white">
+                                        ${[10,20,30,40,50,60,70,80,90,100,1000].map(n => `<option value="${n}" ${n===this.data.custPerPage?'selected':''}>${n=== 1000?'All (1000)':n+' per page'}</option>`).join('')}
+                                    </select>
+                                    <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-28">
+                                    <button onclick="app.toggleSelectAll()" id="select-all-btn" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-200 whitespace-nowrap">? Select All</button>
+                                    <button onclick="app.bulkDeleteCustomers()" id="bulk-delete-btn" class="hidden text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-red-700 whitespace-nowrap"><i class="fas fa-trash mr-1"></i>Delete (<span id="selected-count">0</span>)</button>
+                                </div>
+                            </div>
+                            <div id="customers-list" class="space-y-2">
+                                ${(() => {
+                                    if (customers.length === 0) return `<div class="text-center py-8 text-gray-400"><i class="fas fa-address-book text-4xl mb-2"></i><p>No customers yet</p><p class="text-xs mt-1">Add manually or import from CSV/Excel</p></div>`;
+                                    const page = this.data.custPage;
+                                    const perPage = this.data.custPerPage;
+                                    const start = (page - 1) * perPage;
+                                    const paginated = customers.slice(start, start + perPage);
+                                    return paginated.map(c => this.renderCustomerCard(c)).join('');
+                                })()}
+                            </div>
+                            ${this.renderCustomerPagination(customers.length, this.data.custPage, this.data.custPerPage)}
+                        </div>
+                    </div>`;
+            },
+
+            getCustomerPaymentStats(c) {
+                let total=0, pending=0, received=0, count=0;
+                const custPhone = (c.phone||'').replace(/\D/g,'').slice(-10);
+                const custName = (c.name||'').trim().toLowerCase();
+                this.data.reports.forEach(r => {
+                    (r.onlinePayments||[]).forEach(p => {
+                        const detail = (p.detail||'').toLowerCase();
+                        const detailPhone = detail.replace(/\D/g,'').slice(-10);
+                        // Strict: phone last 10 digits exact match
+                        const phoneMatch = custPhone.length >= 10 && detailPhone === custPhone;
+                        // Name match: detail starts with or contains full name (min 4 chars)
+                        const nameMatch = custName.length >= 4 && detail.includes(custName);
+                        if (phoneMatch || nameMatch) {
+                            total += p.amount||0; count++;
+                            if(p.status==='pending') pending+=p.amount||0; else received+=p.amount||0;
+                        }
+                    });
+                });
+                return {total, pending, received, count};
+            },
+
+            renderCustomerCard(c) {
+                const stats = this.getCustomerPaymentStats(c);
+                const phone = (c.phone||'').replace(/\D/g,'');
+                const wa = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/,'');
+                return `
+                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" data-cust-id="${c.id}">
+                    <input type="checkbox" class="cust-checkbox w-4 h-4 accent-indigo-600 flex-shrink-0 cursor-pointer" data-id="${c.id}" onchange="app.updateBulkDeleteBtn()">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0">${(c.name||'?').charAt(0).toUpperCase()}</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-sm truncate">${c.name}</p>
+                        <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
+                        ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'} font-medium">Rs ${stats.total.toLocaleString()}${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ?'}</p>` : ''}
+                    </div>
+                    <div class="flex gap-1 flex-shrink-0">
+                        ${stats.pending > 0 && phone.length >= 10 ? `
+                        <a href="https://api.whatsapp.com/send?phone=${wa}&text=${encodeURIComponent(`Assalam o Alaikum *${c.name}*,\n\n?? ?? payment pending ???\n?? Pending: Rs ${stats.pending.toLocaleString()}\n\n???? ??? payment ?????\nShukria — Dastak ??`)}" target="_blank"
+                           class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>` :
+                        stats.pending > 0 ? `<button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs"><i class="fab fa-whatsapp"></i></button>` : ''}
+                        <button onclick="app.editCustomer('${c.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg text-xs" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
+            },
+
+            editCustomer(id) {
+                const c = this.data.customers.find(x => x.id === id);
+                if (!c) return;
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Edit Customer</h2>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+                        <div class="space-y-3">
+                            <div><label class="text-xs text-gray-500 mb-1 block">Name *</label>
+                                <input type="text" id="ec-name" value="${c.name||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Phone *</label>
+                                <input type="tel" id="ec-phone" value="${c.phone||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Address</label>
+                                <input type="text" id="ec-address" value="${c.address||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+                            <div class="flex gap-3 pt-2">
+                                <button onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium text-sm">Cancel</button>
+                                <button onclick="app.saveCustomerEdit('${id}')" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+            },
+
+            async saveCustomerEdit(id) {
+                const name = document.getElementById('ec-name').value.trim();
+                const phone = document.getElementById('ec-phone').value.trim();
+                const address = document.getElementById('ec-address').value.trim();
+                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+                try {
+                    await window.db.collection('customers').doc(id).update({ name, phone, address });
+                    // Update local data - no re-fetch
+                    const c = this.data.customers.find(x => x.id === id);
+                    if (c) { c.name = name; c.phone = phone; c.address = address; }
+                    this.closeModal();
+                    this._renderCustomersPage();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            renderCustomerPagination(totalItems, currentPage, perPage) {
+                const totalPages = Math.ceil(totalItems / perPage);
+                if (totalPages <= 1) return '';
+                const pages = [];
+                for (let i = 1; i <= totalPages; i++) pages.push(i);
+                return `<div class="flex items-center justify-between pt-3 border-t border-gray-100 mt-3 flex-wrap gap-2">
+                    <p class="text-xs text-gray-500">Showing ${((currentPage-1)*perPage)+1}–${Math.min(currentPage*perPage, totalItems)} of ${totalItems}</p>
+                    <div class="flex gap-1 flex-wrap">
+                        <button onclick="app.custGotoPage(${currentPage-1})" ${currentPage===1?'disabled':''} class="px-2 py-1 text-xs border border-gray-300 rounded ${currentPage===1?'opacity-40 cursor-not-allowed':'hover:bg-gray-100'}">‹</button>
+                        ${pages.slice(Math.max(0,currentPage-3), Math.min(totalPages,currentPage+2)).map(p => `
+                        <button onclick="app.custGotoPage(${p})" class="px-2.5 py-1 text-xs border rounded ${p===currentPage?'bg-indigo-600 text-white border-indigo-600':'border-gray-300 hover:bg-gray-100'}">${p}</button>`).join('')}
+                        <button onclick="app.custGotoPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''} class="px-2 py-1 text-xs border border-gray-300 rounded ${currentPage===totalPages?'opacity-40 cursor-not-allowed':'hover:bg-gray-100'}">›</button>
+                    </div>
+                </div>`;
+            },
+
+            custGotoPage(page) {
+                const total = this.data.customers.length;
+                const totalPages = Math.ceil(total / this.data.custPerPage);
+                if (page < 1 || page > totalPages) return;
+                this.data.custPage = page;
+                this.renderAdminCustomers();
+                // Scroll to customers list
+                setTimeout(() => document.getElementById('customers-list')?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+            },
+
+            custChangePerPage(val) {
+                this.data.custPerPage = parseInt(val);
+                this.data.custPage = 1;
+                this.renderAdminCustomers();
+            },
+
+            toggleSelectAll() {
+                const checkboxes = document.querySelectorAll('.cust-checkbox');
+                const allChecked = [...checkboxes].every(cb => cb.checked);
+                checkboxes.forEach(cb => cb.checked = !allChecked);
+                const btn = document.getElementById('select-all-btn');
+                if (btn) btn.textContent = allChecked ? '? Select All' : '? Deselect All';
+                this.updateBulkDeleteBtn();
+            },
+
+            updateBulkDeleteBtn() {
+                const checked = document.querySelectorAll('.cust-checkbox:checked');
+                const btn = document.getElementById('bulk-delete-btn');
+                const countEl = document.getElementById('selected-count');
+                if (!btn) return;
+                if (checked.length > 0) {
+                    btn.classList.remove('hidden');
+                    if (countEl) countEl.textContent = checked.length;
+                } else {
+                    btn.classList.add('hidden');
+                }
+            },
+
+            async bulkDeleteCustomers() {
+                const checked = document.querySelectorAll('.cust-checkbox:checked');
+                const ids = [...checked].map(cb => cb.dataset.id);
+                if (ids.length === 0) return;
+                if (!confirm(`${ids.length} customers delete karne hain? Yeh wapas nahi aayenge.`)) return;
+                try {
+                    const batchSize = 400;
+                    for (let i = 0; i < ids.length; i += batchSize) {
+                        const batch = window.db.batch();
+                        ids.slice(i, i + batchSize).forEach(id => {
+                            batch.delete(window.db.collection('customers').doc(id));
+                        });
+                        await batch.commit();
+                    }
+                    // Update local data - no re-fetch
+                    const idSet = new Set(ids);
+                    this.data.customers = this.data.customers.filter(c => !idSet.has(c.id));
+                    alert(`? ${ids.length} customers delete ho gaye!`);
+                    this._renderCustomersPage();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            filterCustomers() {
+                const q = (document.getElementById('cust-search')?.value || '').toLowerCase();
+                const list = document.getElementById('customers-list');
+                const countEl = document.getElementById('cust-count');
+                if (!list) return;
+                const filtered = this.data.customers.filter(c =>
+                    (c.name||'').toLowerCase().includes(q) ||
+                    (c.phone||'').includes(q) ||
+                    (c.address||'').toLowerCase().includes(q)
+                );
+                if (countEl) countEl.textContent = filtered.length;
+                // Show all results when searching (no pagination)
+                list.innerHTML = filtered.length === 0
+                    ? '<p class="text-center text-gray-400 py-4">No results found</p>'
+                    : filtered.map(c => this.renderCustomerCard(c)).join('');
+                this.updateBulkDeleteBtn();
+            },
+
+            async addCustomer() {
+                const name = document.getElementById('cust-name').value.trim();
+                const phone = document.getElementById('cust-phone').value.trim();
+                const address = document.getElementById('cust-address').value.trim();
+                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+                try {
+                    const docRef = await window.db.collection('customers').add({ name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    // Update local data - no re-fetch
+                    this.data.customers.push({ id: docRef.id, name, phone, address });
+                    document.getElementById('cust-name').value = '';
+                    document.getElementById('cust-phone').value = '';
+                    document.getElementById('cust-address').value = '';
+                    alert('Customer add ho gaya!');
+                    this._renderCustomersPage();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteCustomer(id) {
+                if (!confirm('Delete this customer?')) return;
+                try {
+                    await window.db.collection('customers').doc(id).delete();
+                    this.data.customers = this.data.customers.filter(c => c.id !== id);
+                    this._renderCustomersPage();
+                }
+                catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async importCustomersFile(input) {
+                const file = input.files[0];
+                if (!file) return;
+                const self = this;
+                const doImport = async () => {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const wb = XLSX.read(e.target.result, { type: 'array' });
+                            const ws = wb.Sheets[wb.SheetNames[0]];
+                            const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                            const headers = rows[0] || [];
+                            // Detect column indices
+                            const colIdx = (names) => {
+                                for (const n of names) {
+                                    const i = headers.findIndex(h => h && h.toString().toLowerCase().includes(n.toLowerCase()));
+                                    if (i >= 0) return i;
+                                }
+                                return -1;
+                            };
+                            const firstNameIdx = colIdx(['first name', 'name', 'contact']);
+                            const mobileIdx = colIdx(['mobile phone', 'mobile', 'phone', 'primary phone', 'cell']);
+                            const addressIdx = colIdx(['address', 'street', 'city']);
+
+                            const cleanPhone = (p) => {
+                                if (!p) return '';
+                                p = p.toString().replace(/[\s\-\(\)]/g, '');
+                                if (p.startsWith('+92')) p = '0' + p.slice(3);
+                                else if (p.startsWith('92') && p.length > 10) p = '0' + p.slice(2);
+                                return p;
+                            };
+                            const cleanName = (raw) => {
+                                if (!raw) return '';
+                                raw = raw.toString().trim();
+                                // Remove leading special/non-alphanumeric chars
+                                raw = raw.replace(/^[^a-zA-Z0-9\u0600-\u06FF]+/, '').trim();
+                                return raw;
+                            };
+
+                            let added = 0, skipped = 0;
+                            const batchSize = 400;
+                            const dataRows = rows.slice(1).filter(r => r && r.length > 0);
+                            const newCustomers = [];
+
+                            for (let i = 0; i < dataRows.length; i += batchSize) {
+                                const batch = window.db.batch();
+                                const chunk = dataRows.slice(i, i + batchSize);
+                                chunk.forEach(row => {
+                                    const name = cleanName(firstNameIdx >= 0 ? row[firstNameIdx] : row[0]);
+                                    const phone = cleanPhone(mobileIdx >= 0 ? row[mobileIdx] : row[1]);
+                                    const address = addressIdx >= 0 ? (row[addressIdx]||'').toString().trim() : '';
+                                    if (!name || !phone) { skipped++; return; }
+                                    const ref = window.db.collection('customers').doc();
+                                    batch.set(ref, { name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                                    newCustomers.push({ id: ref.id, name, phone, address });
+                                    added++;
+                                });
+                                await batch.commit();
+                            }
+                            // Update local data - no re-fetch needed
+                            self.data.customers = [...self.data.customers, ...newCustomers];
+                            self.data.custPage = 1;
+                            alert(`? ${added} customers import ho gaye!${skipped > 0 ? `\n?? ${skipped} rows skip hue (name/phone missing)` : ''}`);
+                            self._renderCustomersPage();
+                        } catch(err) { alert('Import error: ' + err.message); }
+                    };
+                    reader.readAsArrayBuffer(file);
+                };
+                if (window.XLSX) { doImport(); } else {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                    script.onload = doImport;
+                    document.head.appendChild(script);
+                }
+            },
+
+            sendCustomerWhatsApp(custId) {
+                const customer = this.data.customers.find(c => c.id === custId);
+                if (!customer) return;
+                let pendingList = [];
+                this.data.reports.forEach(r => {
+                    (r.onlinePayments||[]).forEach(p => {
+                        if (p.status !== 'pending') return;
+                        const detail = (p.detail||'').toLowerCase();
+                        const nameMatch = customer.name && detail.includes(customer.name.toLowerCase());
+                        const phoneMatch = customer.phone && detail.includes(customer.phone.replace(/\D/g,'').slice(-10));
+                        if (nameMatch || phoneMatch) {
+                            pendingList.push({ date: r.date, amount: p.amount||0, detail: p.detail });
+                        }
+                    });
+                });
+                if (pendingList.length === 0) { alert('Is customer ki koi pending payment nahi'); return; }
+                const totalPending = pendingList.reduce((a,p)=>a+p.amount, 0);
+                const details = pendingList.map(p => `?? ${new Date(p.date).toLocaleDateString('en-PK')} — Rs ${(p.amount||0).toLocaleString()}`).join('\n');
+                const message = `Assalam o Alaikum *${customer.name}*,\n\n?? ?? ??? ??? payments ???? pending ???:\n\n${details}\n\n?? *?? ????: Rs ${totalPending.toLocaleString()}*\n\n???? ??? ??? ?? ??? payment ?????\n????? — Dastak ??`;
+                const phone = (customer.phone||'').replace(/\D/g,'');
+                const wa = phone.startsWith('92') ? phone : '92'+phone.replace(/^0/,'');
+                const encoded = encodeURIComponent(message);
+                const url = /iPhone|Android/i.test(navigator.userAgent)
+                    ? (wa.length > 4 ? `whatsapp://send?phone=${wa}&text=${encoded}` : `whatsapp://send?text=${encoded}`)
+                    : (wa.length > 4 ? `https://web.whatsapp.com/send?phone=${wa}&text=${encoded}` : `https://web.whatsapp.com/send?text=${encoded}`);
+                window.open(url, '_blank');
+            },
+
+            renderAdminAttendance() {
+                document.getElementById('page-title').textContent = 'Attendance Management';
+                const container = document.getElementById('main-container');
+                const riders = this.data.users.filter(u => u.role === 'rider');
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="section-card">
+                            <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">Attendance Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</span></div>
+                            <div class="space-y-4">${riders.map(rider => {
+                                const attendanceInfo = this.calculateAttendanceDeductions(rider.id, currentMonth, currentYear);
+                                const presentDays = this.data.attendance.filter(a => a.riderId === rider.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length;
+                                return `
+                                    <div class="bg-gray-50 rounded-xl p-4">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div class="flex items-center gap-3"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(rider.name)}&background=random" class="w-10 h-10 rounded-full"><div><p class="font-bold text-gray-800">${rider.name}</p><p class="text-xs text-gray-500">Daily Wage: Rs ${rider.dailyWage || 500}</p></div></div>
+                                            <div class="text-right"><p class="text-2xl font-bold text-gray-800">${presentDays}<span class="text-sm text-gray-500 font-normal"> days</span></p><p class="text-xs text-gray-500">Present</p></div>
+                                        </div>
+                                        <div class="grid grid-cols-3 gap-2 mb-3">
+                                            <div class="bg-green-100 text-green-700 rounded-lg p-2 text-center"><p class="text-xs font-medium">Present</p><p class="text-lg font-bold">${presentDays}</p></div>
+                                            <div class="bg-red-100 text-red-700 rounded-lg p-2 text-center"><p class="text-xs font-medium">Absent</p><p class="text-lg font-bold">${attendanceInfo.totalAbsences}</p></div>
+                                            <div class="${attendanceInfo.deductibleAbsences > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'} rounded-lg p-2 text-center"><p class="text-xs font-medium">Deduction</p><p class="text-lg font-bold">Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p></div>
+                                        </div>
+                                        <div class="mt-3 pt-3 border-t border-gray-200"><button onclick="app.showAttendanceCalendar('${rider.id}')" class="w-full text-center text-sm text-indigo-600 font-medium hover:bg-white py-2 rounded-lg transition-colors">View Calendar</button></div>
+                                    </div>`;}).join('')}${riders.length === 0 ? '<p class="text-center text-gray-400 py-8">No riders found</p>' : ''}</div>
+                        </div>
+                    </div>`;
+            },
+
+            showAttendanceCalendar(riderId) {
+                const rider = this.data.users.find(u => u.id === riderId);
+                if (!rider) return;
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                let calendarHTML = '';
+                for (let i = 0; i < firstDay; i++) calendarHTML += `<div class="calendar-day empty"></div>`;
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const attendance = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+                    let dayClass = '', statusIcon = '';
+                    if (attendance) {
+                        if (attendance.status === 'present') { dayClass = 'present'; statusIcon = '<i class="fas fa-check text-xs"></i>'; }
+                        else if (attendance.status === 'absent') { if (attendance.isReliefDay) { dayClass = 'relief'; statusIcon = '<i class="fas fa-umbrella text-xs"></i>'; } else { dayClass = 'absent'; statusIcon = '<i class="fas fa-times text-xs"></i>'; } }
+                    }
+                    calendarHTML += `<div class="calendar-day ${dayClass || 'bg-white'}" onclick="app.toggleAttendance('${riderId}', '${dateStr}')"><span class="font-bold">${day}</span>${statusIcon}</div>`;
+                }
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-bold text-gray-800">${rider.name}</h2><p class="text-sm text-gray-500">Attendance - ${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</p></div><button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button></div>
+                        <div class="flex justify-center gap-4 mb-4 text-xs">
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-green-200 border border-green-500"></div> Present</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-red-200 border border-red-500"></div> Absent</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-blue-200 border border-blue-500"></div> Relief</div>
+                        </div>
+                        <div class="attendance-calendar mb-4">
+                            <div class="text-center text-xs font-bold text-gray-500 py-2">Sun</div><div class="text-center text-xs font-bold text-gray-500 py-2">Mon</div><div class="text-center text-xs font-bold text-gray-500 py-2">Tue</div><div class="text-center text-xs font-bold text-gray-500 py-2">Wed</div><div class="text-center text-xs font-bold text-gray-500 py-2">Thu</div><div class="text-center text-xs font-bold text-gray-500 py-2">Fri</div><div class="text-center text-xs font-bold text-gray-500 py-2">Sat</div>
+                            ${calendarHTML}
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600"><p class="mb-2"><strong>Instructions:</strong></p><ul class="list-disc list-inside space-y-1 text-xs"><li>Click on any date to toggle attendance</li><li>Present ? Absent ? Remove (3 clicks cycle)</li></ul></div>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
+            },
+
+            async toggleAttendance(riderId, dateStr) {
+                const existing = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+                const month = new Date(dateStr).getMonth();
+                const year = new Date(dateStr).getFullYear();
+                const docId = `${riderId}_${dateStr}`;
+                try {
+                    if (existing) {
+                        if (existing.status === 'present') {
+                            const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+                            const isReliefDay = monthAbsences.length === 0;
+                            await window.db.collection('attendance').doc(docId).update({ status: 'absent', isReliefDay });
+                            existing.status = 'absent'; existing.isReliefDay = isReliefDay;
+                        } else {
+                            await window.db.collection('attendance').doc(docId).delete();
+                            this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
+                        }
+                    } else {
+                        await window.db.collection('attendance').doc(docId).set({ riderId, date: dateStr, status: 'present', isReliefDay: false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+                        this.data.attendance.push({ id: docId, riderId, date: dateStr, status: 'present', isReliefDay: false });
+                    }
+                    // Refresh calendar without re-fetching
+                    this.showAttendanceCalendar(riderId);
+                } catch (error) { console.error('Attendance error:', error); alert('Error updating attendance'); }
+            },
+
+            renderAIParser() {
+                document.getElementById('page-title').textContent = 'AI Parser';
+                const container = document.getElementById('main-container');
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-5 rounded-2xl"><h3 class="font-bold mb-1"><i class="fas fa-robot mr-2"></i>AI Order Parser</h3><p class="text-sm text-purple-100">Paste customer message to extract items</p></div>
+                        <div class="section-card">
+                            <textarea id="ai-input" rows="4" class="w-full border border-gray-300 rounded-lg p-3 outline-none resize-none text-sm" placeholder="Example: 2 kg aloo, 1 dozen ande, double roti 4"></textarea>
+                            <button onclick="app.parseMessage()" id="parse-btn" class="w-full mt-3 bg-indigo-600 text-white py-3 rounded-lg font-bold"><i class="fas fa-magic mr-2"></i>Parse Message</button>
+                        </div>
+                        <div id="ai-output-section" class="hidden">
+                            <div class="section-card">
+                                <h3 class="font-bold text-gray-800 mb-3">Parsed Items</h3><div id="ai-output" class="space-y-2"></div>
+                                <div class="flex gap-2 mt-4"><button onclick="app.copyOrderList()" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-medium">Copy</button><button onclick="app.printOrderList()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium">Print</button></div>
+                            </div>
+                        </div>
+                    </div>`;
+            },
+
+            parseMessage() {
+                const input = document.getElementById('ai-input').value.trim();
+                if (!input) return;
+                const btn = document.getElementById('parse-btn');
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...'; btn.disabled = true;
+                setTimeout(() => { const items = this.aiParseLogic(input); this.displayParsedItems(items); btn.innerHTML = '<i class="fas fa-magic mr-2"></i>Parse Message'; btn.disabled = false; }, 1000);
+            },
+
+            aiParseLogic(message) {
+                const items = [];
+                const lowerMsg = message.toLowerCase();
+                const patterns = [
+                    { regex: /(\d+\.?\d*)\s*(kg|kilo|kilogram|kgs)\s+(\w+)/g, type: 'weight', unit: 'kg' },
+                    { regex: /(\d+)\s*(dozen)\s+(\w+)/g, type: 'dozen', unit: 'dozen' },
+                    { regex: /(\d+\.?\d*)\s*(liter|litre|l|ltr)\s+(\w+)/g, type: 'volume', unit: 'L' },
+                    { regex: /(\d+)\s*(single|double|pack|bottle|can)?\s*(\w+)/g, type: 'piece', unit: 'pcs' },
+                    { regex: /(\d+)\s*(gm|g|gram)\s+(\w+)/g, type: 'weight', unit: 'g' },
+                    { regex: /(\d+)\s+(\w+)/g, type: 'piece', unit: 'pcs' }
+                ];
+                const seen = new Set();
+                patterns.forEach(pattern => { let match; while ((match = pattern.regex.exec(lowerMsg)) !== null) { const qty = parseFloat(match[1]); const descriptor = match[2] || ''; const itemName = match[3]; const key = `${itemName}-${qty}-${descriptor}`; if (!seen.has(key)) { seen.add(key); items.push({ name: itemName.charAt(0).toUpperCase() + itemName.slice(1), quantity: qty, unit: pattern.unit, descriptor: descriptor }); } } });
+                return items;
+            },
+
+            displayParsedItems(items) {
+                const outputSection = document.getElementById('ai-output-section');
+                const output = document.getElementById('ai-output');
+                if (items.length === 0) { alert('Could not parse items. Try simpler format.'); return; }
+                output.innerHTML = items.map((item, idx) => `<div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg"><div class="flex items-center gap-3"><span class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold">${idx + 1}</span><span class="font-medium">${item.descriptor ? item.descriptor + ' ' : ''}${item.name}</span></div><span class="font-bold text-indigo-600">${item.quantity} ${item.unit}</span></div>`).join('');
+                outputSection.classList.remove('hidden');
+                this.data.currentParsedOrder = items;
+            },
+
+            copyOrderList() {
+                if (!this.data.currentParsedOrder) return;
+                const text = this.data.currentParsedOrder.map((item, i) => `${i + 1}. ${item.descriptor ? item.descriptor + ' ' : ''}${item.name} - ${item.quantity} ${item.unit}`).join('\n');
+                navigator.clipboard.writeText(text); alert('Copied to clipboard!');
+            },
+
+            printOrderList() {
+                if (!this.data.currentParsedOrder) return;
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`<html><head><title>Order List</title></head><body style="font-family: Arial; padding: 20px;"><h2>Order List - ${new Date().toLocaleString()}</h2><table border="1" cellpadding="10" style="border-collapse: collapse; width: 100%;"><tr style="background: #4f46e5; color: white;"><th>#</th><th>Item</th><th>Qty</th><th>Unit</th></tr>${this.data.currentParsedOrder.map((item, i) => `<tr><td>${i + 1}</td><td>${item.descriptor ? item.descriptor + ' ' : ''}${item.name}</td><td>${item.quantity}</td><td>${item.unit}</td></tr>`).join('')}</table></body></html>`);
+                printWindow.document.close(); printWindow.print();
+            },
+
+            renderAdminAnalytics() {
+                document.getElementById('page-title').textContent = 'Analytics';
+                const container = document.getElementById('main-container');
+                const monthlyProfits = this.getMonthlyProfits();
+                const yearlyProfits = this.getYearlyProfits();
+                container.innerHTML = `
+                    <div class="fade-in pb-20 space-y-4">
+                        <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Monthly Revenue Trend</h3><canvas id="monthlyChart" height="200"></canvas></div>
+                        <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Yearly Comparison</h3><canvas id="yearlyChart" height="200"></canvas></div>
+                        <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Zone Performance</h3><canvas id="zoneChart" height="200"></canvas></div>
+                    </div>`;
+                setTimeout(() => {
+                    this.createChart('monthlyChart', { type: 'bar', data: { labels: monthlyProfits.map(m => m.monthName), datasets: [{ label: 'Monthly Profit (Rs)', data: monthlyProfits.map(m => m.profit), backgroundColor: '#4f46e5', borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
+                    this.createChart('yearlyChart', { type: 'line', data: { labels: yearlyProfits.map(y => y.year), datasets: [{ label: 'Yearly Profit (Rs)', data: yearlyProfits.map(y => y.profit), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(value) { return 'Rs ' + value.toLocaleString(); } } } } } });
+                    const zones = ['North', 'South', 'East', 'West'];
+                    const zoneData = zones.map(zone => { return this.data.reports.filter(r => { const rider = this.data.users.find(u => u.id === r.riderId); return rider && rider.zone === zone && r.status === 'approved'; }).reduce((acc, r) => acc + ((r.totalGross||0) - (r.totalExpenses||0) - (r.dailyWage||0)), 0); });
+                    this.createChart('zoneChart', { type: 'doughnut', data: { labels: zones, datasets: [{ data: zoneData, backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
+                }, 100);
+            },
+
+            async updateReportStatus(id, status) {
+                try { 
+                    await window.db.collection('reports').doc(id).update({ status });
+                    // Update local data only - no re-fetch
+                    const r = this.data.reports.find(r => r.id === id);
+                    if (r) r.status = status;
+                    if(this.data.currentUser.role === 'admin') this.renderAdminReports(); 
+                    else this.renderRiderHistory(); 
+                }
+                catch (error) { alert('Error: ' + error.message); }
+            },
+
+            toggleShift() {
+                const btn = document.getElementById('shift-btn');
+                if (!this.data.currentShift) { this.data.currentShift = { start: new Date(), isActive: true }; btn.innerHTML = '<i class="fas fa-pause mr-1"></i> <span class="hidden sm:inline">End Shift</span><span class="sm:hidden">End</span>'; btn.className = "px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors whitespace-nowrap"; alert("Shift Started!"); }
+                else { this.data.currentShift = null; btn.innerHTML = '<i class="fas fa-play mr-1"></i> <span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Start</span>'; btn.className = "px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap"; alert("Shift Ended!"); }
+            },
+
+            showNotifications() {
+                const isAdmin = this.data.currentUser?.role === 'admin';
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                const announcements = this.data.announcements || [];
+                modalContent.innerHTML = `
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">?? Notifications</h2>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+                        </div>
+                        ${isAdmin ? `
+                        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4 space-y-3">
+                            <h3 class="font-bold text-indigo-800 text-sm">?? New Notification Bhejo</h3>
+                            <input type="text" id="notif-title" placeholder="Title (e.g. Eid Bonus)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                            <textarea id="notif-body" rows="3" placeholder="Message likhein..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none resize-none focus:border-indigo-500"></textarea>
+                            <div class="flex gap-2">
+                                <select id="notif-priority" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white flex-1">
+                                    <option value="normal">Normal</option>
+                                    <option value="high">High Priority ??</option>
+                                </select>
+                                <button onclick="app.sendNotification()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Send</button>
+                            </div>
+                        </div>` : ''}
+                        <div class="space-y-3">
+                            ${announcements.length === 0 ? `<div class="text-center py-8 text-gray-400"><i class="fas fa-bell-slash text-4xl mb-2"></i><p>Koi notification nahi</p></div>` :
+                            [...announcements].reverse().map(a => `
+                            <div class="border-l-4 ${a.priority === 'high' ? 'border-red-500 bg-red-50' : 'border-indigo-400 bg-indigo-50'} pl-3 py-2 rounded-r-xl">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-semibold text-sm ${a.priority === 'high' ? 'text-red-800' : 'text-indigo-800'}">${a.title}</h4>
+                                    ${isAdmin ? `<button onclick="app.deleteNotification('${a._docId || a.id}')" class="text-gray-400 hover:text-red-500 text-xs ml-2"><i class="fas fa-trash"></i></button>` : ''}
+                                </div>
+                                <p class="text-xs text-gray-600 mt-1">${a.content}</p>
+                                <p class="text-xs text-gray-400 mt-1">${new Date(a.date).toLocaleDateString('en-PK')}</p>
+                            </div>`).join('')}
+                        </div>
+                    </div>`;
+                overlay.classList.remove('hidden');
+                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
+                // Mark as seen — hide red dot
+                const dot = document.getElementById('notif-dot');
+                if (dot) dot.classList.add('hidden');
+            },
+
+            async sendNotification() {
+                const title = document.getElementById('notif-title')?.value.trim();
+                const content = document.getElementById('notif-body')?.value.trim();
+                const priority = document.getElementById('notif-priority')?.value || 'normal';
+                if (!title || !content) { alert('Title aur message likhna zaroori hai!'); return; }
+                const newNotif = {
+                    title, content, priority,
+                    date: new Date().toISOString().split('T')[0],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                try {
+                    const docRef = await window.db.collection('notifications').add(newNotif);
+                    // Update local data
+                    this.data.announcements.unshift({ ...newNotif, _docId: docRef.id, id: docRef.id });
+                    alert('Notification bhej di! ?');
+                    this.closeModal();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            async deleteNotification(docId) {
+                try {
+                    await window.db.collection('notifications').doc(docId).delete();
+                    this.data.announcements = this.data.announcements.filter(a => (a._docId || a.id) !== docId);
+                    this.showNotifications();
+                } catch(e) { alert('Error: ' + e.message); }
+            },
+
+            closeModal() {
+                const modalContent = document.getElementById('modal-content');
+                const overlay = document.getElementById('modal-overlay');
+                modalContent.classList.remove('scale-100', 'opacity-100');
+                modalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => { overlay.classList.add('hidden'); }, 200);
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => { app.init(); });
+    </script>
+</body>
+</html>
