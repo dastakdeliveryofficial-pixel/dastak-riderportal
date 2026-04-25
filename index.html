@@ -987,6 +987,21 @@
             if (this.data._isSubmitting) return;
             this.data._isSubmitting = true;
 
+           
+    // 👇 YEH ADD KARO (submitReport ke starting mein)
+    const user = this.data.currentUser;
+    const wageEnabled = user?.wageEnabled !== false;
+    const wageType = user?.wageType || 'fixed';
+    let dailyWage = 0;
+    if (wageEnabled && wageType !== 'none') {
+        if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+       else dailyWage = user?.dailyWage || 500;
+    }
+    // 👆 YAHAN TAK
+
+    const isDraft = e.submitter?.dataset?.draft === 'true';
+    // ... baqi code same
+
             const isDraft = e.submitter?.dataset?.draft === 'true';
             if (!isDraft && !confirm("Submit this report?")) {
                 this.data._isSubmitting = false;
