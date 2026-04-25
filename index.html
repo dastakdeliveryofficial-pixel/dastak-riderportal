@@ -937,62 +937,55 @@
         },
 
         calculateTotals() {
-    let totalOrderAmount = 0;
-    let totalDeliveryCharge = 0;
-    let onlineFromOrders = 0;  // Yeh ab order amount + delivery charges dono include karega
+            let totalOrderAmount = 0;
+            let totalDeliveryCharge = 0;
+            let onlineFromOrders = 0;
 
-    document.querySelectorAll('.delivery-row').forEach(row => {
-        const orderAmt = parseFloat(row.querySelector('.delivery-amount')?.value) || 0;
-        const delCharge = parseFloat(row.querySelector('.delivery-charge')?.value) || 0;
-        const payType = row.querySelector('.delivery-paytype')?.value || 'cash';
-        totalOrderAmount += orderAmt;
-        totalDeliveryCharge += delCharge;
-        // ONLINE PENDING mein dono minus honge
-        if (payType === 'online_pending') onlineFromOrders += orderAmt + delCharge;
-        // ONLINE RECEIVED mein bhi dono minus honge
-        if (payType === 'online_received') onlineFromOrders += orderAmt + delCharge;
-    });
+            document.querySelectorAll('.delivery-row').forEach(row => {
+                const orderAmt = parseFloat(row.querySelector('.delivery-amount')?.value) || 0;
+                const delCharge = parseFloat(row.querySelector('.delivery-charge')?.value) || 0;
+                const payType = row.querySelector('.delivery-paytype')?.value || 'cash';
+                totalOrderAmount += orderAmt;
+                totalDeliveryCharge += delCharge;
+                if (payType === 'online_pending') onlineFromOrders += orderAmt + delCharge;
+                if (payType === 'online_received') onlineFromOrders += orderAmt + delCharge;
+            });
 
-    const fuel = parseFloat(document.getElementById('exp-fuel')?.value) || 0;
-    const food = parseFloat(document.getElementById('exp-food')?.value) || 0;
-    const maint = parseFloat(document.getElementById('exp-maint')?.value) || 0;
-    const expensesTotal = fuel + food + maint;
-    const opening = parseFloat(document.getElementById('opening-balance')?.value) || 0;
+            const fuel = parseFloat(document.getElementById('exp-fuel')?.value) || 0;
+            const food = parseFloat(document.getElementById('exp-food')?.value) || 0;
+            const maint = parseFloat(document.getElementById('exp-maint')?.value) || 0;
+            const expensesTotal = fuel + food + maint;
+            const opening = parseFloat(document.getElementById('opening-balance')?.value) || 0;
 
-    const user = this.data.currentUser;
-    const wageEnabled = user?.wageEnabled !== false;
-    const wageType = user?.wageType || 'fixed';
-    let dailyWage = 0;
-    if (wageEnabled && wageType !== 'none') {
-        if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
-        else dailyWage = user?.dailyWage || 500;
-    }
+            const user = this.data.currentUser;
+            const wageEnabled = user?.wageEnabled !== false;
+            const wageType = user?.wageType || 'fixed';
+            let dailyWage = 0;
+            if (wageEnabled && wageType !== 'none') {
+                if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+                else dailyWage = user?.dailyWage || 500;
+            }
 
-    // FINAL FORMULA: Opening + Delivery Charges - Online(Order+Delivery) - Expenses - Wage
-    // Order Amount ADD nahi hogi!
-    const final = opening + totalDeliveryCharge - onlineFromOrders - expensesTotal - dailyWage;
+            const final = opening + totalDeliveryCharge - onlineFromOrders - expensesTotal - dailyWage;
 
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('sum-opening', `Rs ${opening.toLocaleString()}`);
-    set('sum-orders', `Rs ${totalOrderAmount.toLocaleString()} (not added)`);  // Grey out
-    set('sum-delivery-charges', `+ Rs ${totalDeliveryCharge.toLocaleString()}`);
-    set('sum-online', `- Rs ${onlineFromOrders.toLocaleString()}`);  // Ab yeh order+delivery dono
-    set('sum-expenses', `- Rs ${expensesTotal.toLocaleString()}`);
-    set('sum-wage', `- Rs ${dailyWage.toLocaleString()}`);
-    set('sum-final', `Rs ${final.toLocaleString()}`);
-},
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            set('sum-opening', `Rs ${opening.toLocaleString()}`);
+            set('sum-orders', `Rs ${totalOrderAmount.toLocaleString()} (not added)`);
+            set('sum-delivery-charges', `+ Rs ${totalDeliveryCharge.toLocaleString()}`);
+            set('sum-online', `- Rs ${onlineFromOrders.toLocaleString()}`);
+            set('sum-expenses', `- Rs ${expensesTotal.toLocaleString()}`);
+            set('sum-wage', `- Rs ${dailyWage.toLocaleString()}`);
+            set('sum-final', `Rs ${final.toLocaleString()}`);
+        },
 
         async submitReport(e) {
             e.preventDefault();
             if (this.data._isSubmitting) return;
             this.data._isSubmitting = true;
 
-
-    // 👆 YAHAN TAK
-    const isDraft = e.submitter?.dataset?.draft === 'true';
-    // ... baqi code same
-
+            // ✅ FIX 1: Single isDraft declaration, no duplicate
             const isDraft = e.submitter?.dataset?.draft === 'true';
+
             if (!isDraft && !confirm("Submit this report?")) {
                 this.data._isSubmitting = false;
                 return;
@@ -1027,26 +1020,34 @@
                 if (maint > 0) expenses.push({ type: 'Maintenance', amount: maint });
 
                 const totalOrderAmount = deliveries.reduce((acc, d) => acc + d.orderAmount, 0);
-const totalDeliveryCharge = deliveries.reduce((acc, d) => acc + d.deliveryCharge, 0);
-const totalGross = totalOrderAmount + totalDeliveryCharge;  // Reports ke liye
-const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+                const totalDeliveryCharge = deliveries.reduce((acc, d) => acc + d.deliveryCharge, 0);
+                const totalGross = totalOrderAmount + totalDeliveryCharge;
+                const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
 
-const onlinePayments = deliveries
-    .filter(d => d.payType === 'online_pending' || d.payType === 'online_received')
-    .map(d => ({
-        detail: d.custName + (d.detail ? ' · ' + d.detail : ''),
-        amount: d.orderAmount,
-        deliveryCharge: d.deliveryCharge,  // Yeh add karein
-        status: d.payType === 'online_pending' ? 'pending' : 'received'
-    }));
+                const onlinePayments = deliveries
+                    .filter(d => d.payType === 'online_pending' || d.payType === 'online_received')
+                    .map(d => ({
+                        detail: d.custName + (d.detail ? ' · ' + d.detail : ''),
+                        amount: d.orderAmount,
+                        deliveryCharge: d.deliveryCharge,
+                        status: d.payType === 'online_pending' ? 'pending' : 'received'
+                    }));
 
-// Online pending mein amount + deliveryCharge dono
-const onlinePendingTotal = onlinePayments
-    .filter(p => p.status === 'pending')
-    .reduce((a, p) => a + p.amount + (p.deliveryCharge || 0), 0);
+                const onlinePendingTotal = onlinePayments
+                    .filter(p => p.status === 'pending')
+                    .reduce((a, p) => a + p.amount + (p.deliveryCharge || 0), 0);
 
-// FINAL: Sirf delivery charges add, order amount nahi
-const finalAmount = opening + totalDeliveryCharge - onlinePendingTotal - totalExpenses - dailyWage;
+                // ✅ FIX 2: dailyWage defined here before finalAmount uses it
+                const user = this.data.currentUser;
+                const wageEnabled = user?.wageEnabled !== false;
+                const wageType = user?.wageType || 'fixed';
+                let dailyWage = 0;
+                if (wageEnabled && wageType !== 'none') {
+                    if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
+                    else dailyWage = user?.dailyWage || 500;
+                }
+
+                const finalAmount = opening + totalDeliveryCharge - onlinePendingTotal - totalExpenses - dailyWage;
 
                 const proofImg = document.getElementById('proof-preview-img');
                 const proofImage = (proofImg && !proofImg.classList.contains('hidden')) ? proofImg.src : null;
