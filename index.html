@@ -3202,98 +3202,234 @@ if (riderFilter) {
             },
 
             renderAdminAttendance() {
-                document.getElementById('page-title').textContent = 'Attendance Management';
-                const container = document.getElementById('main-container');
-                const riders = this.data.users.filter(u => u.role === 'rider');
-                const currentMonth = new Date().getMonth();
-                const currentYear = new Date().getFullYear();
-                container.innerHTML = `
-                    <div class="fade-in pb-20 space-y-4">
-                        <div class="section-card">
-                            <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">Attendance Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</span></div>
-                            <div class="space-y-4">${riders.map(rider => {
-                                const attendanceInfo = this.calculateAttendanceDeductions(rider.id, currentMonth, currentYear);
-                                const presentDays = this.data.attendance.filter(a => a.riderId === rider.id && a.status === 'present' && new Date(a.date).getMonth() === currentMonth).length;
-                                return `
-                                    <div class="bg-gray-50 rounded-xl p-4">
-                                        <div class="flex justify-between items-start mb-3">
-                                            <div class="flex items-center gap-3"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(rider.name)}&background=random" class="w-10 h-10 rounded-full"><div><p class="font-bold text-gray-800">${rider.name}</p><p class="text-xs text-gray-500">Daily Wage: Rs ${rider.dailyWage || 500}</p></div></div>
-                                            <div class="text-right"><p class="text-2xl font-bold text-gray-800">${presentDays}<span class="text-sm text-gray-500 font-normal"> days</span></p><p class="text-xs text-gray-500">Present</p></div>
-                                        </div>
-                                        <div class="grid grid-cols-3 gap-2 mb-3">
-                                            <div class="bg-green-100 text-green-700 rounded-lg p-2 text-center"><p class="text-xs font-medium">Present</p><p class="text-lg font-bold">${presentDays}</p></div>
-                                            <div class="bg-red-100 text-red-700 rounded-lg p-2 text-center"><p class="text-xs font-medium">Absent</p><p class="text-lg font-bold">${attendanceInfo.totalAbsences}</p></div>
-                                            <div class="${attendanceInfo.deductibleAbsences > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'} rounded-lg p-2 text-center"><p class="text-xs font-medium">Deduction</p><p class="text-lg font-bold">Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p></div>
-                                        </div>
-                                        <div class="mt-3 pt-3 border-t border-gray-200"><button onclick="app.showAttendanceCalendar('${rider.id}')" class="w-full text-center text-sm text-indigo-600 font-medium hover:bg-white py-2 rounded-lg transition-colors">View Calendar</button></div>
-                                    </div>`;}).join('')}${riders.length === 0 ? '<p class="text-center text-gray-400 py-8">No riders found</p>' : ''}</div>
-                        </div>
-                    </div>`;
-            },
+    document.getElementById('page-title').textContent = 'Attendance Management';
+    const container = document.getElementById('main-container');
+    const riders = this.data.users.filter(u => u.role === 'rider');
 
-            showAttendanceCalendar(riderId) {
-                const rider = this.data.users.find(u => u.id === riderId);
-                if (!rider) return;
-                const currentMonth = new Date().getMonth();
-                const currentYear = new Date().getFullYear();
-                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-                const firstDay = new Date(currentYear, currentMonth, 1).getDay();
-                const modalContent = document.getElementById('modal-content');
-                const overlay = document.getElementById('modal-overlay');
-                let calendarHTML = '';
-                for (let i = 0; i < firstDay; i++) calendarHTML += `<div class="calendar-day empty"></div>`;
-                for (let day = 1; day <= daysInMonth; day++) {
-                    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    const attendance = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
-                    let dayClass = '', statusIcon = '';
-                    if (attendance) {
-                        if (attendance.status === 'present') { dayClass = 'present'; statusIcon = '<i class="fas fa-check text-xs"></i>'; }
-                        else if (attendance.status === 'absent') { if (attendance.isReliefDay) { dayClass = 'relief'; statusIcon = '<i class="fas fa-umbrella text-xs"></i>'; } else { dayClass = 'absent'; statusIcon = '<i class="fas fa-times text-xs"></i>'; } }
-                    }
-                    calendarHTML += `<div class="calendar-day ${dayClass || 'bg-white'}" onclick="app.toggleAttendance('${riderId}', '${dateStr}')"><span class="font-bold">${day}</span>${statusIcon}</div>`;
+    // Use selected month/year from global picker
+    const currentMonth = this.data.attMonth ?? new Date().getMonth();
+    const currentYear = this.data.attYear ?? new Date().getFullYear();
+
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    // Build month/year options (last 24 months)
+    let monthOptions = '';
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const val = `${d.getFullYear()}-${d.getMonth()}`;
+        const selected = d.getMonth() === currentMonth && d.getFullYear() === currentYear ? 'selected' : '';
+        monthOptions += `<option value="${val}" ${selected}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+
+    container.innerHTML = `
+        <div class="fade-in pb-20 space-y-4">
+            <div class="section-card">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-gray-800">Attendance Overview</h3>
+                    <select onchange="app.changeAttMonth(this.value)"
+                        class="border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer">
+                        ${monthOptions}
+                    </select>
+                </div>
+                <div class="space-y-4">
+                    ${riders.map(rider => {
+                        const presentDays = this.data.attendance.filter(a =>
+                            a.riderId === rider.id &&
+                            a.status === 'present' &&
+                            new Date(a.date).getMonth() === currentMonth &&
+                            new Date(a.date).getFullYear() === currentYear
+                        ).length;
+                        const attendanceInfo = this.calculateAttendanceDeductions(rider.id, currentMonth, currentYear);
+                        return `
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(rider.name)}&background=random" class="w-10 h-10 rounded-full">
+                                    <div>
+                                        <p class="font-bold text-gray-800">${rider.name}</p>
+                                        <p class="text-xs text-gray-500">Daily Wage: Rs ${rider.dailyWage || 500}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-2xl font-bold text-gray-800">${presentDays}<span class="text-sm text-gray-500 font-normal"> days</span></p>
+                                    <p class="text-xs text-gray-500">Present</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <div class="bg-green-100 text-green-700 rounded-lg p-2 text-center">
+                                    <p class="text-xs font-medium">Present</p>
+                                    <p class="text-lg font-bold">${presentDays}</p>
+                                </div>
+                                <div class="bg-red-100 text-red-700 rounded-lg p-2 text-center">
+                                    <p class="text-xs font-medium">Absent</p>
+                                    <p class="text-lg font-bold">${attendanceInfo.totalAbsences}</p>
+                                </div>
+                                <div class="${attendanceInfo.deductibleAbsences > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'} rounded-lg p-2 text-center">
+                                    <p class="text-xs font-medium">Deduction</p>
+                                    <p class="text-lg font-bold">Rs ${attendanceInfo.totalDeduction.toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <div class="mt-3 pt-3 border-t border-gray-200">
+                                <button onclick="app.showAttendanceCalendar('${rider.id}', ${currentMonth}, ${currentYear})"
+                                    class="w-full text-center text-sm text-indigo-600 font-medium hover:bg-white py-2 rounded-lg transition-colors">
+                                    View Calendar
+                                </button>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                    ${riders.length === 0 ? '<p class="text-center text-gray-400 py-8">No riders found</p>' : ''}
+                </div>
+            </div>
+        </div>`;
+},
+
+changeAttMonth(val) {
+    const [year, month] = val.split('-').map(Number);
+    this.data.attMonth = month;
+    this.data.attYear = year;
+    // Agar naya month load karna ho to attendance fetch karo
+    this.ensureAttendanceForMonth(month, year).then(() => {
+        this.renderAdminAttendance();
+    });
+},
+
+async ensureAttendanceForMonth(month, year) {
+    const monthStart = new Date(year, month, 1).toISOString().split('T')[0];
+    const monthEnd = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    // Check karo already loaded hai ya nahi
+    const alreadyLoaded = this.data.attendance.some(a => {
+        const d = new Date(a.date);
+        return d.getMonth() === month && d.getFullYear() === year;
+    });
+    if (alreadyLoaded) return;
+    try {
+        const snap = await window.db.collection('attendance')
+            .where('date', '>=', monthStart)
+            .where('date', '<=', monthEnd)
+            .get();
+        const newRecs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Merge — purane records raho, naye add karo (duplicates avoid)
+        const existingIds = new Set(this.data.attendance.map(a => a.id));
+        newRecs.forEach(r => { if (!existingIds.has(r.id)) this.data.attendance.push(r); });
+    } catch(e) { console.error('Attendance fetch error:', e); }
+},
+
+showAttendanceCalendar(riderId, month, year) {
+    // Default: current month/year agar nahi diya
+    if (month === undefined) month = this.data.attMonth ?? new Date().getMonth();
+    if (year === undefined) year = this.data.attYear ?? new Date().getFullYear();
+
+    const rider = this.data.users.find(u => u.id === riderId);
+    if (!rider) return;
+
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    const modalContent = document.getElementById('modal-content');
+    const overlay = document.getElementById('modal-overlay');
+
+    let calendarHTML = '';
+    for (let i = 0; i < firstDay; i++) {
+        calendarHTML += `<div class="calendar-day empty"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const attendance = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+        let dayClass = '', statusIcon = '';
+        if (attendance) {
+            if (attendance.status === 'present') {
+                dayClass = 'present';
+                statusIcon = '<i class="fas fa-check text-xs"></i>';
+            } else if (attendance.status === 'absent') {
+                if (attendance.isReliefDay) {
+                    dayClass = 'relief';
+                    statusIcon = '<i class="fas fa-umbrella text-xs"></i>';
+                } else {
+                    dayClass = 'absent';
+                    statusIcon = '<i class="fas fa-times text-xs"></i>';
                 }
-                modalContent.innerHTML = `
-                    <div class="p-5">
-                        <div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-bold text-gray-800">${rider.name}</h2><p class="text-sm text-gray-500">Attendance - ${new Date(currentYear, currentMonth).toLocaleDateString('en-PK', { month: 'long', year: 'numeric' })}</p></div><button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button></div>
-                        <div class="flex justify-center gap-4 mb-4 text-xs">
-                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-green-200 border border-green-500"></div> Present</div>
-                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-red-200 border border-red-500"></div> Absent</div>
-                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-blue-200 border border-blue-500"></div> Relief</div>
-                        </div>
-                        <div class="attendance-calendar mb-4">
-                            <div class="text-center text-xs font-bold text-gray-500 py-2">Sun</div><div class="text-center text-xs font-bold text-gray-500 py-2">Mon</div><div class="text-center text-xs font-bold text-gray-500 py-2">Tue</div><div class="text-center text-xs font-bold text-gray-500 py-2">Wed</div><div class="text-center text-xs font-bold text-gray-500 py-2">Thu</div><div class="text-center text-xs font-bold text-gray-500 py-2">Fri</div><div class="text-center text-xs font-bold text-gray-500 py-2">Sat</div>
-                            ${calendarHTML}
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600"><p class="mb-2"><strong>Instructions:</strong></p><ul class="list-disc list-inside space-y-1 text-xs"><li>Click on any date to toggle attendance</li><li>Present → Absent → Remove (3 clicks cycle)</li></ul></div>
-                    </div>`;
-                overlay.classList.remove('hidden');
-                setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
-            },
+            }
+        }
+        calendarHTML += `
+        <div class="calendar-day ${dayClass || 'bg-white'}" onclick="app.toggleAttendance('${riderId}', '${dateStr}', ${month}, ${year})">
+            <span class="font-bold">${day}</span>${statusIcon}
+        </div>`;
+    }
 
-            async toggleAttendance(riderId, dateStr) {
-                const existing = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
-                const month = new Date(dateStr).getMonth();
-                const year = new Date(dateStr).getFullYear();
-                const docId = `${riderId}_${dateStr}`;
-                try {
-                    if (existing) {
-                        if (existing.status === 'present') {
-                            const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
-                            const isReliefDay = monthAbsences.length === 0;
-                            await window.db.collection('attendance').doc(docId).update({ status: 'absent', isReliefDay });
-                            existing.status = 'absent'; existing.isReliefDay = isReliefDay;
-                        } else {
-                            await window.db.collection('attendance').doc(docId).delete();
-                            this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
-                        }
-                    } else {
-                        await window.db.collection('attendance').doc(docId).set({ riderId, date: dateStr, status: 'present', isReliefDay: false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
-                        this.data.attendance.push({ id: docId, riderId, date: dateStr, status: 'present', isReliefDay: false });
-                    }
-                    // Refresh calendar without re-fetching
-                    this.showAttendanceCalendar(riderId);
-                } catch (error) { console.error('Attendance error:', error); alert('Error updating attendance'); }
-            },
+    modalContent.innerHTML = `
+        <div class="p-5">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">${rider.name}</h2>
+                    <p class="text-sm text-gray-500">Attendance — ${monthNames[month]} ${year}</p>
+                </div>
+                <button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="flex justify-center gap-4 mb-4 text-xs">
+                <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-green-200 border border-green-500"></div> Present</div>
+                <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-red-200 border border-red-500"></div> Absent</div>
+                <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-blue-200 border border-blue-500"></div> Relief</div>
+            </div>
+            <div class="attendance-calendar mb-4">
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Sun</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Mon</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Tue</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Wed</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Thu</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Fri</div>
+                <div class="text-center text-xs font-bold text-gray-500 py-2">Sat</div>
+                ${calendarHTML}
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+                <p class="mb-2"><strong>Instructions:</strong></p>
+                <ul class="list-disc list-inside space-y-1 text-xs">
+                    <li>Click on any date to toggle attendance</li>
+                    <li>Present → Absent → Remove (3 clicks cycle)</li>
+                </ul>
+            </div>
+        </div>`;
+
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+},
+
+          async toggleAttendance(riderId, dateStr, month, year) {
+    if (month === undefined) month = this.data.attMonth ?? new Date().getMonth();
+    if (year === undefined) year = this.data.attYear ?? new Date().getFullYear();
+
+    const existing = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+    const docId = `${riderId}_${dateStr}`;
+    try {
+        if (existing) {
+            if (existing.status === 'present') {
+                const monthAbsences = this.getMonthlyAbsences(riderId, month, year);
+                const isReliefDay = monthAbsences.length === 0;
+                await window.db.collection('attendance').doc(docId).update({ status: 'absent', isReliefDay });
+                existing.status = 'absent';
+                existing.isReliefDay = isReliefDay;
+            } else {
+                await window.db.collection('attendance').doc(docId).delete();
+                this.data.attendance = this.data.attendance.filter(a => !(a.riderId === riderId && a.date === dateStr));
+            }
+        } else {
+            await window.db.collection('attendance').doc(docId).set({
+                riderId, date: dateStr, status: 'present', isReliefDay: false,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            this.data.attendance.push({ id: docId, riderId, date: dateStr, status: 'present', isReliefDay: false });
+        }
+        this.showAttendanceCalendar(riderId, month, year);
+    } catch (error) {
+        console.error('Attendance error:', error);
+        alert('Error updating attendance');
+    }
+},
 
             renderAIParser() {
                 document.getElementById('page-title').textContent = 'AI Parser';
