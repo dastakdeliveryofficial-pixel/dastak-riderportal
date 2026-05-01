@@ -253,7 +253,7 @@
                     const now = new Date();
                     // Current + last month for reports
                     const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-                    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                    const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
 
                     setMsg('Loading data...');
 
@@ -325,7 +325,7 @@
                             self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         } else if (col === 'attendance') {
                             const now = new Date();
-                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                            const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
                             const snap = await window.db.collection('attendance')
                                 .where('date', '>=', monthStart).get();
                             self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
