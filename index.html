@@ -960,40 +960,45 @@
             },
 
             addOnlinePaymentRow() {
-                const container = document.getElementById('online-payments-list');
-                if (!container) return;
-                const rowId = 'opr-' + Date.now();
-                const div = document.createElement('div');
-                div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
-                div.id = rowId;
-                div.innerHTML = `
-                    <div class="grid grid-cols-12 gap-2 items-start">
-                        <div class="col-span-5 relative">
-                            <input type="text" placeholder="Customer name..." 
-                                class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-name-input" 
-                                autocomplete="off"
-                                oninput="app.showCustomerSuggestions(this, '${rowId}')"
-                                onblur="setTimeout(()=>app.hideSuggestions('${rowId}'),200)"
-                                required>
-                            <div id="sugg-${rowId}" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 hidden max-h-48 overflow-y-auto"></div>
-                        </div>
-                        <div class="col-span-4">
-                            <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
-                        </div>
-                        <div class="col-span-2">
-                            <select class="w-full bg-transparent text-xs outline-none border-b border-gray-300 py-1 online-status" onchange="app.calculateTotals()">
-                                <option value="pending">Pending</option><option value="received">Received</option>
-                            </select>
-                        </div>
-                        <div class="col-span-1 text-right">
-                            <button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button>
-                        </div>
-                    </div>
-                    <div id="cust-info-${rowId}" class="hidden text-xs text-indigo-600 flex items-center gap-1 pl-1">
-                        <i class="fas fa-phone-alt"></i><span class="cust-phone-label"></span>
-                    </div>`;
-                container.appendChild(div);
-            },
+    const container = document.getElementById('online-payments-list');
+    if (!container) return;
+    const rowId = 'opr-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
+    div.id = rowId;
+    div.innerHTML = `
+        <div class="grid grid-cols-12 gap-2 items-start">
+            <div class="col-span-5 relative">
+                <input type="text" placeholder="Customer name..." 
+                    class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-name-input" 
+                    autocomplete="off"
+                    oninput="app.showCustomerSuggestions(this, '${rowId}')"
+                    onblur="setTimeout(()=>app.hideSuggestions('${rowId}'),200)"
+                    required>
+                <div id="sugg-${rowId}" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 hidden max-h-48 overflow-y-auto"></div>
+            </div>
+            <div class="col-span-4">
+                <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
+            </div>
+            <div class="col-span-2">
+                <select class="w-full bg-transparent text-xs outline-none border-b border-gray-300 py-1 online-status" onchange="app.calculateTotals()">
+                    <option value="pending">Pending</option><option value="received">Received</option>
+                </select>
+            </div>
+            <div class="col-span-1 text-right">
+                <button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="mt-1">
+            <input type="text" placeholder="Item details (e.g. 2kg aloo, 1 dozen ande...)" 
+                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 outline-none focus:border-indigo-400 online-items"
+                autocomplete="off">
+        </div>
+        <div id="cust-info-${rowId}" class="hidden text-xs text-indigo-600 flex items-center gap-1 pl-1">
+            <i class="fas fa-phone-alt"></i><span class="cust-phone-label"></span>
+        </div>`;
+    container.appendChild(div);
+},
 
             showCustomerSuggestions(input, rowId) {
                 const q = input.value.trim().toLowerCase();
@@ -1107,7 +1112,6 @@
 async submitReport(e) {
     e.preventDefault();
     
-    // 🔒 DOUBLE SUBMIT LOCK — ye line hai asli fix
     if (this.data._isSubmitting) return;
     this.data._isSubmitting = true;
     
@@ -1117,7 +1121,6 @@ async submitReport(e) {
         return;
     }
 
-    // Buttons disable karo — user dubara tap na sake
     const allBtns = document.querySelectorAll('button[type="submit"]');
     allBtns.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
 
@@ -1129,19 +1132,32 @@ async submitReport(e) {
             const gross = qty * rate;
             return { type: `Type ${i}`, qty, rate, gross };
         }).filter(o => o.qty > 0);
+
         const onlinePayments = [];
         document.querySelectorAll('#online-payments-list > div').forEach(row => {
-            const inputs = row.querySelectorAll('input, select');
-            if (inputs.length >= 3) onlinePayments.push({ detail: inputs[0].value, amount: parseFloat(inputs[1].value) || 0, status: inputs[2].value });
+            const nameEl = row.querySelector('.cust-name-input');
+            const amtEl = row.querySelector('.online-amt');
+            const statusEl = row.querySelector('.online-status');
+            const itemsEl = row.querySelector('.online-items');
+            if (!amtEl || !statusEl) return;
+            onlinePayments.push({
+                detail: nameEl?.value || '',
+                amount: parseFloat(amtEl.value) || 0,
+                status: statusEl.value,
+                items: itemsEl?.value || ''
+            });
         });
+
         const expenses = [
             { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
             { type: 'Food', amount: parseFloat(document.getElementById('exp-food').value) || 0 },
             { type: 'Maintenance', amount: parseFloat(document.getElementById('exp-maint').value) || 0 }
         ].filter(e => e.amount > 0);
+
         const totalGross = orders.reduce((acc, o) => acc + o.gross, 0);
         const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
         const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
+
         const user = this.data.currentUser;
         const wageEnabled = user?.wageEnabled !== false;
         const wageType = user?.wageType || 'fixed';
@@ -1150,6 +1166,7 @@ async submitReport(e) {
             if (wageType === 'custom') dailyWage = parseFloat(document.getElementById('wage-input')?.value) || 0;
             else dailyWage = user?.dailyWage || 500;
         }
+
         const finalAmount = opening + totalGross - totalOnline - totalExpenses - dailyWage;
         const reportStatus = isDraft ? 'draft' : 'pending';
         const selectedDate = document.getElementById('report-date')?.value || new Date().toISOString().split('T')[0];
@@ -1174,13 +1191,14 @@ async submitReport(e) {
         const editId = document.getElementById('report-edit-id')?.value;
 
         if (editId) {
-            // ✏️ EDIT MODE — update existing report
-            await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            await window.db.collection('reports').doc(editId).update({
+                ...newReport,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
             const existing = this.data.reports.find(r => r.id === editId);
             if (existing) Object.assign(existing, newReport);
             alert(isDraft ? 'Draft saved!' : 'Report updated and submitted!');
         } else {
-            // 🆕 DUPLICATE CHECK — same rider + same date + same status mein already hai?
             const duplicate = this.data.reports.find(r =>
                 r.riderId === this.data.currentUser.id &&
                 r.date === selectedDate &&
@@ -1196,14 +1214,14 @@ async submitReport(e) {
                 return;
             }
 
-            // ✅ SAVE NEW REPORT
             const docRef = await window.db.collection('reports').add(newReport);
             this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
 
-            // Auto mark attendance
             if (!isDraft) {
                 const docId = `${this.data.currentUser.id}_${selectedDate}`;
-                const existingAtt = this.data.attendance.find(a => a.riderId === this.data.currentUser.id && a.date === selectedDate);
+                const existingAtt = this.data.attendance.find(a =>
+                    a.riderId === this.data.currentUser.id && a.date === selectedDate
+                );
                 if (!existingAtt) {
                     await window.db.collection('attendance').doc(docId).set({
                         riderId: this.data.currentUser.id,
@@ -1213,21 +1231,27 @@ async submitReport(e) {
                         autoMarked: true,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    this.data.attendance.push({ id: docId, riderId: this.data.currentUser.id, date: selectedDate, status: 'present' });
+                    this.data.attendance.push({
+                        id: docId,
+                        riderId: this.data.currentUser.id,
+                        date: selectedDate,
+                        status: 'present'
+                    });
                 }
                 const isPast = selectedDate < new Date().toISOString().split('T')[0];
-                alert(isDraft ? 'Draft saved!' : `Report Submitted! ✅${isPast ? ` (${new Date(selectedDate).toLocaleDateString()} ki report)` : ''} Attendance auto-marked Present.`);
+                alert(`Report Submitted! ✅${isPast ? ` (${new Date(selectedDate).toLocaleDateString()} ki report)` : ''} Attendance auto-marked Present.`);
             } else {
                 alert('Draft saved!');
             }
         }
 
         this.navigate('rider-history');
+
     } catch (error) {
         alert('Error: ' + error.message);
     } finally {
-        // 🔓 LOCK RELEASE — hamesha release karo
         this.data._isSubmitting = false;
+        allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
     }
 },
             renderRiderHistory(activeTab = 'submitted') {
@@ -1292,9 +1316,14 @@ async submitReport(e) {
                         const lastRow = rows[rows.length - 1];
                         if (lastRow) {
                             const inputs = lastRow.querySelectorAll('input, select');
-                            if (inputs[0]) inputs[0].value = p.detail || '';
-                            if (inputs[1]) inputs[1].value = p.amount || 0;
-                            if (inputs[2]) inputs[2].value = p.status || 'pending';
+                            const nameInp = lastRow.querySelector('.cust-name-input');
+const amtInp = lastRow.querySelector('.online-amt');
+const statusInp = lastRow.querySelector('.online-status');
+const itemsInp = lastRow.querySelector('.online-items');
+if (nameInp) nameInp.value = p.detail || '';
+if (amtInp) amtInp.value = p.amount || 0;
+if (statusInp) statusInp.value = p.status || 'pending';
+if (itemsInp) itemsInp.value = p.items || '';
                         }
                     });
                     const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
@@ -1305,56 +1334,81 @@ async submitReport(e) {
             },
 
             viewReportDetails(id) {
-                const report = this.data.reports.find(r => r.id === id);
-                if(!report) return;
-                const modalContent = document.getElementById('modal-content');
-                const overlay = document.getElementById('modal-overlay');
-                modalContent.innerHTML = `
-                    <div class="p-5">
-                        <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold text-gray-800">Report Details</h2><button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button></div>
-                        <div class="grid grid-cols-2 gap-3 mb-4">
-                            <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Date</p><p class="font-semibold">${new Date(report.date).toLocaleDateString()}</p></div>
-                            <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div>
-                        </div>
-                        <h3 class="font-bold text-gray-700 mb-2 text-sm">Orders</h3>
-                        <div class="space-y-2 mb-4">
-                            ${(report.orders || []).length === 0 ? '<p class="text-xs text-gray-400">No orders</p>' :
-                            (report.orders || []).map(o => `
-                            <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
-                                <div>
-                                    <span class="font-medium">${o.type}</span>
-                                    <span class="text-gray-500 text-xs ml-2">x${o.qty} × Rs ${(o.rate||0).toLocaleString()}</span>
-                                </div>
-                                <span class="font-bold text-indigo-600">Rs ${(o.gross || 0).toLocaleString()}</span>
-                            </div>`).join('')}
-                        </div>
-                        ${(report.expenses||[]).length > 0 ? `
-                        <h3 class="font-bold text-gray-700 mb-2 text-sm">Expenses</h3>
-                        <div class="space-y-1 mb-4">${(report.expenses||[]).map(e => `
-                            <div class="flex justify-between text-sm p-2 bg-red-50 rounded">
-                                <span class="text-gray-600">${e.type}</span>
-                                <span class="text-red-600 font-medium">Rs ${(e.amount||0).toLocaleString()}</span>
-                            </div>`).join('')}</div>` : ''}
-                        ${(report.onlinePayments || []).length > 0 ? `
-                            <h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
-                            <div class="space-y-1 mb-4">${report.onlinePayments.map(p => `
-                                <div class="flex justify-between text-sm p-2 bg-gray-50 rounded">
-                                    <span>${p.detail}</span><span class="${p.status === 'received' ? 'text-green-600' : 'text-orange-600'}">Rs ${(p.amount || 0).toLocaleString()}</span>
-                                </div>`).join('')}</div>` : ''}
-                        <div class="bg-indigo-50 p-4 rounded-xl space-y-1 mt-4">
-                            <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance || 0).toLocaleString()}</span></div>
-                            <div class="flex justify-between text-sm text-green-600"><span>+ Orders:</span><span>Rs ${(report.totalGross || 0).toLocaleString()}</span></div>
-                            <div class="flex justify-between text-sm text-red-500"><span>- Online:</span><span>-Rs ${(report.onlinePayments || []).reduce((a,p) => a + (p.amount || 0), 0).toLocaleString()}</span></div>
-                            <div class="flex justify-between text-sm text-red-500"><span>- Expenses:</span><span>-Rs ${(report.totalExpenses || 0).toLocaleString()}</span></div>
-                            <div class="flex justify-between text-sm text-red-500"><span>- Daily Wage:</span><span>-Rs ${(report.dailyWage || 500).toLocaleString()}</span></div>
-                            <div class="flex justify-between font-bold text-indigo-900 text-lg pt-2 border-t border-indigo-200"><span>Final</span><span>Rs ${(report.finalAmount || 0).toLocaleString()}</span></div>
-                        </div>
-                        ${report.proofImage ? `<div class="mt-4"><img src="${report.proofImage}" class="rounded-lg w-full max-h-60 object-cover"></div>` : ''}
-                    </div>`;
-                overlay.classList.remove('hidden');
-                setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
-            },
+    const report = this.data.reports.find(r => r.id === id);
+    if(!report) return;
+    const modalContent = document.getElementById('modal-content');
+    const overlay = document.getElementById('modal-overlay');
+    modalContent.innerHTML = `
+        <div class="p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">Report Details</h2>
+                <button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Date</p><p class="font-semibold">${new Date(report.date).toLocaleDateString()}</p></div>
+                <div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div>
+            </div>
 
+            <h3 class="font-bold text-gray-700 mb-2 text-sm">Orders</h3>
+            <div class="space-y-2 mb-4">
+                ${(report.orders || []).length === 0 ? '<p class="text-xs text-gray-400">No orders</p>' :
+                (report.orders || []).map(o => `
+                <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
+                    <div>
+                        <span class="font-medium">${o.type}</span>
+                        <span class="text-gray-500 text-xs ml-2">x${o.qty} × Rs ${(o.rate||0).toLocaleString()}</span>
+                    </div>
+                    <span class="font-bold text-indigo-600">Rs ${(o.gross || 0).toLocaleString()}</span>
+                </div>`).join('')}
+            </div>
+
+            ${(report.expenses||[]).length > 0 ? `
+            <h3 class="font-bold text-gray-700 mb-2 text-sm">Expenses</h3>
+            <div class="space-y-1 mb-4">
+                ${(report.expenses||[]).map(e => `
+                <div class="flex justify-between text-sm p-2 bg-red-50 rounded">
+                    <span class="text-gray-600">${e.type}</span>
+                    <span class="text-red-600 font-medium">Rs ${(e.amount||0).toLocaleString()}</span>
+                </div>`).join('')}
+            </div>` : ''}
+
+            ${(report.onlinePayments || []).length > 0 ? `
+            <h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
+            <div class="space-y-2 mb-4">
+                ${report.onlinePayments.map(p => `
+                <div class="p-2 bg-gray-50 rounded text-sm">
+                    <div class="flex justify-between items-start">
+                        <span class="font-medium">${p.detail || '—'}</span>
+                        <span class="ml-2 flex-shrink-0 ${p.status === 'received' ? 'text-green-600' : 'text-orange-600'} font-semibold">Rs ${(p.amount || 0).toLocaleString()}</span>
+                    </div>
+                    ${p.items ? `
+                    <p class="text-xs text-indigo-500 mt-1 flex items-center gap-1">
+                        <i class="fas fa-box text-xs"></i>${p.items}
+                    </p>` : ''}
+                    <span class="text-xs ${p.status === 'received' ? 'text-green-500' : 'text-orange-500'}">${p.status === 'received' ? '✓ Received' : '⏳ Pending'}</span>
+                </div>`).join('')}
+            </div>` : ''}
+
+            <div class="bg-indigo-50 p-4 rounded-xl space-y-1 mt-4">
+                <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance || 0).toLocaleString()}</span></div>
+                <div class="flex justify-between text-sm text-green-600"><span>+ Orders:</span><span>Rs ${(report.totalGross || 0).toLocaleString()}</span></div>
+                <div class="flex justify-between text-sm text-red-500"><span>- Online:</span><span>-Rs ${(report.onlinePayments || []).reduce((a,p) => a + (p.amount || 0), 0).toLocaleString()}</span></div>
+                <div class="flex justify-between text-sm text-red-500"><span>- Expenses:</span><span>-Rs ${(report.totalExpenses || 0).toLocaleString()}</span></div>
+                <div class="flex justify-between text-sm text-red-500"><span>- Daily Wage:</span><span>-Rs ${(report.dailyWage || 0).toLocaleString()}</span></div>
+                <div class="flex justify-between font-bold text-indigo-900 text-lg pt-2 border-t border-indigo-200"><span>Final</span><span>Rs ${(report.finalAmount || 0).toLocaleString()}</span></div>
+            </div>
+
+            ${report.proofImage ? `
+            <div class="mt-4">
+                <img src="${report.proofImage}" class="rounded-lg w-full max-h-60 object-cover">
+            </div>` : ''}
+        </div>`;
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+},
 renderRiderPayments(selectedDate = null) {
     // ✅ SAVE FILTER so re-renders stay on same date
     const activeFilter = selectedDate || this.data.riderPaymentFilter || new Date().toISOString().split('T')[0];
@@ -2033,14 +2087,18 @@ renderAdminOnlinePayments(selectedDate = null) {
                                     </div>
                                     <div class="text-right ml-2 flex-shrink-0">
                                         <p class="font-bold text-sm">Rs ${(p.amount||0).toLocaleString()}</p>
-                                        <div class="flex gap-1 mt-1 justify-end">
-                                            <button onclick="app.sendWhatsAppPaymentReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}',${p.amount},'${p.date}')"
-                                                class="text-xs bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1">
-                                                <i class="fab fa-whatsapp"></i>
-                                            </button>
-                                            <button onclick="app.adminMarkReceived('${p.reportId}',${p.idx})"
-                                                class="text-xs bg-indigo-600 text-white px-2 py-1 rounded">✓</button>
-                                        </div>
+                                        <div class="flex gap-1.5 mt-1.5 justify-end flex-wrap">
+    <button onclick="app.sendWhatsAppPaymentReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}',${p.amount},'${p.date}')"
+        class="text-xs bg-green-500 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-medium">
+        <i class="fab fa-whatsapp"></i> Reminder
+    </button>
+    <button onclick="app.sendWhatsAppStatement('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}',${p.amount},'${p.date}','${p.reportId}')"
+        class="text-xs bg-teal-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 font-medium">
+        <i class="fab fa-whatsapp"></i> Statement
+    </button>
+    <button onclick="app.adminMarkReceived('${p.reportId}',${p.idx})"
+        class="text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg font-medium">✓ Received</button>
+</div>
                                     </div>
                                 </div>`).join('')}
                             </div>
@@ -2157,7 +2215,56 @@ renderAdminOnlinePayments(selectedDate = null) {
                 window.open(url, '_blank');
             },
 
-            getFilteredAdminReports() {
+            sendWhatsAppStatement(riderName, customerDetail, amount, date, reportId) {
+    const customers = this.data.customers || [];
+    const detail = (customerDetail || '').toLowerCase();
+    const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+    const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
+    const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
+    const matched = byPhone || byName;
+    const custName = matched ? matched.name : (customerDetail || 'Customer');
+    
+    // Find ALL pending payments for this customer across all reports
+    const allPending = [];
+    this.data.reports.forEach(r => {
+        (r.onlinePayments || []).forEach(p => {
+            if (p.status !== 'pending') return;
+            const d = (p.detail || '').toLowerCase();
+            const dPhone = d.replace(/\D/g,'').slice(-10);
+            const pMatch = phoneInDetail.length >= 10 && dPhone === phoneInDetail;
+            const nMatch = matched && matched.name && d.includes(matched.name.toLowerCase());
+            if (pMatch || nMatch || p.detail === customerDetail) {
+                allPending.push({ date: r.date, amount: p.amount || 0, detail: p.detail });
+            }
+        });
+    });
+    
+    const totalPending = allPending.reduce((a, p) => a + p.amount, 0);
+    
+    // Calculate days since oldest pending
+    const sortedPending = [...allPending].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const oldestDate = sortedPending.length > 0 ? new Date(sortedPending[0].date) : new Date(date);
+    const daysSince = Math.floor((new Date() - oldestDate) / (1000 * 60 * 60 * 24));
+    
+    const lines = sortedPending.map(p => {
+        const d = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+        return `📅 ${new Date(p.date).toLocaleDateString('en-PK', {day:'numeric',month:'short',year:'numeric'})} — *Rs ${(p.amount||0).toLocaleString()}* (${d} din se pending)`;
+    }).join('\n');
+    
+    const message = `Assalam o Alaikum *${custName}*! 🙏\n\nآپ کی درج ذیل payments ابھی تک pending ہیں۔ یہ آپ کا مکمل حساب ہے:\n\n${lines}\n\n━━━━━━━━━━━━━━\n💰 *کل باقی رقم: Rs ${totalPending.toLocaleString()}*\n⏰ *سب سے پرانی payment: ${daysSince} دن سے*\n━━━━━━━━━━━━━━\n\nبراہ کرم جلد از جلد payment clear کریں۔\nشکریہ — Dastak Delivery Service 🚀`;
+    
+    const encoded = encodeURIComponent(message);
+    let waNumber = '';
+    if (matched && matched.phone) {
+        const p = matched.phone.replace(/\D/g, '');
+        waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/, '');
+    }
+    const url = waNumber.length >= 11
+        ? `https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`
+        : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(url, '_blank');
+},
+			getFilteredAdminReports() {
                 const m = this.data.selectedMonth;
                 const y = this.data.selectedYear;
                 let reports = this.data.reports.filter(r => {
@@ -2596,29 +2703,72 @@ renderAdminOnlinePayments(selectedDate = null) {
             },
 
             renderCustomerCard(c) {
-                const stats = this.getCustomerPaymentStats(c);
-                const phone = (c.phone||'').replace(/\D/g,'');
-                const wa = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/,'');
-                return `
-                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" data-cust-id="${c.id}">
-                    <input type="checkbox" class="cust-checkbox w-4 h-4 accent-indigo-600 flex-shrink-0 cursor-pointer" data-id="${c.id}" onchange="app.updateBulkDeleteBtn()">
-                    <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0">${(c.name||'?').charAt(0).toUpperCase()}</div>
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-sm truncate">${c.name}</p>
-                        <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
-                        ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'} font-medium">Rs ${stats.total.toLocaleString()}${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ✓'}</p>` : ''}
-                    </div>
-                    <div class="flex gap-1 flex-shrink-0">
-                        ${stats.pending > 0 && phone.length >= 10 ? `
-                        <a href="https://api.whatsapp.com/send?phone=${wa}&text=${encodeURIComponent(`Assalam o Alaikum *${c.name}*,\n\nآپ کی payment pending ہے۔\n💰 Pending: Rs ${stats.pending.toLocaleString()}\n\nبراہ کرم payment کریں۔\nShukria — Dastak 🙏`)}" target="_blank"
-                           class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>` :
-                        stats.pending > 0 ? `<button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs"><i class="fab fa-whatsapp"></i></button>` : ''}
-                        <button onclick="app.editCustomer('${c.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg text-xs" title="Edit"><i class="fas fa-edit"></i></button>
-                        <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
-                    </div>
-                </div>`;
-            },
-
+    const stats = this.getCustomerPaymentStats(c);
+    const phone = (c.phone||'').replace(/\D/g,'');
+    const wa = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/,'');
+    return `
+    <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" data-cust-id="${c.id}">
+        <input type="checkbox" class="cust-checkbox w-4 h-4 accent-indigo-600 flex-shrink-0 cursor-pointer" data-id="${c.id}" onchange="app.updateBulkDeleteBtn()">
+        <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0">${(c.name||'?').charAt(0).toUpperCase()}</div>
+        <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm truncate">${c.name}</p>
+            <p class="text-xs text-gray-500">${c.phone || 'No phone'}${c.address ? ' · '+c.address : ''}</p>
+            ${stats.count > 0 ? `<p class="text-xs ${stats.pending>0?'text-orange-600':'text-green-600'} font-medium">Rs ${stats.total.toLocaleString()}${stats.pending>0?' · Pending: Rs '+stats.pending.toLocaleString():' · All clear ✓'}</p>` : ''}
+        </div>
+        <div class="flex gap-1 flex-shrink-0">
+            ${stats.pending > 0 && phone.length >= 10 ? `
+            <a href="https://api.whatsapp.com/send?phone=${wa}&text=${encodeURIComponent(`Assalam o Alaikum *${c.name}*,\n\nآپ کی payment pending ہے۔\n💰 Pending: Rs ${stats.pending.toLocaleString()}\n\nبراہ کرم payment کریں۔\nShukria — Dastak 🙏`)}" target="_blank"
+               class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs" title="WA Reminder"><i class="fab fa-whatsapp"></i></a>
+            <button onclick="app.sendCustomerStatement('${c.id}')"
+               class="p-1.5 bg-teal-100 text-teal-700 rounded-lg text-xs" title="Full Statement">
+               <i class="fab fa-whatsapp"></i><i class="fas fa-list ml-0.5 text-xs"></i>
+            </button>` : stats.pending > 0 ? `
+            <button onclick="app.sendCustomerWhatsApp('${c.id}')" class="p-1.5 bg-green-100 text-green-700 rounded-lg text-xs"><i class="fab fa-whatsapp"></i></button>
+            <button onclick="app.sendCustomerStatement('${c.id}')" class="p-1.5 bg-teal-100 text-teal-700 rounded-lg text-xs" title="Statement"><i class="fab fa-whatsapp"></i><i class="fas fa-list ml-0.5 text-xs"></i></button>` : ''}
+            <button onclick="app.editCustomer('${c.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg text-xs" title="Edit"><i class="fas fa-edit"></i></button>
+            <button onclick="app.deleteCustomer('${c.id}')" class="p-1.5 bg-red-100 text-red-500 rounded-lg text-xs" title="Delete"><i class="fas fa-trash"></i></button>
+        </div>
+    </div>`;
+},
+			sendCustomerStatement(custId) {
+    const customer = this.data.customers.find(c => c.id === custId);
+    if (!customer) return;
+    
+    const allPending = [];
+    this.data.reports.forEach(r => {
+        (r.onlinePayments || []).forEach(p => {
+            if (p.status !== 'pending') return;
+            const d = (p.detail || '').toLowerCase();
+            const cn = (customer.name || '').toLowerCase();
+            const cp = (customer.phone || '').replace(/\D/g,'').slice(-10);
+            const dPhone = d.replace(/\D/g,'').slice(-10);
+            if ((cp.length >= 10 && dPhone === cp) || (cn.length >= 3 && d.includes(cn))) {
+                allPending.push({ date: r.date, amount: p.amount || 0 });
+            }
+        });
+    });
+    
+    if (allPending.length === 0) { alert('Koi pending payment nahi mili'); return; }
+    
+    const sorted = [...allPending].sort((a,b) => new Date(a.date) - new Date(b.date));
+    const totalPending = sorted.reduce((a,p) => a + p.amount, 0);
+    const daysSince = Math.floor((new Date() - new Date(sorted[0].date)) / (1000*60*60*24));
+    
+    const lines = sorted.map(p => {
+        const d = Math.floor((new Date() - new Date(p.date)) / (1000*60*60*24));
+        return `📅 ${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})} — *Rs ${(p.amount||0).toLocaleString()}* (${d} din se pending)`;
+    }).join('\n');
+    
+    const message = `Assalam o Alaikum *${customer.name}*! 🙏\n\nآپ کی درج ذیل payments ابھی تک pending ہیں:\n\n${lines}\n\n━━━━━━━━━━━━━━\n💰 *کل باقی: Rs ${totalPending.toLocaleString()}*\n⏰ *${daysSince} دن سے payment pending ہے*\n━━━━━━━━━━━━━━\n\nبراہ کرم جلد payment clear کریں۔\nشکریہ — Dastak 🙏`;
+    
+    const phone = (customer.phone || '').replace(/\D/g, '');
+    const wa = phone.startsWith('92') ? phone : '92' + phone.replace(/^0/, '');
+    const encoded = encodeURIComponent(message);
+    const url = wa.length >= 11
+        ? `https://api.whatsapp.com/send?phone=${wa}&text=${encoded}`
+        : `https://api.whatsapp.com/send?text=${encoded}`;
+    window.open(url, '_blank');
+},
             editCustomer(id) {
                 const c = this.data.customers.find(x => x.id === id);
                 if (!c) return;
