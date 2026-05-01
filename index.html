@@ -2000,7 +2000,8 @@ renderRiderPayments(selectedDate = null) {
                         <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
                             <select id="filter-zone" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Zones</option><option>North</option><option>South</option><option>East</option><option>West</option></select>
                             <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
-                        </div>
+                        <select id="filter-rider" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Riders</option>${this.data.users.filter(u=>u.role==='rider').map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}</select>
+						</div>
                         <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.getFilteredAdminReports().length === 0 ? '<p class="text-center text-gray-400 py-8">No reports found for this month</p>' : ''}</div>
                     </div>`;
             },
@@ -2280,7 +2281,11 @@ renderAdminOnlinePayments(selectedDate = null) {
                         return rider?.zone === zoneFilter;
                     });
                 }
-                if (statusFilter) {
+                const riderFilter = document.getElementById('filter-rider')?.value;
+if (riderFilter) {
+    reports = reports.filter(r => r.riderId === riderFilter);
+}
+				if (statusFilter) {
                     reports = reports.filter(r => r.status === statusFilter);
                 } else {
                     reports = reports.filter(r => r.status !== 'deleted');
