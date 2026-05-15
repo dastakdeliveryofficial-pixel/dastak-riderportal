@@ -899,107 +899,120 @@ _refreshCurrentView() {
             },
 
             renderRiderReportForm() {
-			this.ensureCustomers();
-                document.getElementById('page-title').textContent = 'Daily Report';
-                const container = document.getElementById('main-container');
-                const user = this.data.currentUser;
-                const wageType = user?.wageType || 'fixed';
-                const wageEnabled = user?.wageEnabled !== false;
-                let dailyWage = 0;
-                if (wageEnabled && wageType !== 'none') dailyWage = user?.dailyWage || 500;
-                const showCustomWage = wageEnabled && wageType === 'custom';
-                container.innerHTML = `
-                    <div class="max-w-4xl mx-auto fade-in pb-20">
-                        <form onsubmit="app.submitReport(event)" class="space-y-4">
-                            <div class="section-card">
-                                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div>
-                                        <h3 class="font-bold text-lg">Daily Report</h3>
-                                        <div class="flex items-center gap-2 mt-1">
-                                            <label class="text-xs text-gray-500">Report Date:</label>
-                                            <input type="date" id="report-date" 
-                                                value="${new Date().toISOString().split('T')[0]}" 
-                                                max="${new Date().toISOString().split('T')[0]}"
-                                                class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
-                                        </div>
-                                    </div>
-                                    <div class="text-left md:text-right w-full md:w-auto">
-                                        <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
-                                        <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
-                                    </div>
-                                </div>
+    this.ensureCustomers();
+    document.getElementById('page-title').textContent = 'Daily Report';
+    const container = document.getElementById('main-container');
+    const user = this.data.currentUser;
+    const wageType = user?.wageType || 'fixed';
+    const wageEnabled = user?.wageEnabled !== false;
+    let dailyWage = 0;
+    if (wageEnabled && wageType !== 'none') dailyWage = user?.dailyWage || 500;
+    const showCustomWage = wageEnabled && wageType === 'custom';
+    container.innerHTML = `
+        <div class="max-w-4xl mx-auto fade-in pb-20">
+            <form onsubmit="app.submitReport(event)" class="space-y-4" id="report-form">
+                <div class="section-card">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="font-bold text-lg">Daily Report</h3>
+                            <div class="flex items-center gap-2 mt-1">
+                                <label class="text-xs text-gray-500">Report Date:</label>
+                                <input type="date" id="report-date" 
+                                    value="${new Date().toISOString().split('T')[0]}" 
+                                    max="${new Date().toISOString().split('T')[0]}"
+                                    class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
                             </div>
-                            <div class="section-card">
-                                <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Order Details</h3></div>
-                                <div class="space-y-3" id="orders-container">${[1, 2, 3].map(i => `
-                                    <div class="bg-gray-50 p-3 rounded-lg space-y-2">
-                                        <div class="flex justify-between items-center"><span class="text-sm font-medium text-gray-700">Order Type ${i}</span><span class="text-xs text-gray-400">Std Delivery</span></div>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <div><label class="block text-xs text-gray-500 mb-1">Qty</label><input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
-                                            <div><label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label><input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
-                                        </div>
-                                        <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
-                                            <span class="text-gray-600">Gross: <span id="order-gross-${i}" class="font-semibold">Rs 0</span></span>
-                                        </div>
-                                    </div>`).join('')}</div>
-                                <div class="mt-4 pt-4 border-t border-gray-200">
-                                    <div class="flex justify-between items-center"><span class="text-gray-600 font-medium text-sm">Total Gross</span><span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0</span></div>
-                                </div>
+                        </div>
+                        <div class="text-left md:text-right w-full md:w-auto">
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
+                            <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
+                        </div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Order Details</h3></div>
+                    <div class="space-y-3" id="orders-container">${[1, 2, 3].map(i => `
+                        <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                            <div class="flex justify-between items-center"><span class="text-sm font-medium text-gray-700">Order Type ${i}</span><span class="text-xs text-gray-400">Std Delivery</span></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="block text-xs text-gray-500 mb-1">Qty</label><input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
+                                <div><label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label><input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
                             </div>
-                            <div class="section-card">
-                                <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Online Collections</h3><button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add</button></div>
-                                <div id="online-payments-list" class="space-y-2"></div>
-                                <div class="mt-4 grid grid-cols-2 gap-3">
-                                    <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center"><p class="text-xs text-orange-600 font-medium">Pending</p><p class="text-lg font-bold text-orange-700" id="online-pending-display">Rs 0</p></div>
-                                    <div class="bg-green-50 p-3 rounded-lg border border-green-200 text-center"><p class="text-xs text-green-600 font-medium">Received</p><p class="text-lg font-bold text-green-700" id="online-received-display">Rs 0</p></div>
-                                </div>
+                            <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
+                                <span class="text-gray-600">Gross: <span id="order-gross-${i}" class="font-semibold">Rs 0</span></span>
                             </div>
-                            <div class="section-card">
-                                <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Expenses</h3>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div><label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label><input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                    <div><label class="block text-xs text-gray-500 mb-1">Food (Rs)</label><input type="number" id="exp-food" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                    <div><label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label><input type="number" id="exp-maint" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                </div>
-                            </div>
-                            <div class="section-card">
-                                <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Delivery Proof</h3>
-                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
-                                    <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
-                                    <div id="proof-preview-area"><i class="fas fa-camera text-3xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500">Tap to upload photo</p></div>
-                                    <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
-                                </div>
-                            </div>
-                            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-2xl shadow-lg">
-                                <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
-                                <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between"><span>Opening Balance</span><span id="sum-opening">Rs 0</span></div>
-                                    <div class="flex justify-between text-green-300"><span>+ Orders Amount</span><span id="sum-orders">Rs 0</span></div>
-                                    <div class="flex justify-between text-red-300"><span>- Online Payments</span><span id="sum-online">Rs 0</span></div>
-                                    <div class="flex justify-between text-red-300"><span>- Expenses</span><span id="sum-expenses">Rs 0</span></div>
-                                    ${wageEnabled && wageType !== 'none' ? `
-                                    <div class="flex justify-between text-yellow-200 items-center">
-                                        <span>- Daily Wage</span>
-                                        ${showCustomWage ? `<input type="number" id="wage-input" value="${dailyWage}" min="0" 
-                                            class="w-28 text-right bg-white/20 border border-white/30 rounded px-2 py-0.5 text-sm outline-none text-yellow-100"
-                                            onchange="app.calculateTotals()" placeholder="0">` : 
-                                        `<span id="sum-wage">Rs ${dailyWage.toLocaleString()}</span>`}
-                                    </div>` : `
-                                    <div class="flex justify-between text-gray-300 opacity-60"><span>- Daily Wage</span><span>Rs 0 (No Wage)</span></div>`}
-                                    <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30"><span>Final Cash</span><span id="sum-final">Rs 0</span></div>
-                                </div>
-                            </div>
-                            <input type="hidden" id="report-edit-id" value="">
-                            <div class="flex gap-3 pb-4">
-                                <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"><i class="fas fa-save mr-2"></i>Save Draft</button>
-                                <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-paper-plane mr-2"></i>Submit Report</button>
-                            </div>
-                        </form>
-                    </div>`;
-                this.addOnlinePaymentRow();
-            },
+                        </div>`).join('')}</div>
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <div class="flex justify-between items-center"><span class="text-gray-600 font-medium text-sm">Total Gross</span><span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0</span></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Online Collections</h3><button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add</button></div>
+                    <div id="online-payments-list" class="space-y-2"></div>
+                    <div class="mt-4 grid grid-cols-2 gap-3">
+                        <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center"><p class="text-xs text-orange-600 font-medium">Pending</p><p class="text-lg font-bold text-orange-700" id="online-pending-display">Rs 0</p></div>
+                        <div class="bg-green-50 p-3 rounded-lg border border-green-200 text-center"><p class="text-xs text-green-600 font-medium">Received</p><p class="text-lg font-bold text-green-700" id="online-received-display">Rs 0</p></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Expenses</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div><label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label><input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                        <div><label class="block text-xs text-gray-500 mb-1">Food (Rs)</label><input type="number" id="exp-food" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                        <div><label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label><input type="number" id="exp-maint" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Delivery Proof</h3>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                        <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
+                        <div id="proof-preview-area"><i class="fas fa-camera text-3xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500">Tap to upload photo</p></div>
+                        <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-2xl shadow-lg">
+                    <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span>Opening Balance</span><span id="sum-opening">Rs 0</span></div>
+                        <div class="flex justify-between text-green-300"><span>+ Orders Amount</span><span id="sum-orders">Rs 0</span></div>
+                        <div class="flex justify-between text-red-300"><span>- Online Payments</span><span id="sum-online">Rs 0</span></div>
+                        <div class="flex justify-between text-red-300"><span>- Expenses</span><span id="sum-expenses">Rs 0</span></div>
+                        ${wageEnabled && wageType !== 'none' ? `
+                        <div class="flex justify-between text-yellow-200 items-center">
+                            <span>- Daily Wage</span>
+                            ${showCustomWage ? `<input type="number" id="wage-input" value="${dailyWage}" min="0" class="w-28 text-right bg-white/20 border border-white/30 rounded px-2 py-0.5 text-sm outline-none text-yellow-100" onchange="app.calculateTotals()" placeholder="0">` : `<span id="sum-wage">Rs ${dailyWage.toLocaleString()}</span>`}
+                        </div>` : `<div class="flex justify-between text-gray-300 opacity-60"><span>- Daily Wage</span><span>Rs 0 (No Wage)</span></div>`}
+                        <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30"><span>Final Cash</span><span id="sum-final">Rs 0</span></div>
+                    </div>
+                </div>
+                <input type="hidden" id="report-edit-id" value="">
+                <div class="flex gap-3 pb-4">
+                    <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"><i class="fas fa-save mr-2"></i>Save Draft</button>
+                    <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-paper-plane mr-2"></i>Submit Report</button>
+                </div>
+            </form>
+        </div>`;
+    
+    // Edit mode ya auto-draft restore
+    const editId = this.data._editReportId;
+    const autoDraft = this.loadAutoDraft();
+    
+    this.addOnlinePaymentRow();
+    
+    setTimeout(() => {
+        if (editId) {
+            this._restoreReportToForm(editId);
+            this.data._editReportId = null;
+        } else if (autoDraft) {
+            this._restoreAutoDraft(autoDraft);
+        }
+    }, 150);
+    
+    // Auto-draft save har 5 second
+    this._startAutoDraft();
+},
 
-            addOnlinePaymentRow() {
+        addOnlinePaymentRow() {
     const container = document.getElementById('online-payments-list');
     if (!container) return;
     const rowId = 'opr-' + Date.now();
@@ -1007,24 +1020,31 @@ _refreshCurrentView() {
     div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
     div.id = rowId;
     div.innerHTML = `
-    <div class="grid grid-cols-12 gap-2 items-start">
-        <div class="col-span-4 relative">
-            <input type="text" placeholder="Customer ID (e.g. C001) *" 
-                class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-id-input" 
-                autocomplete="off"
-                oninput="app.lookupCustomerById(this, '${rowId}')">
+    <div class="flex justify-between items-start">
+        <div class="grid grid-cols-12 gap-2 items-start flex-1">
+            <div class="col-span-4 relative">
+                <input type="text" placeholder="Customer ID (e.g. C001) *" 
+                    class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-id-input" 
+                    autocomplete="off"
+                    oninput="app.lookupCustomerById(this, '${rowId}')">
+            </div>
+            <div class="col-span-3">
+                <input type="text" id="auto-name-${rowId}" placeholder="Naam (auto)" 
+                    class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-name" readonly>
+            </div>
+            <div class="col-span-3">
+                <input type="text" id="auto-phone-${rowId}" placeholder="Phone (auto)" 
+                    class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-phone" readonly>
+            </div>
+            <div class="col-span-2">
+                <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
+            </div>
         </div>
-        <div class="col-span-3">
-            <input type="text" id="auto-name-${rowId}" placeholder="Naam (auto)" 
-                class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-name" readonly>
-        </div>
-        <div class="col-span-3">
-            <input type="text" id="auto-phone-${rowId}" placeholder="Phone (auto)" 
-                class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-phone" readonly>
-        </div>
-        <div class="col-span-2">
-            <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
-        </div>
+        <button type="button" onclick="app.removeOnlinePaymentRow('${rowId}')"
+            class="flex-shrink-0 w-8 h-8 bg-red-100 text-red-500 rounded-lg flex items-center justify-center hover:bg-red-200 hover:text-red-700 transition-colors ml-2 mt-1"
+            title="Remove this payment">
+            <i class="fas fa-times text-sm"></i>
+        </button>
     </div>
     <div class="mt-1">
         <input type="text" id="auto-addr-${rowId}" placeholder="Address (auto-fill hoga)" 
@@ -1039,7 +1059,251 @@ _refreshCurrentView() {
     container.appendChild(div);
 },
 
-            showCustomerSuggestions(input, rowId) {
+removeOnlinePaymentRow(rowId) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    
+    // Agar sirf 1 row hai to clear karo, delete mat karo
+    const allRows = document.querySelectorAll('#online-payments-list > div');
+    if (allRows.length <= 1) {
+        row.querySelector('.cust-id-input').value = '';
+        const nameEl = row.querySelector('.auto-cust-name');
+        const phoneEl = row.querySelector('.auto-cust-phone');
+        const addrEl = row.querySelector('.auto-addr-');
+        const amtEl = row.querySelector('.online-amt');
+        const itemsEl = row.querySelector('.online-items');
+        const docEl = row.querySelector('.cust-doc-id');
+        if (nameEl) nameEl.value = '';
+        if (phoneEl) phoneEl.value = '';
+        if (addrEl) addrEl.value = '';
+        if (amtEl) amtEl.value = '';
+        if (itemsEl) itemsEl.value = '';
+        if (docEl) docEl.value = '';
+        this.calculateTotals();
+        return;
+    }
+    
+    row.style.transition = 'all 0.3s ease';
+    row.style.opacity = '0';
+    row.style.transform = 'translateX(-20px)';
+    setTimeout(() => {
+        row.remove();
+        this.calculateTotals();
+    }, 300);
+},
+
+// ============ AUTO-DRAFT SYSTEM ============
+_startAutoDraft() {
+    // Pehle wala interval clear karo
+    if (this._autoDraftInterval) clearInterval(this._autoDraftInterval);
+    
+    this._autoDraftInterval = setInterval(() => {
+        // Sirf report form page pe save karo
+        const form = document.getElementById('report-form');
+        if (!form) {
+            clearInterval(this._autoDraftInterval);
+            this._autoDraftInterval = null;
+            return;
+        }
+        this._saveAutoDraft();
+    }, 5000); // Har 5 second
+},
+
+_saveAutoDraft() {
+    try {
+        const draft = this._getFormState();
+        if (!draft) return;
+        localStorage.setItem('dastak_auto_draft', JSON.stringify(draft));
+    } catch(e) { /* ignore */ }
+},
+
+loadAutoDraft() {
+    try {
+        const saved = localStorage.getItem('dastak_auto_draft');
+        if (!saved) return null;
+        const draft = JSON.parse(saved);
+        // 30 min purana draft ignore karo
+        if (Date.now() - draft.savedAt > 30 * 60 * 1000) {
+            localStorage.removeItem('dastak_auto_draft');
+            return null;
+        }
+        return draft;
+    } catch(e) { return null; }
+},
+
+clearAutoDraft() {
+    localStorage.removeItem('dastak_auto_draft');
+    if (this._autoDraftInterval) {
+        clearInterval(this._autoDraftInterval);
+        this._autoDraftInterval = null;
+    }
+},
+
+_getFormState() {
+    const payments = [];
+    document.querySelectorAll('#online-payments-list > div').forEach(row => {
+        const custId = row.querySelector('.cust-id-input')?.value || '';
+        const amt = parseFloat(row.querySelector('.online-amt')?.value) || 0;
+        const name = row.querySelector('.auto-cust-name')?.value || '';
+        const phone = row.querySelector('.auto-cust-phone')?.value || '';
+        const addr = row.querySelector('.auto-cust-addr')?.value || '';
+        const items = row.querySelector('.online-items')?.value || '';
+        const docId = row.querySelector('.cust-doc-id')?.value || '';
+        payments.push({ custId, amt, name, phone, addr, items, docId });
+    });
+    
+    return {
+        savedAt: Date.now(),
+        date: document.getElementById('report-date')?.value || '',
+        opening: parseFloat(document.getElementById('opening-balance')?.value) || 0,
+        orders: [1,2,3].map(i => ({
+            qty: parseInt(document.getElementById(`order-qty-${i}`)?.value) || 0,
+            rate: parseFloat(document.getElementById(`order-rate-${i}`)?.value) || 0
+        })),
+        payments,
+        fuel: parseFloat(document.getElementById('exp-fuel')?.value) || 0,
+        food: parseFloat(document.getElementById('exp-food')?.value) || 0,
+        maint: parseFloat(document.getElementById('exp-maint')?.value) || 0,
+        wage: parseFloat(document.getElementById('wage-input')?.value) || 0,
+        proofSrc: document.getElementById('proof-preview-img')?.src || null
+    };
+},
+
+_restoreAutoDraft(draft) {
+    if (!draft) return;
+    
+    const dateEl = document.getElementById('report-date');
+    if (dateEl && draft.date) dateEl.value = draft.date;
+    
+    const openEl = document.getElementById('opening-balance');
+    if (openEl) openEl.value = draft.opening || 0;
+    
+    if (draft.orders) {
+        draft.orders.forEach((o, i) => {
+            const qEl = document.getElementById(`order-qty-${i+1}`);
+            const rEl = document.getElementById(`order-rate-${i+1}`);
+            if (qEl) qEl.value = o.qty || 0;
+            if (rEl) rEl.value = o.rate || 0;
+        });
+    }
+    
+    // Payments restore
+    if (draft.payments && draft.payments.length > 0) {
+        const container = document.getElementById('online-payments-list');
+        if (container) container.innerHTML = '';
+        
+        draft.payments.forEach(p => {
+            this.addOnlinePaymentRow();
+            const rows = document.querySelectorAll('#online-payments-list > div');
+            const lastRow = rows[rows.length - 1];
+            if (lastRow) {
+                const custInp = lastRow.querySelector('.cust-id-input');
+                const amtInp = lastRow.querySelector('.online-amt');
+                const autoName = lastRow.querySelector('.auto-cust-name');
+                const autoPhone = lastRow.querySelector('.auto-cust-phone');
+                const autoAddr = lastRow.querySelector('.auto-cust-addr');
+                const autoItems = lastRow.querySelector('.online-items');
+                const autoDoc = lastRow.querySelector('.cust-doc-id');
+                if (custInp) custInp.value = p.custId || '';
+                if (amtInp) amtInp.value = p.amt || 0;
+                if (autoName) autoName.value = p.name || '';
+                if (autoPhone) autoPhone.value = p.phone || '';
+                if (autoAddr) autoAddr.value = p.addr || '';
+                if (autoItems) autoItems.value = p.items || '';
+                if (autoDoc) autoDoc.value = p.docId || '';
+            }
+        });
+    }
+    
+    const fuelEl = document.getElementById('exp-fuel');
+    const foodEl = document.getElementById('exp-food');
+    const maintEl = document.getElementById('exp-maint');
+    if (fuelEl) fuelEl.value = draft.fuel || 0;
+    if (foodEl) foodEl.value = draft.food || 0;
+    if (maintEl) maintEl.value = draft.maint || 0;
+    
+    const wageEl = document.getElementById('wage-input');
+    if (wageEl && draft.wage) wageEl.value = draft.wage;
+    
+    // Proof image restore
+    if (draft.proofSrc) {
+        const img = document.getElementById('proof-preview-img');
+        const area = document.getElementById('proof-preview-area');
+        if (img) { img.src = draft.proofSrc; img.classList.remove('hidden'); }
+        if (area) area.classList.add('hidden');
+    }
+    
+    this.calculateTotals();
+},
+
+// ============ SUBMITTED REPORT EDIT (RIDER SIDE) ============
+_restoreReportToForm(reportId) {
+    const report = this.data.reports.find(r => r.id === reportId);
+    if (!report) return;
+    
+    document.getElementById('report-edit-id').value = reportId;
+    
+    const dateEl = document.getElementById('report-date');
+    if (dateEl && report.date) dateEl.value = report.date;
+    
+    document.getElementById('opening-balance').value = report.openingBalance || 0;
+    
+    [1, 2, 3].forEach((i, idx) => {
+        const order = report.orders?.[idx];
+        if (order) {
+            const qtyEl = document.getElementById(`order-qty-${i}`);
+            const rateEl = document.getElementById(`order-rate-${i}`);
+            if (qtyEl) qtyEl.value = order.qty || 0;
+            if (rateEl) rateEl.value = order.rate || 0;
+        }
+    });
+    
+    // Online payments restore
+    const container = document.getElementById('online-payments-list');
+    if (container) container.innerHTML = '';
+    
+    this.ensureCustomers();
+    
+    (report.onlinePayments || []).forEach(p => {
+        this.addOnlinePaymentRow();
+        const rows = document.querySelectorAll('#online-payments-list > div');
+        const lastRow = rows[rows.length - 1];
+        if (lastRow) {
+            const custIdInp = lastRow.querySelector('.cust-id-input');
+            const amtInp = lastRow.querySelector('.online-amt');
+            const autoName = lastRow.querySelector('.auto-cust-name');
+            const autoPhone = lastRow.querySelector('.auto-cust-phone');
+            const autoAddr = lastRow.querySelector('.auto-cust-addr');
+            const autoItems = lastRow.querySelector('.online-items');
+            const autoDoc = lastRow.querySelector('.cust-doc-id');
+            if (custIdInp) custIdInp.value = p.customerId || p.detail || '';
+            if (amtInp) amtInp.value = p.amount || 0;
+            if (autoName) autoName.value = p.customerName || '';
+            if (autoPhone) autoPhone.value = p.customerPhone || '';
+            if (autoAddr) autoAddr.value = p.customerAddress || '';
+            if (autoItems) autoItems.value = p.items || '';
+            if (autoDoc) autoDoc.value = p.customerDocId || '';
+        }
+    });
+    
+    const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
+    (report.expenses || []).forEach(e => {
+        const el = document.getElementById(expMap[e.type]);
+        if (el) el.value = e.amount || 0;
+    });
+    
+    // Proof image
+    if (report.proofImage) {
+        const img = document.getElementById('proof-preview-img');
+        const area = document.getElementById('proof-preview-area');
+        if (img) { img.src = report.proofImage; img.classList.remove('hidden'); }
+        if (area) area.classList.add('hidden');
+    }
+    
+    this.calculateTotals();
+    document.getElementById('page-title').textContent = report.status === 'draft' ? 'Edit Draft' : 'Edit Submitted Report';
+},         
+		 showCustomerSuggestions(input, rowId) {
     if (!input) return;
 	const q = input.value.trim().toLowerCase();
     const suggBox = document.getElementById('sugg-' + rowId);
@@ -1359,9 +1623,10 @@ document.querySelectorAll('#online-payments-list > div').forEach(row => {
     } catch (error) {
         alert('Error: ' + error.message);
     } finally {
-        this.data._isSubmitting = false;
-        allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
-    }
+    this.data._isSubmitting = false;
+    allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+    this.clearAutoDraft(); // ✅ YE LINE ADD KARO
+}
 },
             renderRiderHistory(activeTab = 'submitted') {
                 document.getElementById('page-title').textContent = 'My History';
@@ -1386,7 +1651,7 @@ document.querySelectorAll('#online-payments-list > div').forEach(row => {
                                     <div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders - ${(r.orders || []).length} types</p></div>
                                     <div class="flex items-center gap-2">
                                         <span class="status-badge status-${r.status === 'draft' ? 'pending' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'draft' ? '📝 Draft' : r.status}</span>
-                                        ${(r.status === 'draft' || r.status === 'pending' || r.status === 'rejected') ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}
+                                         ${r.status !== 'deleted' ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center">
@@ -1477,58 +1742,18 @@ loadRiderDeliveryMonth(val) {
         </div>`;
 },
 
-            editReport(id) {
-                const report = this.data.reports.find(r => r.id === id);
-                if (!report) return;
-                this.renderRiderReportForm();
-                setTimeout(() => {
-                    document.getElementById('report-edit-id').value = id;
-                    // Restore report date
-                    const dateEl = document.getElementById('report-date');
-                    if (dateEl && report.date) dateEl.value = report.date;
-                    document.getElementById('opening-balance').value = report.openingBalance || 0;
-                    [1, 2, 3].forEach((i, idx) => {
-                        const order = report.orders?.[idx];
-                        if (order) {
-                            const qtyEl = document.getElementById(`order-qty-${i}`);
-                            const rateEl = document.getElementById(`order-rate-${i}`);
-                            if (qtyEl) qtyEl.value = order.qty || 0;
-                            if (rateEl) rateEl.value = order.rate || 0;
-                        }
-                    });
-                    const container = document.getElementById('online-payments-list');
-                    if (container) container.innerHTML = '';
-                    (report.onlinePayments || []).forEach(p => {
-                        this.addOnlinePaymentRow();
-						this.ensureCustomers(); // ✅ ye line add karo
-                        const rows = document.querySelectorAll('#online-payments-list > div');
-                        const lastRow = rows[rows.length - 1];
-                        if (lastRow) {
-                            const inputs = lastRow.querySelectorAll('input, select');
-                            const nameInp = lastRow.querySelector('.cust-id-input');
-							const amtInp = lastRow.querySelector('.online-amt');
-							const statusInp = lastRow.querySelector('.online-status');
-							const itemsInp = lastRow.querySelector('.online-items');
-							const autoName = lastRow.querySelector('.auto-cust-name');
-							const autoAddr = lastRow.querySelector('.auto-cust-addr');
-							const autoPhone = lastRow.querySelector('.auto-cust-phone');
-							const autoDocId = lastRow.querySelector('.cust-doc-id');
-							if (nameInp) nameInp.value = p.detail || '';
-							if (amtInp) amtInp.value = p.amount || 0;
-							if (statusInp) statusInp.value = p.status || 'pending';
-							if (itemsInp) itemsInp.value = p.items || '';
-							if (autoName) autoName.value = p.customerName || '';
-							if (autoAddr) autoAddr.value = p.customerAddress || '';
-							if (autoPhone) autoPhone.value = p.customerPhone || '';
-							if (autoDocId) autoDocId.value = p.customerDocId || '';
-                        }
-                    });
-                    const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
-                    (report.expenses || []).forEach(e => { const el = document.getElementById(expMap[e.type]); if (el) el.value = e.amount || 0; });
-                    this.calculateTotals();
-                    document.getElementById('page-title').textContent = report.status === 'draft' ? 'Edit Draft' : 'Edit Report';
-                }, 100);
-            },
+editReport(id) {
+    const report = this.data.reports.find(r => r.id === id);
+    if (!report) return;
+    
+    // Pehle auto-draft clear karo
+    this.clearAutoDraft();
+    
+    // Edit ID save karo — renderRiderReportForm ise uthaega
+    this.data._editReportId = id;
+    
+    this.navigate('rider-report');
+},
 
             viewReportDetails(id) {
     const report = this.data.reports.find(r => r.id === id);
