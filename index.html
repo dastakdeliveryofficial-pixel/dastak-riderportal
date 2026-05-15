@@ -863,6 +863,7 @@
             },
 
             renderRiderReportForm() {
+			this.ensureCustomers();
                 document.getElementById('page-title').textContent = 'Daily Report';
                 const container = document.getElementById('main-container');
                 const user = this.data.currentUser;
@@ -2993,12 +2994,12 @@ if (riderFilter) {
             },
 
             async saveCustomerEdit(id) {
-    const name = document.getElementById('ec-name').value.trim();
-    const phone = document.getElementById('ec-phone').value.trim();
-    const address = document.getElementById('ec-address').value.trim();
-    const customerId = document.getElementById('ec-custid')?.value.trim() || '';
-    if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
-    try {
+		const name = document.getElementById('ec-name').value.trim();
+		const phone = document.getElementById('ec-phone').value.trim();
+		const address = document.getElementById('ec-address').value.trim();
+		const customerId = document.getElementById('ec-custid')?.value.trim() || '';
+		if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+		try {
         await window.db.collection('customers').doc(id).update({ name, phone, address, customerId });
         const c = this.data.customers.find(x => x.id === id);
         if (c) { c.name = name; c.phone = phone; c.address = address; c.customerId = customerId; }
