@@ -833,7 +833,10 @@
                                 <button onclick="app.toggleShift()" class="quick-action-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"><i class="fas fa-play-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Start Shift</span></button>
                                 <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Cash</span></button>
                                 <button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">My Salary</span></button>
-                            </div>
+								<button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">My Salary</span></button>
+								<button onclick="app.showRiderAttendance()" class="quick-action-btn" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"><i class="fas fa-calendar-check text-2xl mb-2 block"></i><span class="text-sm font-semibold">Attendance</span></button>
+								<button onclick="app.showRiderDeliveries()" class="quick-action-btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"><i class="fas fa-box text-2xl mb-2 block"></i><span class="text-sm font-semibold">Deliveries</span></button>
+							</div>
                         </div>
                         <div class="section-card">
                             <div class="flex justify-between items-center mb-3">
@@ -967,74 +970,97 @@
     div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
     div.id = rowId;
     div.innerHTML = `
-        <div class="grid grid-cols-12 gap-2 items-start">
-            <div class="col-span-5 relative">
-                <input type="text" placeholder="Customer name..." 
-                    class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-name-input" 
-                    autocomplete="off"
-                    oninput="app.showCustomerSuggestions(this, '${rowId}')"
-                    onblur="setTimeout(()=>app.hideSuggestions('${rowId}'),200)"
-                    required>
-                <div id="sugg-${rowId}" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 hidden max-h-48 overflow-y-auto"></div>
-            </div>
-            <div class="col-span-4">
-                <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
-            </div>
-            <div class="col-span-2">
-                <select class="w-full bg-transparent text-xs outline-none border-b border-gray-300 py-1 online-status" onchange="app.calculateTotals()">
-                    <option value="pending">Pending</option><option value="received">Received</option>
-                </select>
-            </div>
-            <div class="col-span-1 text-right">
-                <button type="button" onclick="this.closest('.bg-gray-50').remove(); app.calculateTotals()" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button>
-            </div>
+    <div class="grid grid-cols-12 gap-2 items-start">
+        <div class="col-span-4 relative">
+            <input type="text" placeholder="Customer ID (e.g. C001) *" 
+                class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 cust-id-input" 
+                autocomplete="off"
+                oninput="app.lookupCustomerById(this, '${rowId}')">
         </div>
-        <div class="mt-1">
-            <input type="text" placeholder="Item details (e.g. 2kg aloo, 1 dozen ande...)" 
-                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600 outline-none focus:border-indigo-400 online-items"
-                autocomplete="off">
+        <div class="col-span-3">
+            <input type="text" id="auto-name-${rowId}" placeholder="Naam (auto)" 
+                class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-name" readonly>
         </div>
-        <div id="cust-info-${rowId}" class="hidden text-xs text-indigo-600 flex items-center gap-1 pl-1">
-            <i class="fas fa-phone-alt"></i><span class="cust-phone-label"></span>
-        </div>`;
+        <div class="col-span-3">
+            <input type="text" id="auto-phone-${rowId}" placeholder="Phone (auto)" 
+                class="w-full bg-green-50 text-sm outline-none border-b border-green-200 py-1 auto-cust-phone" readonly>
+        </div>
+        <div class="col-span-2">
+            <input type="number" placeholder="Amount" class="w-full bg-transparent text-sm outline-none border-b border-gray-300 focus:border-indigo-500 py-1 online-amt" onchange="app.calculateTotals()" required>
+        </div>
+    </div>
+    <div class="mt-1">
+        <input type="text" id="auto-addr-${rowId}" placeholder="Address (auto-fill hoga)" 
+            class="w-full bg-green-50 text-sm outline-none border border-green-200 rounded-lg px-2 py-1 auto-cust-addr" readonly>
+    </div>
+    <div class="mt-1">
+        <input type="text" placeholder="Item details (e.g. 2kg aloo...)" 
+            class="w-full bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 outline-none focus:border-indigo-400 online-items"
+            autocomplete="off">
+    </div>
+    <input type="hidden" class="cust-doc-id" id="cust-doc-id-${rowId}">`;
     container.appendChild(div);
 },
 
             showCustomerSuggestions(input, rowId) {
-                const q = input.value.trim().toLowerCase();
-                const suggBox = document.getElementById('sugg-' + rowId);
-                if (!suggBox) return;
-                if (q.length < 1) { suggBox.classList.add('hidden'); return; }
-                const customers = this.data.customers || [];
-                const matches = customers.filter(c =>
-                    c.name.toLowerCase().includes(q) || (c.phone||'').includes(q)
-                ).slice(0, 8);
-                if (matches.length === 0) { suggBox.classList.add('hidden'); return; }
-                suggBox.innerHTML = matches.map(c => `
-                    <div class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0"
-                        onmousedown="app.selectCustomer('${c.id}', '${rowId}')">
-                        <p class="text-sm font-medium text-gray-800">${c.name}</p>
-                        <p class="text-xs text-gray-500">${c.phone || 'No number'}${c.address ? ' · '+c.address : ''}</p>
-                    </div>`).join('');
-                suggBox.classList.remove('hidden');
-            },
+    if (!input) return;
+	const q = input.value.trim().toLowerCase();
+    const suggBox = document.getElementById('sugg-' + rowId);
+    if (!suggBox) return;
+    if (q.length < 1) { suggBox.classList.add('hidden'); return; }
+    const customers = this.data.customers || [];
+    const matches = customers.filter(c =>
+        (c.customerId || '').toLowerCase().includes(q) ||
+        c.name.toLowerCase().includes(q) ||
+        (c.phone || '').includes(q)
+    ).slice(0, 8);
+    if (matches.length === 0) { suggBox.classList.add('hidden'); return; }
+    suggBox.innerHTML = matches.map(c => {
+        const phone = (c.phone || '').replace(/\D/g, '');
+        const masked = phone.length >= 10
+            ? phone.slice(0, -7).replace(/./g, '*') + phone.slice(-3)
+            : c.phone || 'No number';
+        return `
+        <div class="px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0"
+            onmousedown="app.selectCustomer('${c.id}', '${rowId}')">
+            <p class="text-sm font-medium text-gray-800">${c.name} ${c.customerId ? '<span class="text-xs text-indigo-400">#'+c.customerId+'</span>' : ''}</p>
+            <p class="text-xs text-gray-500">${masked}${c.address ? ' · ' + c.address : ''}</p>
+        </div>`;
+    }).join('');
+    suggBox.classList.remove('hidden');
+},
 
             selectCustomer(custId, rowId) {
-                const customer = (this.data.customers||[]).find(c => c.id === custId);
-                if (!customer) return;
-                const row = document.getElementById(rowId);
-                if (!row) return;
-                const nameInput = row.querySelector('.cust-name-input');
-                if (nameInput) nameInput.value = customer.name + (customer.phone ? ' · ' + customer.phone : '');
-                const infoDiv = document.getElementById('cust-info-' + rowId);
-                const phoneLabel = infoDiv?.querySelector('.cust-phone-label');
-                if (infoDiv && customer.phone) {
-                    if (phoneLabel) phoneLabel.textContent = customer.phone;
-                    infoDiv.classList.remove('hidden');
-                }
-                const suggBox = document.getElementById('sugg-' + rowId);
-                if (suggBox) suggBox.classList.add('hidden');
-            },
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    const nameInput = row.querySelector('.cust-name-input');
+    if (!nameInput) return;
+    const customer = (this.data.customers || []).find(c => c.id === custId);
+    if (!customer) return;
+    if (nameInput) nameInput.value = customer.customerId
+        ? '#' + customer.customerId + ' · ' + customer.name
+        : customer.name;
+    const hiddenInput = document.getElementById('cust-id-hidden-' + rowId);
+    if (hiddenInput) hiddenInput.value = customer.id;
+    const card = document.getElementById('cust-info-card-' + rowId);
+    if (card) {
+        card.classList.remove('hidden');
+        const phone = (customer.phone || '').replace(/\D/g, '');
+        const masked = phone.length >= 10
+            ? '+' + phone.slice(0, 2) + phone.slice(2, -7).replace(/./g, '*') + phone.slice(-3)
+            : customer.phone || '—';
+        const avatarEl = document.getElementById('cust-avatar-' + rowId);
+        const nameEl = document.getElementById('cust-label-name-' + rowId);
+        const addrEl = document.getElementById('cust-label-addr-' + rowId);
+        const phoneEl = document.getElementById('cust-label-phone-' + rowId);
+        if (avatarEl) avatarEl.textContent = customer.name.charAt(0).toUpperCase();
+        if (nameEl) nameEl.textContent = customer.name;
+        if (addrEl) addrEl.textContent = customer.address || 'No address';
+        if (phoneEl) phoneEl.textContent = masked;
+    }
+    const suggBox = document.getElementById('sugg-' + rowId);
+    if (suggBox) suggBox.classList.add('hidden');
+},
 
             hideSuggestions(rowId) {
                 const suggBox = document.getElementById('sugg-' + rowId);
@@ -1059,10 +1085,9 @@
                 let onlineTotal = 0, onlinePending = 0, onlineReceived = 0;
                 document.querySelectorAll('#online-payments-list > div').forEach(row => {
                     const amtEl = row.querySelector('.online-amt');
-                    const statusEl = row.querySelector('.online-status');
-                    if (!amtEl || !statusEl) return;
-                    const amt = parseFloat(amtEl.value) || 0;
-                    const status = statusEl.value;
+					if (!amtEl) return;
+					const amt = parseFloat(amtEl.value) || 0;
+					const status = 'pending'; // naya system mein har payment pending hoti hai submit ke waqt
                     onlineTotal += amt;
                     if (status === 'pending') onlinePending += amt; else onlineReceived += amt;
                 });
@@ -1096,7 +1121,42 @@
                 if (document.getElementById('sum-final')) document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
             },
 
-            previewImage(input) {
+            lookupCustomerById(input, rowId) {
+    const id = input.value.trim().toUpperCase();
+    const nameEl = document.getElementById('auto-name-' + rowId);
+    const addrEl = document.getElementById('auto-addr-' + rowId);
+    const phoneEl = document.getElementById('auto-phone-' + rowId);
+    const hiddenEl = document.getElementById('cust-doc-id-' + rowId);
+
+    if (!nameEl || id.length < 1) {
+        if (nameEl) nameEl.value = '';
+        if (addrEl) addrEl.value = '';
+        if (phoneEl) phoneEl.value = '';
+        if (hiddenEl) hiddenEl.value = '';
+        return;
+    }
+
+    const customers = this.data.customers || [];
+    // Pehle Customer ID se match karo
+    let match = customers.find(c => (c.customerId || '').toUpperCase() === id);
+    // Phir name se match karo
+    if (!match) match = customers.find(c => (c.name || '').toUpperCase() === id);
+    // Phir phone se match karo
+    if (!match) match = customers.find(c => (c.phone || '').replace(/\D/g,'') === id.replace(/\D/g,''));
+
+    if (match) {
+        nameEl.value = match.name || '';
+        addrEl.value = match.address || '';
+        phoneEl.value = match.phone || '';
+        hiddenEl.value = match.id || '';
+    } else {
+        nameEl.value = '';
+        addrEl.value = '';
+        phoneEl.value = '';
+        hiddenEl.value = '';
+    }
+},
+			previewImage(input) {
                 if (input.files && input.files[0]) {
                     const reader = new FileReader();
                     reader.onload = function(e) {
@@ -1135,17 +1195,21 @@ async submitReport(e) {
 
         const onlinePayments = [];
         document.querySelectorAll('#online-payments-list > div').forEach(row => {
-            const nameEl = row.querySelector('.cust-name-input');
+            const nameEl = row.querySelector('.cust-id-input');
             const amtEl = row.querySelector('.online-amt');
             const statusEl = row.querySelector('.online-status');
             const itemsEl = row.querySelector('.online-items');
             if (!amtEl || !statusEl) return;
             onlinePayments.push({
-                detail: nameEl?.value || '',
-                amount: parseFloat(amtEl.value) || 0,
-                status: statusEl.value,
-                items: itemsEl?.value || ''
-            });
+    detail: nameEl?.value || '',
+    customerName: row.querySelector('.auto-cust-name')?.value || '',
+    customerAddress: row.querySelector('.auto-cust-addr')?.value || '',
+    customerPhone: row.querySelector('.auto-cust-phone')?.value || '',
+    customerDocId: row.querySelector('.cust-doc-id')?.value || '',
+    amount: parseFloat(amtEl.value) || 0,
+    status: statusEl.value,
+    items: itemsEl?.value || ''
+});
         });
 
         const expenses = [
@@ -1288,6 +1352,85 @@ async submitReport(e) {
                             </div>`;}).join('')}</div>`}
                     </div>`;
             },
+			showRiderDeliveries() {
+    const riderId = this.data.currentUser.id;
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const now = new Date();
+    let monthOptions = '';
+    for (let i = 0; i < 24; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const val = `${d.getFullYear()}-${d.getMonth()}`;
+        const selected = i === 0 ? 'selected' : '';
+        monthOptions += `<option value="${val}" ${selected}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+    const modalContent = document.getElementById('modal-content');
+    const overlay = document.getElementById('modal-overlay');
+    modalContent.innerHTML = `
+        <div class="p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">My Deliveries</h2>
+                <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <select onchange="app.loadRiderDeliveryMonth(this.value)"
+                class="w-full border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-3 py-2 text-sm font-semibold outline-none mb-4">
+                ${monthOptions}
+            </select>
+            <div id="rider-del-body"></div>
+        </div>`;
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+        this.loadRiderDeliveryMonth(`${now.getFullYear()}-${now.getMonth()}`);
+    }, 10);
+},
+
+loadRiderDeliveryMonth(val) {
+    const [year, month] = val.split('-').map(Number);
+    const riderId = this.data.currentUser.id;
+    const monthReports = this.data.reports.filter(r => {
+        const d = new Date(r.date);
+        return r.riderId === riderId &&
+               r.status !== 'draft' && r.status !== 'deleted' &&
+               d.getMonth() === month && d.getFullYear() === year;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const totalQty = monthReports.reduce((a, r) => a + (r.orders||[]).reduce((s,o)=>s+(o.qty||0),0), 0);
+    const totalGross = monthReports.reduce((a, r) => a + (r.totalGross||0), 0);
+
+    const rows = monthReports.map(r => {
+        const qty = (r.orders||[]).reduce((s,o)=>s+(o.qty||0),0);
+        const orderBreakdown = (r.orders||[]).filter(o=>o.qty>0).map(o=>`<span class="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">${o.type}: ${o.qty}</span>`).join(' ');
+        return `
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+            <div>
+                <p class="font-semibold text-sm">${new Date(r.date).toLocaleDateString('en-PK', {weekday:'short', day:'numeric', month:'short'})}</p>
+                <div class="flex gap-1 flex-wrap mt-1">${orderBreakdown}</div>
+            </div>
+            <div class="text-right">
+                <p class="font-bold text-indigo-700 text-lg">${qty}</p>
+                <p class="text-xs text-gray-500">Rs ${(r.totalGross||0).toLocaleString()}</p>
+            </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('rider-del-body').innerHTML = `
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-indigo-50 rounded-xl p-3 text-center border border-indigo-100">
+                <p class="text-xs text-indigo-600">Total Orders</p>
+                <p class="text-2xl font-bold text-indigo-700">${totalQty}</p>
+            </div>
+            <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100">
+                <p class="text-xs text-green-600">Total Gross</p>
+                <p class="text-xl font-bold text-green-700">Rs ${totalGross.toLocaleString()}</p>
+            </div>
+        </div>
+        <div class="space-y-2 max-h-80 overflow-y-auto">
+            ${monthReports.length === 0
+                ? '<p class="text-center text-gray-400 py-6">Is month koi delivery nahi mili</p>'
+                : rows}
+        </div>`;
+},
 
             editReport(id) {
                 const report = this.data.reports.find(r => r.id === id);
@@ -1312,18 +1455,27 @@ async submitReport(e) {
                     if (container) container.innerHTML = '';
                     (report.onlinePayments || []).forEach(p => {
                         this.addOnlinePaymentRow();
+						this.ensureCustomers(); // ✅ ye line add karo
                         const rows = document.querySelectorAll('#online-payments-list > div');
                         const lastRow = rows[rows.length - 1];
                         if (lastRow) {
                             const inputs = lastRow.querySelectorAll('input, select');
-                            const nameInp = lastRow.querySelector('.cust-name-input');
-const amtInp = lastRow.querySelector('.online-amt');
-const statusInp = lastRow.querySelector('.online-status');
-const itemsInp = lastRow.querySelector('.online-items');
-if (nameInp) nameInp.value = p.detail || '';
-if (amtInp) amtInp.value = p.amount || 0;
-if (statusInp) statusInp.value = p.status || 'pending';
-if (itemsInp) itemsInp.value = p.items || '';
+                            const nameInp = lastRow.querySelector('.cust-id-input');
+							const amtInp = lastRow.querySelector('.online-amt');
+							const statusInp = lastRow.querySelector('.online-status');
+							const itemsInp = lastRow.querySelector('.online-items');
+							const autoName = lastRow.querySelector('.auto-cust-name');
+							const autoAddr = lastRow.querySelector('.auto-cust-addr');
+							const autoPhone = lastRow.querySelector('.auto-cust-phone');
+							const autoDocId = lastRow.querySelector('.cust-doc-id');
+							if (nameInp) nameInp.value = p.detail || '';
+							if (amtInp) amtInp.value = p.amount || 0;
+							if (statusInp) statusInp.value = p.status || 'pending';
+							if (itemsInp) itemsInp.value = p.items || '';
+							if (autoName) autoName.value = p.customerName || '';
+							if (autoAddr) autoAddr.value = p.customerAddress || '';
+							if (autoPhone) autoPhone.value = p.customerPhone || '';
+							if (autoDocId) autoDocId.value = p.customerDocId || '';
                         }
                     });
                     const expMap = { 'Fuel': 'exp-fuel', 'Food': 'exp-food', 'Maintenance': 'exp-maint' };
@@ -2099,7 +2251,9 @@ renderAdminOnlinePayments(selectedDate = null) {
         <i class="fab fa-whatsapp"></i> Statement
     </button>
     <button onclick="app.adminMarkReceived('${p.reportId}',${p.idx})"
-        class="text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg font-medium">✓ Received</button>
+    class="text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg font-medium">✓ Single</button>
+<button onclick="app.adminMarkAllReceived('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}')"
+    class="text-xs bg-purple-600 text-white px-3 py-2 rounded-lg font-medium">✓ All</button>
 </div>
                                     </div>
                                 </div>`).join('')}
@@ -2151,7 +2305,39 @@ renderAdminOnlinePayments(selectedDate = null) {
                     
                 } catch (error) { alert('Error: ' + error.message); }
             },
-
+			async adminMarkAllReceived(riderName, customerDetail) {
+    if (!confirm('Is customer ki SAARI pending payments received mark karni hain?')) return;
+    const currentFilterDate = this.data.paymentDateFilter || 'today';
+    const detail = (customerDetail || '').toLowerCase();
+    const phone = detail.replace(/\D/g,'').slice(-10);
+    const customers = this.data.customers || [];
+    const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phone && phone.length >= 10);
+    const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
+    const matched = byPhone || byName;
+    try {
+        let totalMarked = 0;
+        for (const report of this.data.reports) {
+            let changed = false;
+            const updated = (report.onlinePayments || []).map(p => {
+                if (p.status !== 'pending') return p;
+                const d = (p.detail || '').toLowerCase();
+                const dPhone = d.replace(/\D/g,'').slice(-10);
+                const phoneMatch = phone.length >= 10 && dPhone === phone;
+                const nameMatch = matched && matched.name && d.includes(matched.name.toLowerCase());
+                const exactMatch = p.detail === customerDetail;
+                if (phoneMatch || nameMatch || exactMatch) { changed = true; totalMarked++; return { ...p, status: 'received' }; }
+                return p;
+            });
+            if (changed) {
+                await window.db.collection('reports').doc(report.id).update({ onlinePayments: updated });
+                report.onlinePayments = updated;
+            }
+        }
+        if (matched) this.sendReceivedThankYou(customerDetail, 0, new Date().toISOString().split('T')[0]);
+        alert(`✅ ${totalMarked} payments received mark ho gayi!`);
+        this.renderAdminOnlinePayments(currentFilterDate);
+    } catch(e) { alert('Error: ' + e.message); }
+},
             sendReceivedThankYou(customerDetail, amount, date) {
                 const customers = this.data.customers || [];
                 const detail = (customerDetail || '').toLowerCase();
@@ -2637,7 +2823,8 @@ if (riderFilter) {
                                 <input type="text" id="cust-name" placeholder="Customer Name *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                                 <input type="tel" id="cust-phone" placeholder="03001234567 *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                                 <input type="text" id="cust-address" placeholder="Address (optional)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                            </div>
+								<input type="text" id="cust-id" placeholder="Customer ID (optional, e.g. C001)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+							</div>
                             <button onclick="app.addCustomer()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700"><i class="fas fa-plus mr-2"></i>Add Customer</button>
                         </div>
                         ${topCustomers.length > 0 ? `
@@ -2793,7 +2980,9 @@ if (riderFilter) {
                                 <input type="tel" id="ec-phone" value="${c.phone||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
                             <div><label class="text-xs text-gray-500 mb-1 block">Address</label>
                                 <input type="text" id="ec-address" value="${c.address||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
-                            <div class="flex gap-3 pt-2">
+                            <div><label class="text-xs text-gray-500 mb-1 block">Customer ID</label>
+    <input type="text" id="ec-custid" value="${c.customerId||''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"></div>
+							<div class="flex gap-3 pt-2">
                                 <button onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium text-sm">Cancel</button>
                                 <button onclick="app.saveCustomerEdit('${id}')" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Save Changes</button>
                             </div>
@@ -2804,19 +2993,19 @@ if (riderFilter) {
             },
 
             async saveCustomerEdit(id) {
-                const name = document.getElementById('ec-name').value.trim();
-                const phone = document.getElementById('ec-phone').value.trim();
-                const address = document.getElementById('ec-address').value.trim();
-                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
-                try {
-                    await window.db.collection('customers').doc(id).update({ name, phone, address });
-                    // Update local data - no re-fetch
-                    const c = this.data.customers.find(x => x.id === id);
-                    if (c) { c.name = name; c.phone = phone; c.address = address; }
-                    this.closeModal();
-                    this._renderCustomersPage();
-                } catch(e) { alert('Error: ' + e.message); }
-            },
+    const name = document.getElementById('ec-name').value.trim();
+    const phone = document.getElementById('ec-phone').value.trim();
+    const address = document.getElementById('ec-address').value.trim();
+    const customerId = document.getElementById('ec-custid')?.value.trim() || '';
+    if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+    try {
+        await window.db.collection('customers').doc(id).update({ name, phone, address, customerId });
+        const c = this.data.customers.find(x => x.id === id);
+        if (c) { c.name = name; c.phone = phone; c.address = address; c.customerId = customerId; }
+        this.closeModal();
+        this._renderCustomersPage();
+    } catch(e) { alert('Error: ' + e.message); }
+},
 
             renderCustomerPagination(totalItems, currentPage, perPage) {
                 const totalPages = Math.ceil(totalItems / perPage);
@@ -2913,21 +3102,25 @@ if (riderFilter) {
             },
 
             async addCustomer() {
-                const name = document.getElementById('cust-name').value.trim();
-                const phone = document.getElementById('cust-phone').value.trim();
-                const address = document.getElementById('cust-address').value.trim();
-                if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
-                try {
-                    const docRef = await window.db.collection('customers').add({ name, phone, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                    // Update local data - no re-fetch
-                    this.data.customers.push({ id: docRef.id, name, phone, address });
-                    document.getElementById('cust-name').value = '';
-                    document.getElementById('cust-phone').value = '';
-                    document.getElementById('cust-address').value = '';
-                    alert('Customer add ho gaya!');
-                    this._renderCustomersPage();
-                } catch(e) { alert('Error: ' + e.message); }
-            },
+    const name = document.getElementById('cust-name').value.trim();
+    const phone = document.getElementById('cust-phone').value.trim();
+    const address = document.getElementById('cust-address').value.trim();
+    const customerId = document.getElementById('cust-id')?.value.trim() || '';
+    if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+    try {
+        const docRef = await window.db.collection('customers').add({
+            name, phone, address, customerId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        this.data.customers.push({ id: docRef.id, name, phone, address, customerId });
+        document.getElementById('cust-name').value = '';
+        document.getElementById('cust-phone').value = '';
+        document.getElementById('cust-address').value = '';
+        if (document.getElementById('cust-id')) document.getElementById('cust-id').value = '';
+        alert('Customer add ho gaya!');
+        this._renderCustomersPage();
+    } catch(e) { alert('Error: ' + e.message); }
+},
 
             async deleteCustomer(id) {
                 if (!confirm('Delete this customer?')) return;
@@ -3399,7 +3592,87 @@ showAttendanceCalendar(riderId, month, year) {
     }, 10);
 },
 
-          async toggleAttendance(riderId, dateStr, month, year) {
+          showRiderAttendance() {
+    const rider = this.data.currentUser;
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    let monthOptions = '';
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const val = `${d.getFullYear()}-${d.getMonth()}`;
+        const selected = i === 0 ? 'selected' : '';
+        monthOptions += `<option value="${val}" ${selected}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+    const modalContent = document.getElementById('modal-content');
+    const overlay = document.getElementById('modal-overlay');
+    modalContent.innerHTML = `
+        <div class="p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">My Attendance</h2>
+                <button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <select onchange="app.loadRiderAttendanceMonth(this.value)"
+                class="w-full border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg px-3 py-2 text-sm font-semibold outline-none mb-4">
+                ${monthOptions}
+            </select>
+            <div id="rider-att-body"></div>
+        </div>`;
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+        this.loadRiderAttendanceMonth(`${currentYear}-${currentMonth}`);
+    }, 10);
+},
+
+async loadRiderAttendanceMonth(val) {
+    const [year, month] = val.split('-').map(Number);
+    const riderId = this.data.currentUser.id;
+    await this.ensureAttendanceForMonth(month, year);
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    let calHTML = '';
+    for (let i = 0; i < firstDay; i++) calHTML += `<div class="calendar-day empty"></div>`;
+    let presentCount = 0, absentCount = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const att = this.data.attendance.find(a => a.riderId === riderId && a.date === dateStr);
+        let cls = 'bg-white border-gray-200', icon = '';
+        if (att?.status === 'present') { cls = 'present'; icon = '<i class="fas fa-check text-xs"></i>'; presentCount++; }
+        else if (att?.status === 'absent') { cls = att.isReliefDay ? 'relief' : 'absent'; icon = att.isReliefDay ? '<i class="fas fa-umbrella text-xs"></i>' : '<i class="fas fa-times text-xs"></i>'; absentCount++; }
+        calHTML += `<div class="calendar-day ${cls}"><span class="font-bold">${day}</span>${icon}</div>`;
+    }
+    const attInfo = this.calculateAttendanceDeductions(riderId, month, year);
+    document.getElementById('rider-att-body').innerHTML = `
+        <div class="grid grid-cols-3 gap-2 mb-4">
+            <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100">
+                <p class="text-xs text-green-600">Present</p>
+                <p class="text-xl font-bold text-green-700">${presentCount}</p>
+            </div>
+            <div class="bg-red-50 rounded-xl p-3 text-center border border-red-100">
+                <p class="text-xs text-red-600">Absent</p>
+                <p class="text-xl font-bold text-red-700">${absentCount}</p>
+            </div>
+            <div class="bg-yellow-50 rounded-xl p-3 text-center border border-yellow-100">
+                <p class="text-xs text-yellow-600">Deduction</p>
+                <p class="text-xl font-bold text-yellow-700">Rs ${attInfo.totalDeduction.toLocaleString()}</p>
+            </div>
+        </div>
+        <div class="attendance-calendar mb-2">
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Sun</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Mon</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Tue</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Wed</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Thu</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Fri</div>
+            <div class="text-center text-xs font-bold text-gray-400 py-1">Sat</div>
+            ${calHTML}
+        </div>`;
+},
+		  async toggleAttendance(riderId, dateStr, month, year) {
     if (month === undefined) month = this.data.attMonth ?? new Date().getMonth();
     if (year === undefined) year = this.data.attYear ?? new Date().getFullYear();
 
