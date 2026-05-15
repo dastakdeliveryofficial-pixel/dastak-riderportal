@@ -243,60 +243,82 @@
             },
 
             async setupRealtimeListeners() {
-                const self = this;
-                const setMsg = (msg) => {
-                    const el = document.getElementById('loading-msg');
-                    if (el) el.textContent = msg;
-                };
-                try {
-                    setMsg('Connecting...');
-                    const now = new Date();
-                    // Current + last month for reports
-                    const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-                    const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+    const self = this;
+    const setMsg = (msg) => {
+        const el = document.getElementById('loading-msg');
+        if (el) el.textContent = msg;
+    };
+    try {
+        setMsg('Connecting...');
+        const now = new Date();
+        const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
-                    setMsg('Loading data...');
+        setMsg('Loading data...');
 
-                    // Load essential data in PARALLEL — Promise.all
-                    const [ridersSnap, reportsSnap, attSnap, notifSnap] = await Promise.all([
-                        window.db.collection('users').where('role', '==', 'rider').get(),
-                        window.db.collection('reports').where('date', '>=', twoMonthsAgo)
-                            .orderBy('date', 'desc').limit(300).get(),
-                        window.db.collection('attendance').where('date', '>=', monthStart).get(),
-                        window.db.collection('notifications').orderBy('createdAt', 'desc').limit(30).get()
-                    ]);
+        // Pehle ek baar saari data load karo
+        const [ridersSnap, reportsSnap, attSnap, notifSnap] = await Promise.all([
+            window.db.collection('users').where('role', '==', 'rider').get(),
+            window.db.collection('reports').where('date', '>=', twoMonthsAgo)
+                .orderBy('date', 'desc').limit(300).get(),
+            window.db.collection('attendance').where('date', '>=', monthStart).get(),
+            window.db.collection('notifications').orderBy('createdAt', 'desc').limit(30).get()
+        ]);
 
-                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                    if (!notifSnap.empty) {
-                        self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
-                        const dot = document.getElementById('notif-dot');
-                        if (dot) dot.classList.remove('hidden');
-                    }
+        if (!notifSnap.empty) {
+            self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
+            const dot = document.getElementById('notif-dot');
+            if (dot) dot.classList.remove('hidden');
+        }
 
-                    // Customers & companyExpenses — LAZY: loaded only when needed
-                    self.data.customers = [];
-                    self.data.companyExpenses = [];
-                    self.data.customersLoaded = false;
-                    self.data.companyExpensesLoaded = false;
+        self.data.customers = [];
+        self.data.companyExpenses = [];
+        self.data.customersLoaded = false;
+        self.data.companyExpensesLoaded = false;
 
-                    setMsg('Ready!');
+        setMsg('Ready!');
 
-                    // Render dashboard — data is ready, no jhatka
-                    if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
-                    else self.renderRiderDashboard();
+        if (self.data.currentUser.role === 'admin') self.renderAdminDashboard();
+        else self.renderRiderDashboard();
 
-                } catch(e) {
-                    console.error('Data load error:', e);
-                    setMsg('Error loading. Retrying...');
-                    setTimeout(() => {
-                        if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
-                        else self.renderRiderDashboard();
-                    }, 1000);
-                }
-            },
+        // REALTIME LISTENERS
+        self.data._unsubReports = window.db.collection('reports')
+            .where('date', '>=', twoMonthsAgo)
+            .orderBy('date', 'desc')
+            .limit(300)
+            .onSnapshot(snap => {
+                self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self._refreshCurrentView();
+            });
+
+        self.data._unsubAtt = window.db.collection('attendance')
+            .where('date', '>=', monthStart)
+            .onSnapshot(snap => {
+                self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self._refreshCurrentView();
+            });
+
+        self.data._unsubRiders = window.db.collection('users')
+            .where('role', '==', 'rider')
+            .onSnapshot(snap => {
+                self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self._refreshCurrentView();
+            });
+
+    } catch(e) {
+        console.error('Data load error:', e);
+        setMsg('Error loading. Retrying...');
+        setTimeout(() => {
+            if (self.data.currentUser?.role === 'admin') self.renderAdminDashboard();
+            else self.renderRiderDashboard();
+        }, 1000);
+    }
+},
+                    
 
             // Lazy load customers when needed
             async ensureCustomers() {
@@ -343,15 +365,29 @@
                 } catch(e) { console.error('Refresh error:', e); }
             },
 
-            stopRealtimeListeners() {
-                // All listeners replaced with get() - just reset flags
-                this.data.isInitialLoad = true;
-                this.data.customersLoaded = false;
-                this.data.companyExpensesLoaded = false;
-                // Destroy all charts
-                Object.values(this.data.chartRegistry).forEach(c => { try { c.destroy(); } catch(e){} });
-                this.data.chartRegistry = {};
-            },
+_refreshCurrentView() {
+    // Sirf tab refresh karo jab user actively dekh raha ho
+    // Form pages pe refresh mat karo (data loss hoga)
+    const activeBtn = document.querySelector('.sidebar-link.active');
+    if (!activeBtn) return;
+    const id = activeBtn.id.replace('nav-', '');
+    // In pages pe auto-refresh nahi (rider form fill kar raha ho sakta hai)
+    const skipPages = ['rider-report'];
+    if (skipPages.includes(id)) return;
+    this._renderView(id);
+},           
+		   stopRealtimeListeners() {
+    // onSnapshot unsubscribe
+    if (this.data._unsubReports) { this.data._unsubReports(); this.data._unsubReports = null; }
+    if (this.data._unsubAtt) { this.data._unsubAtt(); this.data._unsubAtt = null; }
+    if (this.data._unsubRiders) { this.data._unsubRiders(); this.data._unsubRiders = null; }
+    // Flags reset
+    this.data.isInitialLoad = true;
+    this.data.customersLoaded = false;
+    this.data.companyExpensesLoaded = false;
+    Object.values(this.data.chartRegistry).forEach(c => { try { c.destroy(); } catch(e){} });
+    this.data.chartRegistry = {};
+},
 
             // Safe chart creator — destroys old chart first
             createChart(id, config) {
@@ -1088,9 +1124,8 @@
                     const amtEl = row.querySelector('.online-amt');
 					if (!amtEl) return;
 					const amt = parseFloat(amtEl.value) || 0;
-					const status = 'pending'; // naya system mein har payment pending hoti hai submit ke waqt
-                    onlineTotal += amt;
-                    if (status === 'pending') onlinePending += amt; else onlineReceived += amt;
+					onlineTotal += amt;
+onlinePending += amt; // naye form mein sab pending hoti hainonlineTotal += amt;
                 });
                 const pendingDisplay = document.getElementById('online-pending-display');
                 const receivedDisplay = document.getElementById('online-received-display');
@@ -1195,23 +1230,32 @@ async submitReport(e) {
         }).filter(o => o.qty > 0);
 
         const onlinePayments = [];
-        document.querySelectorAll('#online-payments-list > div').forEach(row => {
-            const nameEl = row.querySelector('.cust-id-input');
-            const amtEl = row.querySelector('.online-amt');
-            const statusEl = row.querySelector('.online-status');
-            const itemsEl = row.querySelector('.online-items');
-            if (!amtEl || !statusEl) return;
-            onlinePayments.push({
-    detail: nameEl?.value || '',
-    customerName: row.querySelector('.auto-cust-name')?.value || '',
-    customerAddress: row.querySelector('.auto-cust-addr')?.value || '',
-    customerPhone: row.querySelector('.auto-cust-phone')?.value || '',
-    customerDocId: row.querySelector('.cust-doc-id')?.value || '',
-    amount: parseFloat(amtEl.value) || 0,
-    status: statusEl.value,
-    items: itemsEl?.value || ''
+document.querySelectorAll('#online-payments-list > div').forEach(row => {
+    const custIdEl = row.querySelector('.cust-id-input');
+    const amtEl = row.querySelector('.online-amt');
+    const itemsEl = row.querySelector('.online-items');
+    const autoName = row.querySelector('.auto-cust-name');
+    const autoPhone = row.querySelector('.auto-cust-phone');
+    const autoAddr = row.querySelector('.auto-cust-addr');
+    const autoDocId = row.querySelector('.cust-doc-id');
+    if (!amtEl) return;
+    const amt = parseFloat(amtEl.value) || 0;
+    if (amt <= 0) return; // empty rows skip karo
+    const custId = custIdEl?.value || '';
+    const custName = autoName?.value || '';
+    const custPhone = autoPhone?.value || '';
+    onlinePayments.push({
+        detail: custName ? custName + (custPhone ? ' · ' + custPhone : '') : custId,
+        customerName: custName,
+        customerAddress: autoAddr?.value || '',
+        customerPhone: custPhone,
+        customerDocId: autoDocId?.value || '',
+        customerId: custId,
+        amount: amt,
+        status: 'pending',
+        items: itemsEl?.value || ''
+    });
 });
-        });
 
         const expenses = [
             { type: 'Fuel', amount: parseFloat(document.getElementById('exp-fuel').value) || 0 },
@@ -1526,21 +1570,31 @@ loadRiderDeliveryMonth(val) {
             </div>` : ''}
 
             ${(report.onlinePayments || []).length > 0 ? `
-            <h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
-            <div class="space-y-2 mb-4">
-                ${report.onlinePayments.map(p => `
-                <div class="p-2 bg-gray-50 rounded text-sm">
-                    <div class="flex justify-between items-start">
-                        <span class="font-medium">${p.detail || '—'}</span>
-                        <span class="ml-2 flex-shrink-0 ${p.status === 'received' ? 'text-green-600' : 'text-orange-600'} font-semibold">Rs ${(p.amount || 0).toLocaleString()}</span>
-                    </div>
-                    ${p.items ? `
-                    <p class="text-xs text-indigo-500 mt-1 flex items-center gap-1">
-                        <i class="fas fa-box text-xs"></i>${p.items}
-                    </p>` : ''}
+<h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3>
+<div class="space-y-2 mb-4">
+    ${report.onlinePayments.map(p => {
+        const displayName = p.customerName || p.detail || '—';
+        const displayPhone = p.customerPhone || '';
+        const displayAddr = p.customerAddress || '';
+        const displayId = p.customerId || '';
+        return `
+        <div class="p-3 bg-gray-50 rounded-lg text-sm border border-gray-100">
+            <div class="flex justify-between items-start mb-1">
+                <div class="flex-1 min-w-0">
+                    <p class="font-semibold text-gray-800 truncate">${displayName}</p>
+                    ${displayId ? `<p class="text-xs text-indigo-400">#${displayId}</p>` : ''}
+                    ${displayPhone ? `<p class="text-xs text-gray-500"><i class="fas fa-phone-alt mr-1"></i>${displayPhone}</p>` : ''}
+                    ${displayAddr ? `<p class="text-xs text-gray-400 truncate"><i class="fas fa-map-marker-alt mr-1"></i>${displayAddr}</p>` : ''}
+                </div>
+                <div class="text-right ml-2 flex-shrink-0">
+                    <p class="font-bold ${p.status === 'received' ? 'text-green-600' : 'text-orange-600'}">Rs ${(p.amount || 0).toLocaleString()}</p>
                     <span class="text-xs ${p.status === 'received' ? 'text-green-500' : 'text-orange-500'}">${p.status === 'received' ? '✓ Received' : '⏳ Pending'}</span>
-                </div>`).join('')}
-            </div>` : ''}
+                </div>
+            </div>
+            ${p.items ? `<p class="text-xs text-indigo-500 mt-1 flex items-center gap-1 border-t border-gray-100 pt-1"><i class="fas fa-box text-xs"></i>${p.items}</p>` : ''}
+        </div>`;
+    }).join('')}
+</div>` : ''}
 
             <div class="bg-indigo-50 p-4 rounded-xl space-y-1 mt-4">
                 <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance || 0).toLocaleString()}</span></div>
@@ -2779,14 +2833,6 @@ if (riderFilter) {
                 try {
                     await window.db.collection('companyExpenses').doc(id).delete();
                     this.data.companyExpenses = this.data.companyExpenses.filter(e => e.id !== id);
-                    this.renderCompanyExpenses();
-                } catch(e) { alert('Error: ' + e.message); }
-            },
-
-            async deleteCompanyExpense(id) {
-                if (!confirm('Delete this expense?')) return;
-                try {
-                    await window.db.collection('companyExpenses').doc(id).delete();
                     this.renderCompanyExpenses();
                 } catch(e) { alert('Error: ' + e.message); }
             },
