@@ -54,9 +54,10 @@
         .calendar-day.present { background: #d1fae5; color: #065f46; border-color: #10b981; }
         .calendar-day.absent { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
         .calendar-day.relief { background: #dbeafe; color: #1e40af; border-color: #3b82f6; }
-        .calendar-day.empty { background: #f9fafb; border-color: #f3f4f6; cursor: default; }
+        .calendar-day.empty { background: #f9fafb; border-color: #f3f4f6; cursor: default; }	
         .calendar-day.empty:hover { transform: none; }
-    </style>
+		#dynamic-style{display:none;}
+	</style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
     <script>
@@ -342,13 +343,24 @@
 
             // ✅ FIX #5: Smart refresh — sirf data-heavy pages pe refresh, form pages skip
             _refreshCurrentView() {
-                const id = this.data._currentViewId;
-                if (!id) return;
-                // In pages pe auto-refresh mat karo (form fill ho raha ho sakta hai)
-                const skipPages = ['rider-report'];
-                if (skipPages.includes(id)) return;
-                this._renderView(id);
-            },
+    const id = this.data._currentViewId;
+    if (!id) return;
+    const skipPages = ['rider-report'];
+    if (skipPages.includes(id)) return;
+
+    // ✅ FIX: Animation disable karo refresh pe — no jhatka
+    const dynStyle = document.getElementById('dynamic-style');
+    if (dynStyle) dynStyle.textContent = '.fade-in{animation:none!important;}';
+
+    this._renderView(id);
+
+    // Animation wapas enable karo next frame pe
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (dynStyle) dynStyle.textContent = '';
+        });
+    });
+},
 
             // Lazy load customers when needed
             async ensureCustomers() {
@@ -629,9 +641,13 @@
             },
 
             navigate(viewId, addToHistory = true) {
-                if (addToHistory) history.pushState({ viewId }, '', `#${viewId}`);
-                this._renderView(viewId);
-            },
+    // ✅ FIX: Jab rider-report se kisi aur page jaye to draft clear karo
+    if (this.data._currentViewId === 'rider-report' && viewId !== 'rider-report') {
+        this.clearAutoDraft();
+    }
+    if (addToHistory) history.pushState({ viewId }, '', `#${viewId}`);
+    this._renderView(viewId);
+},
 
             _renderView(viewId) {
                 // ✅ Track current view for smart refresh
@@ -794,97 +810,148 @@
 
             // ✅ FIX #7: await ensureCustomers()
             async renderRiderReportForm() {
-                await this.ensureCustomers();
-                document.getElementById('page-title').textContent = 'Daily Report';
-                const container = document.getElementById('main-container');
-                const user = this.data.currentUser;
-                const wageType = user?.wageType || 'fixed';
-                const wageEnabled = user?.wageEnabled !== false;
-                let dailyWage = 0;
-                if (wageEnabled && wageType !== 'none') dailyWage = user?.dailyWage || 500;
-                const showCustomWage = wageEnabled && wageType === 'custom';
-                container.innerHTML = `
-                    <div class="max-w-4xl mx-auto fade-in pb-20">
-                        <form onsubmit="app.submitReport(event)" class="space-y-4" id="report-form">
-                            <div class="section-card">
-                                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div>
-                                        <h3 class="font-bold text-lg">Daily Report</h3>
-                                        <div class="flex items-center gap-2 mt-1">
-                                            <label class="text-xs text-gray-500">Report Date:</label>
-                                            <input type="date" id="report-date" value="${new Date().toISOString().split('T')[0]}" max="${new Date().toISOString().split('T')[0]}" class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
-                                        </div>
-                                    </div>
-                                    <div class="text-left md:text-right w-full md:w-auto">
-                                        <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
-                                        <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
-                                    </div>
-                                </div>
+    await this.ensureCustomers();
+    document.getElementById('page-title').textContent = 'Daily Report';
+    const container = document.getElementById('main-container');
+    const user = this.data.currentUser;
+    const wageType = user?.wageType || 'fixed';
+    const wageEnabled = user?.wageEnabled !== false;
+    let dailyWage = 0;
+    if (wageEnabled && wageType !== 'none') dailyWage = user?.dailyWage || 500;
+    const showCustomWage = wageEnabled && wageType === 'custom';
+
+    // ✅ FIX #1: Pehle edit ID aur draft clear karo
+    this.data._editReportId = null;
+
+    // ✅ FIX #2: Check karo koi purana draft hai ya nahi
+    const savedDraft = this.loadAutoDraft();
+    const hasDraft = savedDraft && (
+        savedDraft.opening > 0 ||
+        savedDraft.orders?.some(o => o.qty > 0) ||
+        savedDraft.payments?.some(p => p.amt > 0) ||
+        savedDraft.fuel > 0 || savedDraft.food > 0 || savedDraft.maint > 0
+    );
+
+    // ✅ FIX #3: Agar draft hai to confirm poocho, warna seedha clear
+    if (hasDraft) {
+        const resume = confirm('📝 Pichli report ka data mila hai!\n\n"OK" = Purana data wapas laao\n"Cancel" = Naya khaali form');
+        if (!resume) {
+            this.clearAutoDraft();
+        }
+    } else {
+        this.clearAutoDraft();
+    }
+
+    // Ab fresh draft check karo (clear ho sakti hai upar)
+    const finalDraft = this.loadAutoDraft();
+
+    container.innerHTML = `
+        <div class="max-w-4xl mx-auto fade-in pb-20">
+            <form onsubmit="app.submitReport(event)" class="space-y-4" id="report-form">
+                <div class="section-card">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="font-bold text-lg">Daily Report</h3>
+                            <div class="flex items-center gap-2 mt-1">
+                                <label class="text-xs text-gray-500">Report Date:</label>
+                                <input type="date" id="report-date" 
+                                    value="${new Date().toISOString().split('T')[0]}" 
+                                    max="${new Date().toISOString().split('T')[0]}"
+                                    class="text-sm font-semibold text-indigo-600 border-b border-indigo-200 focus:border-indigo-600 outline-none bg-transparent cursor-pointer">
                             </div>
-                            <div class="section-card">
-                                <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Order Details</h3></div>
-                                <div class="space-y-3" id="orders-container">${[1, 2, 3].map(i => `
-                                    <div class="bg-gray-50 p-3 rounded-lg space-y-2">
-                                        <div class="flex justify-between items-center"><span class="text-sm font-medium text-gray-700">Order Type ${i}</span><span class="text-xs text-gray-400">Std Delivery</span></div>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <div><label class="block text-xs text-gray-500 mb-1">Qty</label><input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
-                                            <div><label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label><input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
-                                        </div>
-                                        <div class="flex justify-between text-sm pt-2 border-t border-gray-200"><span class="text-gray-600">Gross: <span id="order-gross-${i}" class="font-semibold">Rs 0</span></span></div>
-                                    </div>`).join('')}</div>
-                                <div class="mt-4 pt-4 border-t border-gray-200"><div class="flex justify-between items-center"><span class="text-gray-600 font-medium text-sm">Total Gross</span><span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0</span></div></div>
+                        </div>
+                        <div class="text-left md:text-right w-full md:w-auto">
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Opening Balance</label>
+                            <input type="number" id="opening-balance" class="text-xl font-bold text-indigo-600 border-b-2 border-indigo-200 focus:border-indigo-600 outline-none text-left md:text-right w-full md:w-32" placeholder="0.00" required onchange="app.calculateTotals()">
+                        </div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Order Details</h3></div>
+                    <div class="space-y-3" id="orders-container">${[1, 2, 3].map(i => `
+                        <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                            <div class="flex justify-between items-center"><span class="text-sm font-medium text-gray-700">Order Type ${i}</span><span class="text-xs text-gray-400">Std Delivery</span></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="block text-xs text-gray-500 mb-1">Qty</label><input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
+                                <div><label class="block text-xs text-gray-500 mb-1">Rate (Rs)</label><input type="number" id="order-rate-${i}" min="0" value="${i === 1 ? 100 : i === 2 ? 150 : 200}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="app.calculateTotals()"></div>
                             </div>
-                            <div class="section-card">
-                                <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800 text-sm md:text-base">Online Collections</h3><button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add</button></div>
-                                <div id="online-payments-list" class="space-y-2"></div>
-                                <div class="mt-4 grid grid-cols-2 gap-3">
-                                    <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center"><p class="text-xs text-orange-600 font-medium">Pending</p><p class="text-lg font-bold text-orange-700" id="online-pending-display">Rs 0</p></div>
-                                    <div class="bg-green-50 p-3 rounded-lg border border-green-200 text-center"><p class="text-xs text-green-600 font-medium">Received</p><p class="text-lg font-bold text-green-700" id="online-received-display">Rs 0</p></div>
-                                </div>
+                            <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
+                                <span class="text-gray-600">Gross: <span id="order-gross-${i}" class="font-semibold">Rs 0</span></span>
                             </div>
-                            <div class="section-card">
-                                <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Expenses</h3>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div><label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label><input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                    <div><label class="block text-xs text-gray-500 mb-1">Food (Rs)</label><input type="number" id="exp-food" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                    <div><label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label><input type="number" id="exp-maint" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
-                                </div>
-                            </div>
-                            <div class="section-card">
-                                <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Delivery Proof</h3>
-                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
-                                    <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
-                                    <div id="proof-preview-area"><i class="fas fa-camera text-3xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500">Tap to upload photo</p></div>
-                                    <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
-                                </div>
-                            </div>
-                            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-2xl shadow-lg">
-                                <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
-                                <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between"><span>Opening Balance</span><span id="sum-opening">Rs 0</span></div>
-                                    <div class="flex justify-between text-green-300"><span>+ Orders Amount</span><span id="sum-orders">Rs 0</span></div>
-                                    <div class="flex justify-between text-red-300"><span>- Online Payments</span><span id="sum-online">Rs 0</span></div>
-                                    <div class="flex justify-between text-red-300"><span>- Expenses</span><span id="sum-expenses">Rs 0</span></div>
-                                    ${wageEnabled && wageType !== 'none' ? `<div class="flex justify-between text-yellow-200 items-center"><span>- Daily Wage</span>${showCustomWage ? `<input type="number" id="wage-input" value="${dailyWage}" min="0" class="w-28 text-right bg-white/20 border border-white/30 rounded px-2 py-0.5 text-sm outline-none text-yellow-100" onchange="app.calculateTotals()" placeholder="0">` : `<span id="sum-wage">Rs ${dailyWage.toLocaleString()}</span>`}</div>` : `<div class="flex justify-between text-gray-300 opacity-60"><span>- Daily Wage</span><span>Rs 0 (No Wage)</span></div>`}
-                                    <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30"><span>Final Cash</span><span id="sum-final">Rs 0</span></div>
-                                </div>
-                            </div>
-                            <input type="hidden" id="report-edit-id" value="">
-                            <div class="flex gap-3 pb-4">
-                                <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"><i class="fas fa-save mr-2"></i>Save Draft</button>
-                                <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-paper-plane mr-2"></i>Submit Report</button>
-                            </div>
-                        </form>
-                    </div>`;
-                this.addOnlinePaymentRow();
-                setTimeout(() => {
-                    const editId = this.data._editReportId;
-                    const autoDraft = this.loadAutoDraft();
-                    if (editId) { this._restoreReportToForm(editId); this.data._editReportId = null; }
-                    else if (autoDraft) { this._restoreAutoDraft(autoDraft); }
-                }, 150);
-                this._startAutoDraft();
-            },
+                        </div>`).join('')}</div>
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <div class="flex justify-between items-center"><span class="text-gray-600 font-medium text-sm">Total Gross</span><span class="text-lg font-bold text-gray-800" id="grand-gross-total">Rs 0</span></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-gray-800 text-sm md:text-base">Online Collections</h3>
+                        <button type="button" onclick="app.addOnlinePaymentRow()" class="text-sm text-indigo-600 font-medium hover:underline">+ Add</button>
+                    </div>
+                    <div id="online-payments-list" class="space-y-2"></div>
+                    <div class="mt-4 grid grid-cols-2 gap-3">
+                        <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center"><p class="text-xs text-orange-600 font-medium">Pending</p><p class="text-lg font-bold text-orange-700" id="online-pending-display">Rs 0</p></div>
+                        <div class="bg-green-50 p-3 rounded-lg border border-green-200 text-center"><p class="text-xs text-green-600 font-medium">Received</p><p class="text-lg font-bold text-green-700" id="online-received-display">Rs 0</p></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Expenses</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div><label class="block text-xs text-gray-500 mb-1">Fuel (Rs)</label><input type="number" id="exp-fuel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                        <div><label class="block text-xs text-gray-500 mb-1">Food (Rs)</label><input type="number" id="exp-food" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                        <div><label class="block text-xs text-gray-500 mb-1">Maintenance (Rs)</label><input type="number" id="exp-maint" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" onchange="app.calculateTotals()"></div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4 text-sm md:text-base">Delivery Proof</h3>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                        <input type="file" id="proof-image" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="app.previewImage(this)">
+                        <div id="proof-preview-area"><i class="fas fa-camera text-3xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500">Tap to upload photo</p></div>
+                        <img id="proof-preview-img" class="hidden max-h-48 mx-auto rounded shadow-md mt-2">
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-2xl shadow-lg">
+                    <h3 class="font-bold text-lg mb-4 border-b border-white/20 pb-2">Final Calculation</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span>Opening Balance</span><span id="sum-opening">Rs 0</span></div>
+                        <div class="flex justify-between text-green-300"><span>+ Orders Amount</span><span id="sum-orders">Rs 0</span></div>
+                        <div class="flex justify-between text-red-300"><span>- Online Payments</span><span id="sum-online">Rs 0</span></div>
+                        <div class="flex justify-between text-red-300"><span>- Expenses</span><span id="sum-expenses">Rs 0</span></div>
+                        ${wageEnabled && wageType !== 'none' ? `
+                        <div class="flex justify-between text-yellow-200 items-center">
+                            <span>- Daily Wage</span>
+                            ${showCustomWage ? `<input type="number" id="wage-input" value="${dailyWage}" min="0" class="w-28 text-right bg-white/20 border border-white/30 rounded px-2 py-0.5 text-sm outline-none text-yellow-100" onchange="app.calculateTotals()" placeholder="0">` : `<span id="sum-wage">Rs ${dailyWage.toLocaleString()}</span>`}
+                        </div>` : `<div class="flex justify-between text-gray-300 opacity-60"><span>- Daily Wage</span><span>Rs 0 (No Wage)</span></div>`}
+                        <div class="flex justify-between font-bold text-lg mt-3 pt-3 border-t border-white/30"><span>Final Cash</span><span id="sum-final">Rs 0</span></div>
+                    </div>
+                </div>
+                <input type="hidden" id="report-edit-id" value="">
+                <div class="flex gap-3 pb-4">
+                    <button type="submit" data-draft="true" class="flex-1 bg-gray-500 text-white py-3 rounded-xl font-bold hover:bg-gray-600 transition-colors"><i class="fas fa-save mr-2"></i>Save Draft</button>
+                    <button type="submit" data-draft="false" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"><i class="fas fa-paper-plane mr-2"></i>Submit Report</button>
+                </div>
+            </form>
+        </div>`;
+
+    // Always add one empty row
+    this.addOnlinePaymentRow();
+
+    // ✅ FIX #4: Draft restore — sirf agar confirm kiya ho ya edit mode ho
+    setTimeout(() => {
+        const editId = this.data._editReportId;
+        if (editId) {
+            this._restoreReportToForm(editId);
+            this.data._editReportId = null;
+        } else if (finalDraft) {
+            this._restoreAutoDraft(finalDraft);
+        }
+        // Hamesha totals calculate karo
+        this.calculateTotals();
+    }, 150);
+
+    // Auto-draft start karo
+    this._startAutoDraft();
+},
 
             addOnlinePaymentRow() {
                 const container = document.getElementById('online-payments-list');
@@ -940,32 +1007,59 @@
             },
 
             _startAutoDraft() {
-                if (this._autoDraftInterval) clearInterval(this._autoDraftInterval);
-                this._autoDraftInterval = setInterval(() => {
-                    const form = document.getElementById('report-form');
-                    if (!form) { clearInterval(this._autoDraftInterval); this._autoDraftInterval = null; return; }
-                    this._saveAutoDraft();
-                }, 5000);
-            },
+    if (this._autoDraftInterval) clearInterval(this._autoDraftInterval);
+    this._autoDraftInterval = setInterval(() => {
+        const form = document.getElementById('report-form');
+        if (!form) {
+            clearInterval(this._autoDraftInterval);
+            this._autoDraftInterval = null;
+            return;
+        }
+        this._saveAutoDraft();
+    }, 5000);
+},
 
-            _saveAutoDraft() {
-                try { const draft = this._getFormState(); if (!draft) return; localStorage.setItem('dastak_auto_draft', JSON.stringify(draft)); } catch(e) {}
-            },
+            // ✅ FIX: Rider-specific draft key — dusri ID pe purana data nahi aayega
+_getDraftKey() {
+    const uid = this.data.currentUser?.id || 'anon';
+    return `dastak_draft_${uid}`;
+},
 
-            loadAutoDraft() {
-                try {
-                    const saved = localStorage.getItem('dastak_auto_draft');
-                    if (!saved) return null;
-                    const draft = JSON.parse(saved);
-                    if (Date.now() - draft.savedAt > 30 * 60 * 1000) { localStorage.removeItem('dastak_auto_draft'); return null; }
-                    return draft;
-                } catch(e) { return null; }
-            },
+_saveAutoDraft() {
+    try {
+        const draft = this._getFormState();
+        if (!draft) return;
+        // Sirf tab save karo agar kuch data hai (khaali form mat save karo)
+        const hasData = draft.opening > 0 || draft.orders.some(o => o.qty > 0) || draft.payments.some(p => p.amt > 0) || draft.fuel > 0 || draft.food > 0 || draft.maint > 0;
+        if (!hasData) return;
+        localStorage.setItem(this._getDraftKey(), JSON.stringify(draft));
+    } catch(e) { /* ignore */ }
+},
 
-            clearAutoDraft() {
-                localStorage.removeItem('dastak_auto_draft');
-                if (this._autoDraftInterval) { clearInterval(this._autoDraftInterval); this._autoDraftInterval = null; }
-            },
+loadAutoDraft() {
+    try {
+        const saved = localStorage.getItem(this._getDraftKey());
+        if (!saved) return null;
+        const draft = JSON.parse(saved);
+        // 30 min purana draft ignore karo
+        if (Date.now() - draft.savedAt > 30 * 60 * 1000) {
+            localStorage.removeItem(this._getDraftKey());
+            return null;
+        }
+        return draft;
+    } catch(e) { return null; }
+},
+
+clearAutoDraft() {
+    // Apni rider ID wala clear karo
+    localStorage.removeItem(this._getDraftKey());
+    // Purana key bhi clear karo (backwards compat)
+    localStorage.removeItem('dastak_auto_draft');
+    if (this._autoDraftInterval) {
+        clearInterval(this._autoDraftInterval);
+        this._autoDraftInterval = null;
+    }
+},
 
             _getFormState() {
                 const payments = [];
