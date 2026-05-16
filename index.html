@@ -12,7 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; overscroll-behavior-y: contain; }
         .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
         .sidebar-link { transition: all 0.3s ease; }
         .sidebar-link:hover, .sidebar-link.active { background: #4f46e5; color: white; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); }
@@ -73,7 +73,12 @@
         window.auth = firebase.auth();
         window.db = firebase.firestore();
     </script>
-    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden" onclick="app.toggleSidebar()"></div>
+   <div id="pull-to-refresh" class="fixed top-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-transform duration-200 ease-out z-50" style="transform: translateY(-50px); height: 50px;">
+    <div class="bg-white p-2 rounded-full shadow-md flex items-center justify-center border border-gray-200">
+        <i id="ptr-icon" class="fas fa-arrow-down text-blue-600 transition-transform duration-200"></i>
+    </div>
+</div>
+ <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden" onclick="app.toggleSidebar()"></div>
     <aside class="w-64 bg-white shadow-xl z-50 flex flex-col h-full hidden" id="sidebar">
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -2444,80 +2449,89 @@ clearAutoDraft() {
                 setTimeout(() => { overlay.classList.add('hidden'); }, 200);
             }
         };
-// Pull to Refresh Implementation
+// ==========================================
+// PULL TO REFRESH LOGIC (MAIN CONTAINER FIX)
+// ==========================================
 let touchStartKey = 0;
 let touchMoveKey = 0;
 const ptrElement = document.getElementById('pull-to-refresh');
 const ptrIcon = document.getElementById('ptr-icon');
-const pullThreshold = 80; // Kitna niche kheenchne par refresh ho (in pixels)
+// Main scrollable area ko target kiya
+const mainScrollContainer = document.getElementById('main-container'); 
+const pullThreshold = 80; 
 
-window.addEventListener('touchstart', (e) => {
-    // Sirf tab kaam kare jab page sabse upar ho
-    if (window.scrollY === 0) {
-        touchStartKey = e.touches[0].clientY;
-    } else {
-        touchStartKey = 0;
-    }
-});
+if (mainScrollContainer && ptrElement && ptrIcon) {
+    // Event listener window ki jagah mainScrollContainer par lagaya
+    mainScrollContainer.addEventListener('touchstart', (e) => {
+        // Jab rider portal ke bilkul top par ho tabhi drag shuru ho
+        if (mainScrollContainer.scrollTop === 0) {
+            touchStartKey = e.touches[0].clientY;
+        } else {
+            touchStartKey = 0;
+        }
+    });
 
-window.addEventListener('touchmove', (e) => {
-    if (touchStartKey === 0) return;
-    
-    touchMoveKey = e.touches[0].clientY;
-    const distance = touchMoveKey - touchStartKey;
-
-    if (distance > 0) {
-        // Taake browser ka apna default behavior disturb na ho aur smoothly scroll niche aaye
-        e.preventDefault(); 
+    mainScrollContainer.addEventListener('touchmove', (e) => {
+        if (touchStartKey === 0) return;
         
-        // Resistance lagana taake kheenchna natural lage
-        const pullDistance = Math.min(distance * 0.4, pullThreshold + 20); 
-        ptrElement.style.transform = `translateY(${pullDistance - 50}px)`;
+        touchMoveKey = e.touches[0].clientY;
+        const distance = touchMoveKey - touchStartKey;
 
-        // Agar threshold cross ho jaye to arrow ko rotate kar do
+        if (distance > 0) {
+            // Android/iOS ka default page bounce rokne ke liye
+            e.preventDefault(); 
+            
+            const pullDistance = Math.min(distance * 0.4, pullThreshold + 20); 
+            ptrElement.style.transform = `translateY(${pullDistance}px)`;
+
+            if (pullDistance >= pullThreshold) {
+                ptrIcon.style.transform = 'rotate(180deg)';
+                ptrIcon.classList.remove('text-blue-600');
+                ptrIcon.classList.add('text-green-600');
+            } else {
+                ptrIcon.style.transform = 'rotate(0deg)';
+                ptrIcon.classList.remove('text-green-600');
+                ptrIcon.classList.add('text-blue-600');
+            }
+        }
+    }, { passive: false }); // passive: false lagana zaroori hai taake preventDefault kaam kare
+
+    mainScrollContainer.addEventListener('touchend', async () => {
+        if (touchStartKey === 0 || touchMoveKey === 0) return;
+
+        const distance = touchMoveKey - touchStartKey;
+        const pullDistance = distance * 0.4;
+
         if (pullDistance >= pullThreshold) {
-            ptrIcon.style.transform = 'rotate(180deg)';
-            ptrIcon.classList.remove('text-blue-600');
-            ptrIcon.classList.add('text-green-600');
-        } else {
-            ptrIcon.style.transform = 'rotate(0deg)';
-            ptrIcon.classList.remove('text-green-600');
-            ptrIcon.classList.add('text-blue-600');
+            // Spinner Active State
+            ptrIcon.className = 'fas fa-spinner fa-spin text-blue-600';
+            ptrElement.style.transform = `translateY(${pullThreshold}px)`;
+
+            try {
+                // Bina full page white jhatke ke data load karega
+                if (typeof app !== 'undefined' && app.init) {
+                    await app.init(); 
+                } else {
+                    window.location.reload(); 
+                }
+            } catch (err) {
+                console.error("Refresh error:", err);
+            }
         }
-    }
-}, { passive: false });
 
-window.addEventListener('touchend', async () => {
-    if (touchStartKey === 0 || touchMoveKey === 0) return;
-
-    const distance = touchMoveKey - touchStartKey;
-    const pullDistance = distance * 0.4;
-
-    if (pullDistance >= pullThreshold) {
-        // Refreshing State
-        ptrIcon.className = 'fas fa-spinner fa-spin text-blue-600';
-        ptrElement.style.transform = `translateY(${pullThreshold - 40}px)`;
-
-        // Aapka data reload karne ka function yahan call hoga
-        if (typeof app !== 'undefined' && app.init) {
-            await app.init(); // Yeh aapke app ko dobara reload/init kar dega
-        } else {
-            window.location.reload(); // Fallback agar pure page refresh karna ho
-        }
-    }
-
-    // Reset indicator back to top
-    setTimeout(() => {
-        ptrElement.style.transform = 'translateY(-50px)';
+        // Hide back the indicator
         setTimeout(() => {
-            ptrIcon.className = 'fas fa-arrow-down text-blue-600';
-            ptrIcon.style.transform = 'rotate(0deg)';
-        }, 200);
-    }, 500);
+            ptrElement.style.transform = 'translateY(-50px)';
+            setTimeout(() => {
+                ptrIcon.className = 'fas fa-arrow-down text-blue-600';
+                ptrIcon.style.transform = 'rotate(0deg)';
+            }, 200);
+        }, 600);
 
-    touchStartKey = 0;
-    touchMoveKey = 0;
-});
+        touchStartKey = 0;
+        touchMoveKey = 0;
+    });
+}
         document.addEventListener('DOMContentLoaded', () => { app.init(); });
     </script>
 </body>
