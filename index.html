@@ -1442,7 +1442,12 @@ clearAutoDraft() {
                     dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
                 }
                 container.innerHTML = `<div class="space-y-4 fade-in pb-20">
-                    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
+                    <div id="pull-to-refresh" class="fixed top-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-transform duration-200 ease-out z-50" style="transform: translateY(-50px); height: 50px;">
+    <div class="bg-white p-2 rounded-full shadow-md flex items-center justify-center border border-gray-200">
+        <i id="ptr-icon" class="fas fa-arrow-down text-blue-600 transition-transform duration-200"></i>
+    </div>
+</div>
+					<div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
                         <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-base">Din ka Summary</h3><input type="date" id="dash-date-picker" value="${new Date().toISOString().split('T')[0]}" max="${new Date().toISOString().split('T')[0]}" onchange="app.updateDayView()" class="bg-white/20 text-white text-xs px-2 py-1 rounded-lg border border-white/30 outline-none cursor-pointer"></div>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="day-stats-grid">${(() => {
                             const today = new Date().toISOString().split('T')[0];
@@ -2439,7 +2444,80 @@ clearAutoDraft() {
                 setTimeout(() => { overlay.classList.add('hidden'); }, 200);
             }
         };
+// Pull to Refresh Implementation
+let touchStartKey = 0;
+let touchMoveKey = 0;
+const ptrElement = document.getElementById('pull-to-refresh');
+const ptrIcon = document.getElementById('ptr-icon');
+const pullThreshold = 80; // Kitna niche kheenchne par refresh ho (in pixels)
 
+window.addEventListener('touchstart', (e) => {
+    // Sirf tab kaam kare jab page sabse upar ho
+    if (window.scrollY === 0) {
+        touchStartKey = e.touches[0].clientY;
+    } else {
+        touchStartKey = 0;
+    }
+});
+
+window.addEventListener('touchmove', (e) => {
+    if (touchStartKey === 0) return;
+    
+    touchMoveKey = e.touches[0].clientY;
+    const distance = touchMoveKey - touchStartKey;
+
+    if (distance > 0) {
+        // Taake browser ka apna default behavior disturb na ho aur smoothly scroll niche aaye
+        e.preventDefault(); 
+        
+        // Resistance lagana taake kheenchna natural lage
+        const pullDistance = Math.min(distance * 0.4, pullThreshold + 20); 
+        ptrElement.style.transform = `translateY(${pullDistance - 50}px)`;
+
+        // Agar threshold cross ho jaye to arrow ko rotate kar do
+        if (pullDistance >= pullThreshold) {
+            ptrIcon.style.transform = 'rotate(180deg)';
+            ptrIcon.classList.remove('text-blue-600');
+            ptrIcon.classList.add('text-green-600');
+        } else {
+            ptrIcon.style.transform = 'rotate(0deg)';
+            ptrIcon.classList.remove('text-green-600');
+            ptrIcon.classList.add('text-blue-600');
+        }
+    }
+}, { passive: false });
+
+window.addEventListener('touchend', async () => {
+    if (touchStartKey === 0 || touchMoveKey === 0) return;
+
+    const distance = touchMoveKey - touchStartKey;
+    const pullDistance = distance * 0.4;
+
+    if (pullDistance >= pullThreshold) {
+        // Refreshing State
+        ptrIcon.className = 'fas fa-spinner fa-spin text-blue-600';
+        ptrElement.style.transform = `translateY(${pullThreshold - 40}px)`;
+
+        // Aapka data reload karne ka function yahan call hoga
+        if (typeof app !== 'undefined' && app.init) {
+            await app.init(); // Yeh aapke app ko dobara reload/init kar dega
+        } else {
+            window.location.reload(); // Fallback agar pure page refresh karna ho
+        }
+    }
+
+    // Reset indicator back to top
+    setTimeout(() => {
+        ptrElement.style.transform = 'translateY(-50px)';
+        setTimeout(() => {
+            ptrIcon.className = 'fas fa-arrow-down text-blue-600';
+            ptrIcon.style.transform = 'rotate(0deg)';
+        }, 200);
+    }, 500);
+
+    touchStartKey = 0;
+    touchMoveKey = 0;
+});
         document.addEventListener('DOMContentLoaded', () => { app.init(); });
     </script>
 </body>
