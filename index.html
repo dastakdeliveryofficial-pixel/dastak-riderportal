@@ -249,9 +249,7 @@
                 }
             },
 
-            // ✅ FIX #3: Pura rewritten setupRealtimeListeners
             async setupRealtimeListeners() {
-                // Guard: dobara call mat karo
                 if (this.data._listenersSetup) return;
                 this.data._listenersSetup = true;
 
@@ -260,50 +258,65 @@
                     const el = document.getElementById('loading-msg');
                     if (el) el.textContent = msg;
                 };
+
+                const showError = (step, e) => {
+                    const loadingDiv = document.getElementById('app-loading');
+                    if (loadingDiv) {
+                        loadingDiv.innerHTML = `
+                            <div style="background:#fff;border-radius:16px;padding:24px;max-width:360px;margin:auto;box-shadow:0 4px 20px rgba(0,0,0,0.12);text-align:center;">
+                                <div style="font-size:40px;margin-bottom:8px;">❌</div>
+                                <h2 style="color:#dc2626;font-size:16px;font-weight:700;margin-bottom:4px;">Error at: ${step}</h2>
+                                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:left;margin:12px 0;">
+                                    <p style="color:#991b1b;font-size:11px;font-weight:700;">Code: <span style="font-family:monospace;color:#dc2626;">${e.code || 'UNKNOWN'}</span></p>
+                                    <p style="color:#991b1b;font-size:11px;font-weight:700;margin-top:6px;">Message:</p>
+                                    <p style="color:#dc2626;font-size:11px;word-break:break-all;font-family:monospace;">${e.message || e.toString()}</p>
+                                </div>
+                                <button onclick="location.reload()" style="background:#4f46e5;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">🔄 Retry</button>
+                            </div>`;
+                    }
+                    self.data._listenersSetup = false;
+                };
+
                 try {
-                    setMsg('Connecting...');
+                    setMsg('Step 1: Connecting...');
                     const now = new Date();
                     const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
                     const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
-                    setMsg('Loading data...');
-
-                    // ✅ FIX: orderBy hatayi — composite index ki zaroorat nahi
-                    const [ridersSnap, reportsSnap, attSnap, notifSnap, companyExpSnap] = await Promise.all([
-                        window.db.collection('users').where('role', '==', 'rider').get(),
-                        window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).get(),
-                        window.db.collection('attendance').where('date', '>=', monthStart).get(),
-                        window.db.collection('notifications').limit(30).get(),
-                        window.db.collection('companyExpenses').get()
-                    ]);
-
+                    setMsg('Step 2: Loading users...');
+                    const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
                     self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self.data.companyExpensesLoaded = true;
 
+                    setMsg('Step 3: Loading reports...');
+                    const reportsSnap = await window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).get();
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    setMsg('Step 4: Loading attendance...');
+                    const attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
+                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    setMsg('Step 5: Loading notifications...');
+                    const notifSnap = await window.db.collection('notifications').limit(30).get();
                     if (!notifSnap.empty) {
                         self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
                         const dot = document.getElementById('notif-dot');
                         if (dot) dot.classList.remove('hidden');
                     }
 
+                    setMsg('Step 6: Loading expenses...');
+                    const companyExpSnap = await window.db.collection('companyExpenses').get();
+                    self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self.data.companyExpensesLoaded = true;
                     self.data.customers = [];
                     self.data.customersLoaded = false;
 
-                    setMsg('Ready!');
-
-                    // ✅ Flag set karo — onSnapshot ke pehla fire skip hoga
-                    // kyunki data already loaded hai
+                    setMsg('Step 7: Setting up listeners...');
                     let reportsFirstFire = true;
                     let attFirstFire = true;
                     let ridersFirstFire = true;
 
-                    // REALTIME LISTENERS
                     self.data._unsubReports = window.db.collection('reports')
-                        .where('date', '>=', twoMonthsAgo)
-                        .limit(300)
+                        .where('date', '>=', twoMonthsAgo).limit(300)
                         .onSnapshot(snap => {
                             self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             if (reportsFirstFire) { reportsFirstFire = false; return; }
@@ -326,26 +339,11 @@
                             self._debouncedRefresh();
                         });
 
+                    setMsg('Ready!');
+
                 } catch(e) {
                     console.error('Data load error:', e);
-                    const loadingDiv = document.getElementById('app-loading');
-                    if (loadingDiv) {
-                        loadingDiv.innerHTML = `
-                            <div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;margin:auto;box-shadow:0 4px 20px rgba(0,0,0,0.12);text-align:center;">
-                                <div style="font-size:48px;margin-bottom:12px;">❌</div>
-                                <h2 style="color:#dc2626;font-size:18px;font-weight:700;margin-bottom:8px;">Loading Error!</h2>
-                                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:left;margin-bottom:16px;">
-                                    <p style="color:#991b1b;font-size:12px;font-weight:700;margin-bottom:4px;">Error Code:</p>
-                                    <p style="color:#dc2626;font-size:12px;word-break:break-all;font-family:monospace;">${e.code || 'UNKNOWN'}</p>
-                                    <p style="color:#991b1b;font-size:12px;font-weight:700;margin-top:8px;margin-bottom:4px;">Error Message:</p>
-                                    <p style="color:#dc2626;font-size:11px;word-break:break-all;font-family:monospace;">${e.message || e.toString()}</p>
-                                </div>
-                                <button onclick="location.reload()" style="background:#4f46e5;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">
-                                    🔄 Dobara Try Karo
-                                </button>
-                            </div>`;
-                    }
-                    self.data._listenersSetup = false;
+                    showError(document.getElementById('loading-msg')?.textContent || 'Unknown Step', e);
                 }
             },
 
@@ -1234,6 +1232,13 @@ clearAutoDraft() {
                 if (document.getElementById('sum-final')) document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
             },
 
+            async submitReport(e) {
+                e.preventDefault();
+                if (this.data._isSubmitting) return;
+                this.data._isSubmitting = true;
+                const isDraft = e.submitter?.dataset?.draft === 'true';
+                if (!isDraft && !confirm("Submit this report?")) { this.data._isSubmitting = false; return; }
+                const allBtns = document.querySelectorAll('button[type="submit"]');
                 allBtns.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
                 try {
                     const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
