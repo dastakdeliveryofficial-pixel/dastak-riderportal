@@ -1070,7 +1070,7 @@ clearAutoDraft() {
     localStorage.removeItem(this._getDraftKey());
     // Purana key bhi clear karo (backwards compat)
     localStorage.removeItem('dastak_auto_draft');
-    if (this._autoDraftInterval) {
+    ifthis._autoDraftInterval) {
         clearInterval(this._autoDraftInterval);
         this._autoDraftInterval = null;
     }
@@ -1879,7 +1879,8 @@ clearAutoDraft() {
                             <label class="text-xs font-bold text-yellow-800">Customer ID <span class="text-red-500">*</span></label>
                             <input type="text" id="admin-pay-custid-${i}" value="${p.customerId || ''}" 
                                 placeholder="e.g. r347, a199, C001" 
-                                class="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm outline-none font-mono bg-white mt-1">
+                                                            class="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm outline-none font-mono bg-white mt-1"
+                            oninput="app.adminLookupCustomerById(this.value, ${i})">
                             <p class="text-xs text-yellow-600 mt-1">ID change karne ke liye yahan type karein</p>
                         </div>
 
@@ -2706,6 +2707,32 @@ clearAutoDraft() {
             async deleteNotification(docId) {
                 try { await window.db.collection('notifications').doc(docId).delete(); this.data.announcements = this.data.announcements.filter(a => (a._docId || a.id) !== docId); this.showNotifications(); }
                 catch(e) { alert('Error: ' + e.message); }
+            },
+
+                        adminLookupCustomerById(value, index) {
+                const id = (value || '').trim().toUpperCase();
+                const nameEl = document.getElementById(`admin-pay-name-${index}`);
+                const phoneEl = document.getElementById(`admin-pay-phone-${index}`);
+                const addrEl = document.getElementById(`admin-pay-addr-${index}`);
+                if (!nameEl || id.length < 1) {
+                    if (nameEl) nameEl.value = '';
+                    if (phoneEl) phoneEl.value = '';
+                    if (addrEl) addrEl.value = '';
+                    return;
+                }
+                const customers = this.data.customers || [];
+                let match = customers.find(c => (c.customerId || '').toUpperCase() === id);
+                if (!match) match = customers.find(c => (c.name || '').toUpperCase() === id);
+                if (!match) match = customers.find(c => (c.phone || '').replace(/\D/g,'') === id.replace(/\D/g,''));
+                if (match) {
+                    if (nameEl) nameEl.value = match.name || '';
+                    if (phoneEl) phoneEl.value = match.phone || '';
+                    if (addrEl) addrEl.value = match.address || '';
+                } else {
+                    if (nameEl) nameEl.value = '';
+                    if (phoneEl) phoneEl.value = '';
+                    if (addrEl) addrEl.value = '';
+                }
             },
 
             closeModal() {
