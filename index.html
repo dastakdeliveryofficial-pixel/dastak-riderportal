@@ -58,6 +58,7 @@
         .calendar-day.empty:hover { transform: none; }
 		#dynamic-style{display:none;}
 	</style>
+<base target="_blank">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
     <script>
@@ -1265,8 +1266,11 @@ clearAutoDraft() {
                         const existing = this.data.reports.find(r => r.id === editId); if (existing) Object.assign(existing, newReport);
                         alert(isDraft ? 'Draft saved!' : 'Report updated!');
                     } else {
-                        const duplicate = this.data.reports.find(r => r.riderId === this.data.currentUser.id && r.date === selectedDate && r.status === reportStatus && r.totalGross === totalGross && r.finalAmount === finalAmount);
-                        if (duplicate && !isDraft) { alert('Same report already exists for this date!\nGo to "My History" to edit it.'); this.data._isSubmitting = false; allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; }); return; }
+                        const editId = document.getElementById('report-edit-id')?.value;
+                        if (!editId) {
+                            const duplicate = this.data.reports.find(r => r.riderId === this.data.currentUser.id && r.date === selectedDate && r.status === reportStatus && r.totalGross === totalGross && r.finalAmount === finalAmount);
+                            if (duplicate && !isDraft) { alert('Same report already exists for this date!\nGo to "My History" to edit it.'); this.data._isSubmitting = false; allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; }); return; }
+                        }
                         const docRef = await window.db.collection('reports').add(newReport);
                         this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
                         if (!isDraft) {
@@ -1299,7 +1303,7 @@ clearAutoDraft() {
                     </div>
                     ${displayReports.length === 0 ? `<div class="text-center py-12 text-gray-400"><i class="fas fa-${activeTab === 'draft' ? 'folder-open' : 'history'} text-5xl mb-4"></i><p>${activeTab === 'draft' ? 'No drafts saved' : 'No reports found'}</p></div>` : `<div class="space-y-3">${displayReports.map(r => {
                         const totalQty = (r.orders || []).reduce((acc, o) => acc + (o.qty || 0), 0);
-                        return `<div class="section-card"><div class="flex justify-between items-start mb-2"><div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders</p></div><div class="flex items-center gap-2"><span class="status-badge status-${r.status === 'draft' ? 'pending' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'draft' ? 'Draft' : r.status}</span>${r.status !== 'deleted' ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}</div></div><div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center"><div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross || 0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Expenses</p><p class="font-semibold text-sm text-red-600">Rs ${(r.totalExpenses || 0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Final</p><p class="font-bold text-sm text-green-600">Rs ${(r.finalAmount || 0).toLocaleString()}</p></div></div></div>`;
+                        return `<div class="section-card"><div class="flex justify-between items-start mb-2"><div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders</p></div><div class="flex items-center gap-2"><span class="status-badge status-${r.status === 'draft' ? 'pending' : r.status}" style="${r.status === 'draft' ? 'background:#fef9c3;color:#854d0e;' : ''}">${r.status === 'draft' ? 'Draft' : r.status}</span>${r.status !== 'deleted' && r.status !== 'approved' ? `<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200"><i class="fas fa-edit text-xs"></i></button>` : ''}</div></div><div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center"><div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross || 0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Expenses</p><p class="font-semibold text-sm text-red-600">Rs ${(r.totalExpenses || 0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Final</p><p class="font-bold text-sm text-green-600">Rs ${(r.finalAmount || 0).toLocaleString()}</p></div></div></div>`;
                     }).join('')}</div>`}</div>`;
             },
 
@@ -1668,6 +1672,7 @@ clearAutoDraft() {
                                         <div class="flex justify-between items-center p-3 rounded-xl border bg-orange-50 border-orange-200">
                                             <div class="min-w-0 flex-1">
                                                 <p class="font-semibold text-sm truncate">${p.detail || '—'}</p>
+                                                ${p.customerId ? `<p class="text-xs text-indigo-500 font-mono font-bold">ID: ${p.customerId}</p>` : ''}
                                                 <p class="text-xs text-gray-500">${p.riderName}</p>
                                                 <p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p>
                                             </div>
@@ -1826,38 +1831,288 @@ clearAutoDraft() {
             adminEditReport(id) {
                 const report = this.data.reports.find(r => r.id === id);
                 if (!report) return;
-                const paymentsHTML = (report.onlinePayments || []).map((p, i) => `
-                    <div class="bg-gray-50 rounded-lg p-3 space-y-2" id="ae-pay-${i}">
-                        <div class="flex justify-between items-center mb-1"><p class="text-xs font-semibold text-gray-600">Payment ${i+1}</p><span class="text-xs px-2 py-0.5 rounded ${p.status==='received'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}">${p.status}</span></div>
-                        <div><label class="text-xs text-gray-500">Customer Detail</label><input type="text" id="ae-pay-detail-${i}" value="${(p.detail||'').replace(/"/g,'&quot;')}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none mt-1"></div>
-                        <div class="grid grid-cols-2 gap-2"><div><label class="text-xs text-gray-500">Amount</label><input type="number" id="ae-pay-amt-${i}" value="${p.amount||0}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none mt-1"></div><div><label class="text-xs text-gray-500">Status</label><select id="ae-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none mt-1"><option value="pending" ${p.status==='pending'?'selected':''}>Pending</option><option value="received" ${p.status==='received'?'selected':''}>Received</option></select></div></div>
-                    </div>`).join('');
-                const modalContent = document.getElementById('modal-content'); const overlay = document.getElementById('modal-overlay');
-                modalContent.innerHTML = `<div class="p-5">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold">Edit Report</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
-                    <form onsubmit="app.adminSaveReportEdit(event, '${id}')" class="space-y-3">
-                        <div><label class="text-xs text-gray-500">Date</label><input type="date" id="ae-date" value="${report.date || ''}" class="w-full border border-indigo-300 rounded-lg px-3 py-2 mt-1 text-sm outline-none"></div>
-                        <div class="grid grid-cols-2 gap-3"><div><label class="text-xs text-gray-500">Opening</label><input type="number" id="ae-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div><div><label class="text-xs text-gray-500">Gross</label><input type="number" id="ae-gross" value="${report.totalGross || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div><div><label class="text-xs text-gray-500">Expenses</label><input type="number" id="ae-expenses" value="${report.totalExpenses || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div><div><label class="text-xs text-gray-500">Final</label><input type="number" id="ae-final" value="${report.finalAmount || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"></div></div>
-                        <div><label class="text-xs text-gray-500">Status</label><select id="ae-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm"><option value="pending" ${report.status==='pending'?'selected':''}>Pending</option><option value="approved" ${report.status==='approved'?'selected':''}>Approved</option><option value="rejected" ${report.status==='rejected'?'selected':''}>Rejected</option><option value="draft" ${report.status==='draft'?'selected':''}>Draft</option></select></div>
-                        ${paymentsHTML ? `<div><label class="text-xs font-semibold text-gray-700 block mb-2">Online Payments</label><div class="space-y-2">${paymentsHTML}</div></div>` : ''}
-                        <div class="flex gap-3 pt-2"><button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium">Cancel</button><button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium">Save</button></div>
-                    </form></div>`;
-                overlay.classList.remove('hidden');
-                setTimeout(() => { modalContent.classList.remove('scale-95','opacity-0'); modalContent.classList.add('scale-100','opacity-100'); }, 10);
-            },
 
-            async adminSaveReportEdit(e, id) {
+                // Ensure customers loaded for ID lookup
+                this.ensureCustomers();
+
+                const modalContent = document.getElementById('modal-content'); 
+                const overlay = document.getElementById('modal-overlay');
+
+                // Build Orders HTML
+                const ordersHTML = (report.orders || []).map((o, i) => `
+                    <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                        <p class="text-xs font-semibold text-gray-600">Order ${i+1} (${o.type || 'Type ' + (i+1)})</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-gray-500">Quantity</label>
+                                <input type="number" id="admin-order-qty-${i}" value="${o.qty || 0}" min="0" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500">Rate (Rs)</label>
+                                <input type="number" id="admin-order-rate-${i}" value="${o.rate || 0}" min="0" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                            </div>
+                        </div>
+                        <div class="text-right text-xs text-gray-500">Gross: <span id="admin-order-gross-${i}">Rs ${(o.qty * o.rate) || 0}</span></div>
+                    </div>
+                `).join('');
+
+                // Build Online Payments HTML with EDITABLE Customer ID
+                const paymentsHTML = (report.onlinePayments || []).map((p, i) => `
+                    <div class="bg-gray-50 rounded-lg p-3 space-y-2 border-2 border-indigo-100" id="admin-pay-${i}">
+                        <div class="flex justify-between items-center mb-1">
+                            <p class="text-xs font-semibold text-indigo-700">Payment ${i+1}</p>
+                            <span class="text-xs px-2 py-0.5 rounded ${p.status==='received'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}">${p.status}</span>
+                        </div>
+
+                        <!-- CUSTOMER ID - EDITABLE -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
+                            <label class="text-xs font-bold text-yellow-800">Customer ID <span class="text-red-500">*</span></label>
+                            <input type="text" id="admin-pay-custid-${i}" value="${p.customerId || ''}" 
+                                placeholder="e.g. r347, a199, C001" 
+                                class="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm outline-none font-mono bg-white mt-1">
+                            <p class="text-xs text-yellow-600 mt-1">ID change karne ke liye yahan type karein</p>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-500">Customer Name</label>
+                            <input type="text" id="admin-pay-name-${i}" value="${p.customerName || ''}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-500">Customer Phone</label>
+                            <input type="text" id="admin-pay-phone-${i}" value="${p.customerPhone || ''}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-500">Customer Address</label>
+                            <input type="text" id="admin-pay-addr-${i}" value="${p.customerAddress || ''}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-gray-500">Amount (Rs)</label>
+                                <input type="number" id="admin-pay-amt-${i}" value="${p.amount || 0}" min="0" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500">Status</label>
+                                <select id="admin-pay-status-${i}" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none">
+                                    <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="received" ${p.status==='received'?'selected':''}>Received</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-500">Items</label>
+                            <input type="text" id="admin-pay-items-${i}" value="${p.items || ''}" placeholder="e.g. 2kg aloo, 1kg tamatar" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm outline-none">
+                        </div>
+                    </div>
+                `).join('');
+
+                // Expenses
+                const expenses = report.expenses || [];
+                const fuelExp = expenses.find(e => e.type === 'Fuel')?.amount || 0;
+                const foodExp = expenses.find(e => e.type === 'Food')?.amount || 0;
+                const maintExp = expenses.find(e => e.type === 'Maintenance')?.amount || 0;
+
+                modalContent.innerHTML = `
+                    <div class="p-5 max-h-[90vh] overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b z-10">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800">Edit Report</h2>
+                                <p class="text-xs text-gray-500">${report.riderName} - ${new Date(report.date).toLocaleDateString()}</p>
+                            </div>
+                            <button onclick="app.closeModal()" class="text-gray-400 p-2 hover:bg-gray-100 rounded-lg">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+
+                        <form onsubmit="app.adminSaveFullReportEdit(event, '${id}')" class="space-y-4">
+                            <!-- Basic Info -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs text-gray-500 font-medium">Date</label>
+                                    <input type="date" id="admin-edit-date" value="${report.date || ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm outline-none">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-500 font-medium">Status</label>
+                                    <select id="admin-edit-status" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm outline-none">
+                                        <option value="pending" ${report.status==='pending'?'selected':''}>Pending</option>
+                                        <option value="approved" ${report.status==='approved'?'selected':''}>Approved</option>
+                                        <option value="rejected" ${report.status==='rejected'?'selected':''}>Rejected</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs text-gray-500 font-medium">Opening Balance</label>
+                                    <input type="number" id="admin-edit-opening" value="${report.openingBalance || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-500 font-medium">Daily Wage</label>
+                                    <input type="number" id="admin-edit-wage" value="${report.dailyWage || 0}" class="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                </div>
+                            </div>
+
+                            <!-- Orders Section -->
+                            <div class="border-t pt-3">
+                                <h3 class="font-bold text-gray-700 text-sm mb-2 flex items-center gap-2">
+                                    <i class="fas fa-box text-indigo-500"></i> Orders
+                                </h3>
+                                <div class="space-y-2">${ordersHTML || '<p class="text-xs text-gray-400">No orders</p>'}</div>
+                            </div>
+
+                            <!-- Online Payments Section - CUSTOMER ID EDITABLE -->
+                            <div class="border-t pt-3">
+                                <h3 class="font-bold text-gray-700 text-sm mb-2 flex items-center gap-2">
+                                    <i class="fas fa-credit-card text-indigo-500"></i> 
+                                    Online Payments 
+                                    <span class="text-xs font-normal bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Customer ID Editable</span>
+                                </h3>
+                                <div class="space-y-3">${paymentsHTML || '<p class="text-xs text-gray-400">No online payments</p>'}</div>
+                            </div>
+
+                            <!-- Expenses Section -->
+                            <div class="border-t pt-3">
+                                <h3 class="font-bold text-gray-700 text-sm mb-2 flex items-center gap-2">
+                                    <i class="fas fa-receipt text-indigo-500"></i> Expenses
+                                </h3>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div class="bg-orange-50 rounded-lg p-2">
+                                        <label class="text-xs text-orange-600 font-medium">Fuel</label>
+                                        <input type="number" id="admin-edit-fuel" value="${fuelExp}" class="w-full border border-orange-200 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                    <div class="bg-green-50 rounded-lg p-2">
+                                        <label class="text-xs text-green-600 font-medium">Food</label>
+                                        <input type="number" id="admin-edit-food" value="${foodExp}" class="w-full border border-green-200 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                    <div class="bg-blue-50 rounded-lg p-2">
+                                        <label class="text-xs text-blue-600 font-medium">Maintenance</label>
+                                        <input type="number" id="admin-edit-maint" value="${maintExp}" class="w-full border border-blue-200 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Final Amount -->
+                            <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 border border-indigo-200">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm font-bold text-indigo-800">Final Amount</span>
+                                    <input type="number" id="admin-edit-final" value="${report.finalAmount || 0}" class="w-32 text-right bg-white border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-indigo-700">
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3 pt-2 sticky bottom-0 bg-white pb-2">
+                                <button type="button" onclick="app.closeModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-300">Cancel</button>
+                                <button type="submit" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 shadow-lg">
+                                    <i class="fas fa-save mr-2"></i>Save Changes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+
+                overlay.classList.remove('hidden');
+                setTimeout(() => { 
+                    modalContent.classList.remove('scale-95','opacity-0'); 
+                    modalContent.classList.add('scale-100','opacity-100'); 
+                }, 10);
+            }
+
+            async adminSaveFullReportEdit(e, id) {
                 e.preventDefault();
                 const report = this.data.reports.find(r => r.id === id);
+                if (!report) return;
+
                 try {
-                    const updatedPayments = (report.onlinePayments || []).map((p, i) => ({ ...p, detail: document.getElementById(`ae-pay-detail-${i}`)?.value ?? p.detail, amount: parseFloat(document.getElementById(`ae-pay-amt-${i}`)?.value) ?? p.amount, status: document.getElementById(`ae-pay-status-${i}`)?.value ?? p.status }));
-                    const updates = { date: document.getElementById('ae-date').value || report.date, openingBalance: parseFloat(document.getElementById('ae-opening').value) || 0, totalGross: parseFloat(document.getElementById('ae-gross').value) || 0, totalExpenses: parseFloat(document.getElementById('ae-expenses').value) || 0, finalAmount: parseFloat(document.getElementById('ae-final').value) || 0, status: document.getElementById('ae-status').value, onlinePayments: updatedPayments, adminEditedAt: firebase.firestore.FieldValue.serverTimestamp() };
+                    // Basic fields
+                    const date = document.getElementById('admin-edit-date').value;
+                    const status = document.getElementById('admin-edit-status').value;
+                    const openingBalance = parseFloat(document.getElementById('admin-edit-opening').value) || 0;
+                    const dailyWage = parseFloat(document.getElementById('admin-edit-wage').value) || 0;
+                    const finalAmount = parseFloat(document.getElementById('admin-edit-final').value) || 0;
+
+                    // Orders update
+                    const orders = (report.orders || []).map((o, i) => {
+                        const qty = parseInt(document.getElementById(`admin-order-qty-${i}`)?.value) || 0;
+                        const rate = parseFloat(document.getElementById(`admin-order-rate-${i}`)?.value) || 0;
+                        return {
+                            type: o.type || `Type ${i+1}`,
+                            qty: qty,
+                            rate: rate,
+                            gross: qty * rate
+                        };
+                    }).filter(o => o.qty > 0);
+
+                    // Online Payments with EDITABLE Customer ID
+                    const onlinePayments = (report.onlinePayments || []).map((p, i) => {
+                        const customerId = document.getElementById(`admin-pay-custid-${i}`)?.value?.trim() || '';
+                        const customerName = document.getElementById(`admin-pay-name-${i}`)?.value?.trim() || '';
+                        const customerPhone = document.getElementById(`admin-pay-phone-${i}`)?.value?.trim() || '';
+                        const customerAddress = document.getElementById(`admin-pay-addr-${i}`)?.value?.trim() || '';
+                        const amount = parseFloat(document.getElementById(`admin-pay-amt-${i}`)?.value) || 0;
+                        const status = document.getElementById(`admin-pay-status-${i}`)?.value || 'pending';
+                        const items = document.getElementById(`admin-pay-items-${i}`)?.value?.trim() || '';
+
+                        // Update detail with new info
+                        const detail = customerName + (customerPhone ? ' - ' + customerPhone : '') || customerId || '—';
+
+                        return {
+                            ...p,
+                            customerId: customerId,
+                            customerName: customerName,
+                            customerPhone: customerPhone,
+                            customerAddress: customerAddress,
+                            customerDocId: p.customerDocId || '',
+                            amount: amount,
+                            status: status,
+                            items: items,
+                            detail: detail
+                        };
+                    });
+
+                    // Expenses update
+                    const fuel = parseFloat(document.getElementById('admin-edit-fuel').value) || 0;
+                    const food = parseFloat(document.getElementById('admin-edit-food').value) || 0;
+                    const maint = parseFloat(document.getElementById('admin-edit-maint').value) || 0;
+
+                    const expenses = [];
+                    if (fuel > 0) expenses.push({ type: 'Fuel', amount: fuel });
+                    if (food > 0) expenses.push({ type: 'Food', amount: food });
+                    if (maint > 0) expenses.push({ type: 'Maintenance', amount: maint });
+
+                    // Calculate totals
+                    const totalGross = orders.reduce((acc, o) => acc + o.gross, 0);
+                    const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+                    const totalOnline = onlinePayments.reduce((acc, p) => acc + p.amount, 0);
+
+                    const updates = {
+                        date: date,
+                        status: status,
+                        openingBalance: openingBalance,
+                        orders: orders,
+                        onlinePayments: onlinePayments,
+                        expenses: expenses,
+                        totalGross: totalGross,
+                        totalExpenses: totalExpenses,
+                        dailyWage: dailyWage,
+                        finalAmount: finalAmount,
+                        adminEditedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+
                     await window.db.collection('reports').doc(id).update(updates);
+
+                    // Update local data
                     Object.assign(report, updates);
+
                     this.closeModal();
+                    alert('Report updated successfully! ✅');
                     this.renderAdminReports();
-                } catch(e) { alert('Error: ' + e.message); }
-            },
+
+                } catch(e) { 
+                    alert('Error: ' + e.message); 
+                }
+            }
 
             renderAdminExpenses() {
                 document.getElementById('page-title').textContent = 'Rider Expenses';
