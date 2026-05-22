@@ -58,7 +58,6 @@
         .calendar-day.empty:hover { transform: none; }
 		#dynamic-style{display:none;}
 	</style>
-<base target="_blank">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
     <script>
@@ -269,13 +268,12 @@
 
                     setMsg('Loading data...');
 
-                    // ✅ Saari data EK SAATH load karo (company expenses bhi)
+                    // ✅ FIX: orderBy hatayi — composite index ki zaroorat nahi
                     const [ridersSnap, reportsSnap, attSnap, notifSnap, companyExpSnap] = await Promise.all([
                         window.db.collection('users').where('role', '==', 'rider').get(),
-                        window.db.collection('reports').where('date', '>=', twoMonthsAgo)
-                            .orderBy('date', 'desc').limit(300).get(),
+                        window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).get(),
                         window.db.collection('attendance').where('date', '>=', monthStart).get(),
-                        window.db.collection('notifications').orderBy('createdAt', 'desc').limit(30).get(),
+                        window.db.collection('notifications').limit(30).get(),
                         window.db.collection('companyExpenses').get()
                     ]);
 
@@ -305,7 +303,6 @@
                     // REALTIME LISTENERS
                     self.data._unsubReports = window.db.collection('reports')
                         .where('date', '>=', twoMonthsAgo)
-                        .orderBy('date', 'desc')
                         .limit(300)
                         .onSnapshot(snap => {
                             self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -331,10 +328,24 @@
 
                 } catch(e) {
                     console.error('Data load error:', e);
-                    setMsg('Error loading. Retrying...');
-                    setTimeout(() => {
-                        self.data._listenersSetup = false;
-                    }, 2000);
+                    const loadingDiv = document.getElementById('app-loading');
+                    if (loadingDiv) {
+                        loadingDiv.innerHTML = `
+                            <div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;margin:auto;box-shadow:0 4px 20px rgba(0,0,0,0.12);text-align:center;">
+                                <div style="font-size:48px;margin-bottom:12px;">❌</div>
+                                <h2 style="color:#dc2626;font-size:18px;font-weight:700;margin-bottom:8px;">Loading Error!</h2>
+                                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:left;margin-bottom:16px;">
+                                    <p style="color:#991b1b;font-size:12px;font-weight:700;margin-bottom:4px;">Error Code:</p>
+                                    <p style="color:#dc2626;font-size:12px;word-break:break-all;font-family:monospace;">${e.code || 'UNKNOWN'}</p>
+                                    <p style="color:#991b1b;font-size:12px;font-weight:700;margin-top:8px;margin-bottom:4px;">Error Message:</p>
+                                    <p style="color:#dc2626;font-size:11px;word-break:break-all;font-family:monospace;">${e.message || e.toString()}</p>
+                                </div>
+                                <button onclick="location.reload()" style="background:#4f46e5;color:white;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">
+                                    🔄 Dobara Try Karo
+                                </button>
+                            </div>`;
+                    }
+                    self.data._listenersSetup = false;
                 }
             },
 
@@ -1223,13 +1234,6 @@ clearAutoDraft() {
                 if (document.getElementById('sum-final')) document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
             },
 
-            async submitReport(e) {
-                e.preventDefault();
-                if (this.data._isSubmitting) return;
-                this.data._isSubmitting = true;
-                const isDraft = e.submitter?.dataset?.draft === 'true';
-                if (!isDraft && !confirm("Submit this report?")) { this.data._isSubmitting = false; return; }
-                const allBtns = document.querySelectorAll('button[type="submit"]');
                 allBtns.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
                 try {
                     const opening = parseFloat(document.getElementById('opening-balance').value) || 0;
