@@ -1232,6 +1232,7 @@ clearAutoDraft() {
                 if (document.getElementById('sum-final')) document.getElementById('sum-final').textContent = `Rs ${final.toLocaleString()}`;
             },
 
+	
             async submitReport(e) {
                 e.preventDefault();
                 if (this.data._isSubmitting) return;
@@ -2026,7 +2027,7 @@ clearAutoDraft() {
                     modalContent.classList.remove('scale-95','opacity-0'); 
                     modalContent.classList.add('scale-100','opacity-100'); 
                 }, 10);
-            }
+            },
 
             async adminSaveFullReportEdit(e, id) {
                 e.preventDefault();
@@ -2121,7 +2122,7 @@ clearAutoDraft() {
                 } catch(e) { 
                     alert('Error: ' + e.message); 
                 }
-            }
+            },
 
             renderAdminExpenses() {
                 document.getElementById('page-title').textContent = 'Rider Expenses';
