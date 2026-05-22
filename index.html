@@ -1070,12 +1070,11 @@ clearAutoDraft() {
     localStorage.removeItem(this._getDraftKey());
     // Purana key bhi clear karo (backwards compat)
     localStorage.removeItem('dastak_auto_draft');
-    ifthis._autoDraftInterval) {
+    if (this._autoDraftInterval) {        // ✅ FIXED LINE
         clearInterval(this._autoDraftInterval);
         this._autoDraftInterval = null;
     }
 },
-
             _getFormState() {
                 const payments = [];
                 document.querySelectorAll('#online-payments-list > div').forEach(row => {
@@ -1275,12 +1274,18 @@ clearAutoDraft() {
                         await window.db.collection('reports').doc(editId).update({ ...newReport, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
                         const existing = this.data.reports.find(r => r.id === editId); if (existing) Object.assign(existing, newReport);
                         alert(isDraft ? 'Draft saved!' : 'Report updated!');
-                    } else {
-                        const editId = document.getElementById('report-edit-id')?.value;
-                        if (!editId) {
-                            const duplicate = this.data.reports.find(r => r.riderId === this.data.currentUser.id && r.date === selectedDate && r.status === reportStatus && r.totalGross === totalGross && r.finalAmount === finalAmount);
-                            if (duplicate && !isDraft) { alert('Same report already exists for this date!\nGo to "My History" to edit it.'); this.data._isSubmitting = false; allBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; }); return; }
-                        }
+                    } } else {
+    // ✅ Dubara declare mat karo, pehle wala use karo
+    if (!editId) {
+        const duplicate = this.data.reports.find(...);
+        if (duplicate && !isDraft) {
+            alert('Same report already exists!');
+            // ...
+            return;
+        }
+    }
+    // ...
+				}
                         const docRef = await window.db.collection('reports').add(newReport);
                         this.data.reports.unshift({ id: docRef.id, ...newReport, createdAt: new Date() });
                         if (!isDraft) {
@@ -1461,7 +1466,6 @@ clearAutoDraft() {
                     dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
                 }
                 container.innerHTML = `<div class="space-y-4 fade-in pb-20">
-                    <div id="pull-to-refresh" class="fixed top-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-transform duration-200 ease-out z-50" style="transform: translateY(-50px); height: 50px;">
     <div class="bg-white p-2 rounded-full shadow-md flex items-center justify-center border border-gray-200">
         <i id="ptr-icon" class="fas fa-arrow-down text-blue-600 transition-transform duration-200"></i>
     </div>
