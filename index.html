@@ -1685,7 +1685,11 @@
                                 </button>
                                 <button onclick="app.openWAReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}',${p.amount},'${p.date}')"
                                     class="text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                    <i class="fab fa-whatsapp"></i> Send
+                                    <i class="fab fa-whatsapp"></i> Reminder
+                                </button>
+                                <button onclick="app.sendWhatsAppStatement('${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}')"
+                                    class="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                    <i class="fab fa-whatsapp"></i> Statement
                                 </button>
                             </div>
                         </div>`).join('')}
@@ -1841,6 +1845,87 @@
                 window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`, '_blank');
             } else {
                 // No number found — open WhatsApp with text only
+                if (confirm(`Customer ka phone number nahi mila!\n\nKya bina number ke WhatsApp open karna chahte hain?\n(Manually number type karna hoga)`)) {
+                    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+                }
+            }
+        },
+
+        // NEW: Send full statement — saari pending payments ek message mein
+        sendWhatsAppStatement(customerDetail, customerPhone) {
+            const detail = (customerDetail || '').toLowerCase();
+            const customers = this.data.customers || [];
+
+            // Customer match karo — phone se ya naam se
+            const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+            const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
+            const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
+            const matched = byPhone || byName;
+            const custName = matched ? matched.name : (customerDetail || 'Customer');
+
+            // Saari PENDING payments dhoondo is customer ki — sari reports mein se
+            const allPending = [];
+            this.data.reports.forEach(r => {
+                (r.onlinePayments || []).forEach(p => {
+                    if (p.status !== 'pending') return;
+                    const d = (p.detail || '').toLowerCase();
+                    const dPhone = d.replace(/\D/g,'').slice(-10);
+
+                    // Match: phone exact match YA naam match YA detail exact match
+                    const phoneMatch = phoneInDetail.length >= 10 && dPhone === phoneInDetail;
+                    const nameMatch = matched && (matched.name||'').length >= 3 && d.includes((matched.name||'').toLowerCase());
+                    const exactMatch = p.detail === customerDetail;
+                    const passedPhoneMatch = customerPhone && (p.customerPhone||'').replace(/\D/g,'').slice(-10) === customerPhone.replace(/\D/g,'').slice(-10) && customerPhone.replace(/\D/g,'').length >= 10;
+
+                    if (phoneMatch || nameMatch || exactMatch || passedPhoneMatch) {
+                        allPending.push({
+                            date: r.date,
+                            amount: p.amount || 0,
+                            detail: p.detail || '',
+                            items: p.items || ''
+                        });
+                    }
+                });
+            });
+
+            if (allPending.length === 0) {
+                alert(`"${custName}" ki koi pending payment nahi mili.\n\nTip: Customer ID ya exact naam use karein.`);
+                return;
+            }
+
+            // Sort by date (purani pehle)
+            allPending.sort((a, b) => new Date(a.date) - new Date(b.date));
+            const totalPending = allPending.reduce((a, p) => a + p.amount, 0);
+            const oldestDate = allPending[0].date;
+            const daysSince = Math.floor((new Date() - new Date(oldestDate)) / (1000 * 60 * 60 * 24));
+
+            // Build statement lines
+            const lines = allPending.map((p, i) => {
+                const d = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+                const dateFormatted = new Date(p.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+                return `${i + 1}. 📅 ${dateFormatted} — *Rs ${p.amount.toLocaleString()}* (${d} din پہلے)${p.items ? '\n   🛒 ' + p.items : ''}`;
+            }).join('\n');
+
+            const message = `Assalam o Alaikum *${custName}*! 🙏\n\nآپ کی درج ذیل payments ابھی تک pending ہیں:\n\n${lines}\n\n━━━━━━━━━━━━━━━\n💰 *کل باقی: Rs ${totalPending.toLocaleString()}*\n📆 *${daysSince} دن سے pending*\n━━━━━━━━━━━━━━━\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ — Dastak Delivery Service 🚀`;
+
+            // Phone number determine karo
+            let waNumber = '';
+            if (customerPhone) {
+                const p = customerPhone.replace(/\D/g,'');
+                if (p.length >= 10) waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
+            }
+            if (!waNumber && matched && matched.phone) {
+                const p = matched.phone.replace(/\D/g,'');
+                waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
+            }
+            if (!waNumber && phoneInDetail.length >= 10) {
+                waNumber = '92' + phoneInDetail;
+            }
+
+            const encoded = encodeURIComponent(message);
+            if (waNumber.length >= 12) {
+                window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`, '_blank');
+            } else {
                 if (confirm(`Customer ka phone number nahi mila!\n\nKya bina number ke WhatsApp open karna chahte hain?\n(Manually number type karna hoga)`)) {
                     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
                 }
