@@ -1070,12 +1070,14 @@
             const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0) - (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             const totalWages = monthReports.reduce((a,r)=>a+(r.dailyWage||0),0);
             const totalRiderExpenses = monthReports.reduce((a,r)=>a+(r.totalExpenses||0),0);
+            const totalCompanyExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             const daysInMonth = new Date(y,m+1,0).getDate();
             const dailyLabels=[], dailyProfit=[], dailyExp=[];
             for (let d=1; d<=daysInMonth; d++) {
                 const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                 const dayReps = monthReports.filter(r=>r.date===dateStr);
                 dailyLabels.push(d);
+                // Daily chart: sirf rider gross - rider expenses - wages (company expense NAHI)
                 dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0));
                 dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
             }
@@ -1088,19 +1090,22 @@
                         const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
                         const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
                         const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                        // Day view: company expense NAHI minus hoga — sirf rider expenses
                         const profit = gross-exp-wages;
                         const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
                         const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
                         const pending = this.data.reports.filter(r=>r.date===today&&r.status==='pending').length;
-                        return `<div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>${pending>0?`<div class="col-span-2 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending</div>`:''}`;
+                        return `<div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Rider Exp.</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Rider Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>${pending>0?`<div class="col-span-2 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending</div>`:''}`;
                     })()}</div>
                 </div>
                 <div class="section-card">
                     <div class="flex justify-between items-center mb-1"><h3 class="font-bold text-gray-800">Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span></div>
+                    <p class="text-xs text-gray-400 mb-3">Net Profit = Gross − Wages − Rider Exp − Company Exp</p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                        <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3></div>
+                        <div class="stat-card border-l-4 border-green-500 col-span-2 md:col-span-1"><p class="text-xs text-gray-500">🏆 Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400">After all expenses</p></div>
                         <div class="stat-card border-l-4 border-yellow-500"><p class="text-xs text-gray-500">Total Wages</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalWages.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-red-400"><p class="text-xs text-gray-500">Rider Expenses</p><h3 class="text-lg font-bold text-red-500">Rs ${totalRiderExpenses.toLocaleString()}</h3></div>
+                        <div class="stat-card border-l-4 border-purple-500 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">🏢 Company Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3><p class="text-xs text-purple-400">Minus from Net Profit ↑</p></div>
                         <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold">${totalRiders}</h3></div>
                         <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
                     </div>
@@ -1124,12 +1129,12 @@
             const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
             const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
             const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
-            const cexp = (this.data.companyExpenses||[]).filter(e=>e.date===date).reduce((a,e)=>a+e.amount,0);
-            const profit = gross-wages-exp-cexp;
+            // Company expense day view se MINUS NAHI hoga — sirf rider expenses
+            const profit = gross - wages - exp;
             const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
             const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
             const pending = this.data.reports.filter(r=>r.date===date&&r.status==='pending').length;
-            grid.innerHTML = `<div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Expenses</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Net Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>${pending>0?`<div class="col-span-2 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending</div>`:''}`;
+            grid.innerHTML = `<div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Gross</p><p class="text-lg font-bold">Rs ${gross.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Wages</p><p class="text-lg font-bold text-yellow-200">-Rs ${wages.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Rider Exp.</p><p class="text-lg font-bold text-red-300">-Rs ${exp.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Rider Profit</p><p class="text-lg font-bold ${profit>=0?'text-green-300':'text-red-400'}">Rs ${profit.toLocaleString()}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Orders</p><p class="text-lg font-bold">${orders}</p></div><div class="bg-white/15 rounded-xl p-3 text-center"><p class="text-xs text-indigo-100">Online Pending</p><p class="text-lg font-bold text-yellow-300">Rs ${online.toLocaleString()}</p></div>${pending>0?`<div class="col-span-2 bg-yellow-400/20 rounded-lg p-2 text-center text-sm"><i class="fas fa-clock mr-1"></i>${pending} pending</div>`:''}`;
         },
 
         // ========== ADMIN RIDERS (with disable/enable) ==========
@@ -2049,22 +2054,169 @@
         },
 
         // ========== COMPANY EXPENSES ==========
-        async renderCompanyExpenses() {
+        async renderCompanyExpenses(filterDate = null, filterMonth = null) {
             document.getElementById('page-title').textContent = 'Company Expenses';
             const container = document.getElementById('main-container');
             await this.ensureCompanyExpenses();
-            const expenses = this.data.companyExpenses || [];
-            const totalExp = expenses.reduce((a,e)=>a+e.amount,0);
+            const allExpenses = this.data.companyExpenses || [];
             const categories = ['Rent','Salaries','Utilities','Fuel','Maintenance','Marketing','Other'];
+
+            // Saved filters
+            const activeDateFilter = filterDate !== null ? filterDate : (this.data.ceFilterDate || '');
+            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.ceFilterMonth || '');
+            this.data.ceFilterDate = activeDateFilter;
+            this.data.ceFilterMonth = activeMonthFilter;
+
+            // Filter expenses
+            let filteredExpenses = [...allExpenses];
+            if (activeDateFilter) {
+                filteredExpenses = filteredExpenses.filter(e => e.date === activeDateFilter);
+            } else if (activeMonthFilter) {
+                const [fy, fm] = activeMonthFilter.split('-').map(Number);
+                filteredExpenses = filteredExpenses.filter(e => {
+                    const d = new Date(e.date);
+                    return d.getFullYear() === fy && d.getMonth() === fm - 1;
+                });
+            }
+
+            // Totals
+            const totalAll = allExpenses.reduce((a,e)=>a+e.amount,0);
+            const totalFiltered = filteredExpenses.reduce((a,e)=>a+e.amount,0);
+            const isFiltered = activeDateFilter || activeMonthFilter;
+
+            // Month options for selector
+            const now = new Date();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            let monthOptions = '<option value="">-- Sab Months --</option>';
+            for (let i = 0; i < 24; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                monthOptions += `<option value="${val}" ${activeMonthFilter===val?'selected':''}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+            }
+
+            // Category breakdown for filtered
+            const catTotals = {};
+            categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
+
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
-                <div class="stat-card border-l-4 border-purple-500"><p class="text-xs text-gray-500">Total</p><h3 class="text-2xl font-bold text-purple-600">Rs ${totalExp.toLocaleString()}</h3></div>
-                <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Add Expense</h3><div class="space-y-3">
-                    <div class="grid grid-cols-2 gap-3"><div><label class="text-xs text-gray-500 mb-1 block">Category</label><select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">${categories.map(c=>`<option>${c}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label><input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0"></div></div>
-                    <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="Description">
-                    <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${new Date().toISOString().split('T')[0]}">
-                    <button onclick="app.addCompanyExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700"><i class="fas fa-plus mr-2"></i>Add Expense</button>
-                </div></div>
-                <div class="section-card"><h3 class="font-bold text-gray-800 mb-3">All Entries</h3><div class="space-y-2">${expenses.length===0?'<p class="text-center text-gray-400 py-8">No expenses yet</p>':[...expenses].reverse().map(e=>`<div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg"><div><p class="font-medium text-sm">${e.description||e.category}</p><p class="text-xs text-gray-500">${e.category} — ${new Date(e.date).toLocaleDateString()}</p></div><div class="flex items-center gap-2"><p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p><button onclick="app.deleteCompanyExpense('${e.id}')" class="text-red-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button></div></div>`).join('')}</div></div>
+
+                <!-- Totals -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="stat-card border-l-4 border-purple-500">
+                        <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
+                        <h3 class="text-2xl font-bold text-purple-600">Rs ${totalAll.toLocaleString()}</h3>
+                    </div>
+                    ${isFiltered ? `<div class="stat-card border-l-4 border-indigo-400">
+                        <p class="text-xs text-gray-500">Filter ka Total</p>
+                        <h3 class="text-2xl font-bold text-indigo-600">Rs ${totalFiltered.toLocaleString()}</h3>
+                    </div>` : `<div class="stat-card border-l-4 border-gray-300">
+                        <p class="text-xs text-gray-400">Entries</p>
+                        <h3 class="text-2xl font-bold text-gray-600">${allExpenses.length}</h3>
+                    </div>`}
+                </div>
+
+                <!-- Filters -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+                    <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 text-sm"></i>
+                            <input type="date" value="${activeDateFilter}"
+                                max="${now.toISOString().split('T')[0]}"
+                                onchange="app.data.ceFilterMonth='';app.renderCompanyExpenses(this.value,'')"
+                                class="w-full border border-purple-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-purple-700 outline-none cursor-pointer">
+                        </div>
+                        <button onclick="app.renderCompanyExpenses('','')"
+                            class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!activeDateFilter&&!activeMonthFilter?'bg-purple-600 text-white':'bg-white text-gray-600 border border-gray-300'}">
+                            Sab
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-calendar text-purple-400 text-sm ml-1"></i>
+                        <select onchange="app.data.ceFilterDate='';app.renderCompanyExpenses('',this.value)"
+                            class="flex-1 border border-purple-200 bg-purple-50 text-purple-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
+                            ${monthOptions}
+                        </select>
+                    </div>
+                    ${isFiltered ? `<div class="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                        <i class="fas fa-filter text-purple-500 text-xs"></i>
+                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : (() => { const [fy,fm] = activeMonthFilter.split('-').map(Number); return monthNames[fm-1]+' '+fy; })()}</span>
+                        <button onclick="app.renderCompanyExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
+                    </div>` : ''}
+                </div>
+
+                <!-- Add Expense -->
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-plus-circle text-purple-500 mr-2"></i>Naya Expense Add Karo</h3>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
+                                <select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                    ${categories.map(c=>`<option>${c}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
+                                <input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
+                            </div>
+                        </div>
+                        <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
+                            <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent June 2026">
+                        </div>
+                        <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
+                            <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
+                        </div>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-start gap-2">
+                            <i class="fas fa-info-circle text-yellow-600 text-xs mt-0.5"></i>
+                            <p class="text-xs text-yellow-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete. Dhyan se bharein!</p>
+                        </div>
+                        <button onclick="app.addCompanyExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Add Expense
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Category breakdown -->
+                ${filteredExpenses.length > 0 ? `
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-3">Category Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        ${categories.filter(c=>catTotals[c]>0).map(c=>`
+                        <div class="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                            <p class="text-xs text-gray-500">${c}</p>
+                            <p class="font-bold text-purple-700">Rs ${catTotals[c].toLocaleString()}</p>
+                        </div>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                <!-- All Entries -->
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
+                        ${isFiltered ? `<span class="text-xs text-purple-600 font-semibold">Total: Rs ${totalFiltered.toLocaleString()}</span>` : ''}
+                    </div>
+                    <div class="space-y-2">
+                        ${filteredExpenses.length === 0 ?
+                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-building text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
+                            [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
+                            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-sm text-gray-800">${e.description || e.category}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">${e.category}</span>
+                                        <span class="text-xs text-gray-400">${new Date(e.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+                                    <p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                    <button onclick="app.deleteCompanyExpense('${e.id}')"
+                                        class="p-1.5 bg-red-100 text-red-500 hover:bg-red-200 rounded-lg transition-colors" title="Delete">
+                                        <i class="fas fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>`).join('')
+                        }
+                    </div>
+                </div>
             </div>`;
         },
 
