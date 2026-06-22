@@ -1071,6 +1071,8 @@
             const totalWages = monthReports.reduce((a,r)=>a+(r.dailyWage||0),0);
             const totalRiderExpenses = monthReports.reduce((a,r)=>a+(r.totalExpenses||0),0);
             const totalCompanyExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            // Total deliveries for selected month
+            const totalDeliveries = monthReports.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
             const daysInMonth = new Date(y,m+1,0).getDate();
             const dailyLabels=[], dailyProfit=[], dailyExp=[];
             for (let d=1; d<=daysInMonth; d++) {
