@@ -2325,7 +2325,7 @@
                         <input type="text" id="cust-name" placeholder="Name *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                         <input type="tel" id="cust-phone" placeholder="Phone *" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                         <input type="text" id="cust-address" placeholder="Address" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                        <input type="text" id="cust-id" placeholder="Customer ID (C001)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                        <input type="text" id="cust-id" placeholder="ID (auto: M081)" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                     </div>
                     <button onclick="app.addCustomer()" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm"><i class="fas fa-plus mr-2"></i>Add Customer</button>
                 </div>
@@ -2419,17 +2419,26 @@
         },
 
         async addCustomer() {
-            const name=document.getElementById('cust-name').value.trim();
-            const phone=document.getElementById('cust-phone').value.trim();
-            const address=document.getElementById('cust-address').value.trim();
-            const customerId=document.getElementById('cust-id')?.value.trim()||'';
-            if (!name||!phone) { alert('Name aur phone zaroori hai!'); return; }
+            const name = document.getElementById('cust-name').value.trim();
+            const phone = document.getElementById('cust-phone').value.trim();
+            const address = document.getElementById('cust-address').value.trim();
+            let customerId = document.getElementById('cust-id')?.value.trim() || '';
+            if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+            // ✅ Auto generate ID agar khali ho
+            if (!customerId) {
+                const existingIds = new Set((this.data.customers||[]).map(c=>c.customerId).filter(Boolean));
+                customerId = this.generateCustomerId(name, phone, existingIds);
+            }
             try {
-                const docRef=await window.db.collection('customers').add({name,phone,address,customerId,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-                this.data.customers.push({id:docRef.id,name,phone,address,customerId});
-                document.getElementById('cust-name').value=''; document.getElementById('cust-phone').value=''; document.getElementById('cust-address').value=''; if(document.getElementById('cust-id')) document.getElementById('cust-id').value='';
-                alert('Customer added!'); this._renderCustomersPage();
-            } catch(e) { alert('Error: '+e.message); }
+                const docRef = await window.db.collection('customers').add({name, phone, address, customerId, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+                this.data.customers.push({id: docRef.id, name, phone, address, customerId});
+                document.getElementById('cust-name').value = '';
+                document.getElementById('cust-phone').value = '';
+                document.getElementById('cust-address').value = '';
+                if (document.getElementById('cust-id')) document.getElementById('cust-id').value = '';
+                alert(`Customer added! ✅\n🆔 Auto ID: ${customerId}`);
+                this._renderCustomersPage();
+            } catch(e) { alert('Error: ' + e.message); }
         },
 
         async deleteCustomer(id) {
@@ -2472,32 +2481,133 @@
             catch(e) { alert('Error: '+e.message); }
         },
 
+        // ✅ Auto Customer ID generator: First letter of first name + last 3 digits of phone
+        // e.g. "Mahboob Ali" + "03420385081" → "M081"
+        // Duplicate hone par: "M081a", "M081b" etc.
+        generateCustomerId(name, phone, existingIds = new Set()) {
+            // First letter — pehla alphabet character (English ya Urdu)
+            const cleanedName = (name || '').trim();
+            let firstLetter = '';
+            for (const ch of cleanedName) {
+                if (/[a-zA-Z]/.test(ch)) { firstLetter = ch.toUpperCase(); break; }
+            }
+            if (!firstLetter) firstLetter = 'X';
+
+            // Last 3 digits of phone
+            const digits = (phone || '').replace(/\D/g,'');
+            const last3 = digits.slice(-3).padStart(3,'0');
+
+            // Base ID
+            let baseId = firstLetter + last3; // e.g. M081
+
+            // Duplicate check — agar already hai to suffix lagao
+            if (!existingIds.has(baseId)) return baseId;
+            const suffixes = 'abcdefghijklmnopqrstuvwxyz';
+            for (const s of suffixes) {
+                const candidate = baseId + s; // M081a, M081b...
+                if (!existingIds.has(candidate)) return candidate;
+            }
+            // Fallback: random suffix
+            return baseId + Math.floor(Math.random()*100);
+        },
+
         async importCustomersFile(input) {
-            const file=input.files[0]; if (!file) return;
-            const self=this;
-            const doImport=async()=>{
-                const reader=new FileReader();
-                reader.onload=async(e)=>{
+            const file = input.files[0]; if (!file) return;
+            const self = this;
+            const doImport = async () => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
                     try {
-                        const wb=XLSX.read(e.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-                        const headers=rows[0]||[];
-                        const colIdx=(names)=>{ for(const n of names){const i=headers.findIndex(h=>h&&h.toString().toLowerCase().includes(n.toLowerCase()));if(i>=0)return i;} return -1;};
-                        const firstNameIdx=colIdx(['first name','name','contact']); const mobileIdx=colIdx(['mobile phone','mobile','phone','primary phone','cell']); const addressIdx=colIdx(['address','street','city']);
-                        const cleanPhone=(p)=>{if(!p)return'';p=p.toString().replace(/[\s\-\(\)]/g,'');if(p.startsWith('+92'))p='0'+p.slice(3);else if(p.startsWith('92')&&p.length>10)p='0'+p.slice(2);return p;};
-                        const cleanName=(raw)=>{if(!raw)return'';return raw.toString().trim().replace(/^[^a-zA-Z0-9\u0600-\u06FF]+/,'').trim();};
-                        let added=0,skipped=0; const newCustomers=[]; const dataRows=rows.slice(1).filter(r=>r&&r.length>0);
-                        for(let i=0;i<dataRows.length;i+=400){
-                            const batch=window.db.batch(); const chunk=dataRows.slice(i,i+400);
-                            chunk.forEach(row=>{const name=cleanName(firstNameIdx>=0?row[firstNameIdx]:row[0]);const phone=cleanPhone(mobileIdx>=0?row[mobileIdx]:row[1]);const address=addressIdx>=0?(row[addressIdx]||'').toString().trim():'';if(!name||!phone){skipped++;return;}const ref=window.db.collection('customers').doc();batch.set(ref,{name,phone,address,createdAt:firebase.firestore.FieldValue.serverTimestamp()});newCustomers.push({id:ref.id,name,phone,address});added++;});
+                        const wb = XLSX.read(e.target.result, {type:'array'});
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(ws, {header:1});
+                        const headers = rows[0] || [];
+
+                        const colIdx = (names) => {
+                            for (const n of names) {
+                                const i = headers.findIndex(h => h && h.toString().toLowerCase().includes(n.toLowerCase()));
+                                if (i >= 0) return i;
+                            }
+                            return -1;
+                        };
+
+                        const firstNameIdx = colIdx(['first name','name','contact','naam']);
+                        const mobileIdx = colIdx(['mobile phone','mobile','phone','primary phone','cell','number']);
+                        const addressIdx = colIdx(['address','street','city','pata']);
+
+                        const cleanPhone = (p) => {
+                            if (!p) return '';
+                            p = p.toString().replace(/[\s\-\(\)\.]/g,'');
+                            if (p.startsWith('+92')) p = '0' + p.slice(3);
+                            else if (p.startsWith('92') && p.length > 10) p = '0' + p.slice(2);
+                            return p;
+                        };
+
+                        const cleanName = (raw) => {
+                            if (!raw) return '';
+                            return raw.toString().trim().replace(/^[^a-zA-Z0-9\u0600-\u06FF]+/,'').trim();
+                        };
+
+                        const dataRows = rows.slice(1).filter(r => r && r.length > 0);
+
+                        // ✅ Build existing IDs set (from already imported customers)
+                        const existingIds = new Set(
+                            (self.data.customers || []).map(c => c.customerId).filter(Boolean)
+                        );
+
+                        let added = 0, skipped = 0, duplicateIds = 0;
+                        const newCustomers = [];
+
+                        // Process in batches of 400
+                        for (let i = 0; i < dataRows.length; i += 400) {
+                            const batch = window.db.batch();
+                            const chunk = dataRows.slice(i, i + 400);
+
+                            chunk.forEach(row => {
+                                const name = cleanName(firstNameIdx >= 0 ? row[firstNameIdx] : row[0]);
+                                const phone = cleanPhone(mobileIdx >= 0 ? row[mobileIdx] : row[1]);
+                                const address = addressIdx >= 0 ? (row[addressIdx] || '').toString().trim() : '';
+
+                                if (!name || !phone) { skipped++; return; }
+
+                                // ✅ Auto generate Customer ID
+                                const customerId = self.generateCustomerId(name, phone, existingIds);
+                                existingIds.add(customerId); // taake next row duplicate na ho
+
+                                const ref = window.db.collection('customers').doc();
+                                batch.set(ref, {
+                                    name, phone, address, customerId,
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                newCustomers.push({ id: ref.id, name, phone, address, customerId });
+                                added++;
+                            });
+
                             await batch.commit();
                         }
-                        self.data.customers=[...self.data.customers,...newCustomers]; self.data.custPage=1;
-                        alert(`✅ ${added} imported!${skipped>0?`\n⚠️ ${skipped} skipped`:''}`); self._renderCustomersPage();
-                    } catch(err){alert('Import error: '+err.message);}
+
+                        self.data.customers = [...self.data.customers, ...newCustomers];
+                        self.data.custPage = 1;
+
+                        alert(
+                            `✅ ${added} customers import ho gaye!\n` +
+                            `🆔 Har customer ki auto ID bani (e.g. M081)\n` +
+                            `${skipped > 0 ? `⚠️ ${skipped} rows skip hue (name/phone missing)` : ''}`
+                        );
+                        self._renderCustomersPage();
+
+                    } catch(err) { alert('Import error: ' + err.message); }
                 };
                 reader.readAsArrayBuffer(file);
             };
-            if(window.XLSX){doImport();}else{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=doImport;document.head.appendChild(s);}
+
+            if (window.XLSX) { doImport(); }
+            else {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                s.onload = doImport;
+                document.head.appendChild(s);
+            }
         },
 
         // ========== ATTENDANCE ==========
