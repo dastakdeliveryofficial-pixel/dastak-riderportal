@@ -36,6 +36,16 @@
         .quick-action-btn { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; border-radius:12px; padding:16px; text-align:center; transition:transform 0.2s; }
         .quick-action-btn:active { transform:scale(0.98); }
         .section-card { background:white; border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+        .attendance-calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+        .calendar-day { aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:8px; font-size:0.75rem; cursor:pointer; transition:all 0.2s; border:1px solid #e5e7eb; }
+        .calendar-day:hover { transform:scale(1.05); }
+        .calendar-day.present { background:#d1fae5; color:#065f46; border-color:#10b981; }
+        .calendar-day.absent { background:#fee2e2; color:#991b1b; border-color:#ef4444; }
+        .calendar-day.relief { background:#dbeafe; color:#1e40af; border-color:#3b82f6; }
+        .calendar-day.empty { background:#f9fafb; border-color:#f3f4f6; cursor:default; }
+        .calendar-day.empty:hover { transform:none; }
+        #dynamic-style { display:none; }
+        .partial-pay-modal { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     </style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
@@ -53,7 +63,6 @@
         window.db = firebase.firestore();
     </script>
 
-    <!-- Pull to Refresh -->
     <div id="pull-to-refresh" class="fixed top-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-transform duration-200 ease-out z-50" style="transform:translateY(-50px);height:50px;">
         <div class="bg-white p-2 rounded-full shadow-md flex items-center justify-center border border-gray-200">
             <i id="ptr-icon" class="fas fa-arrow-down text-blue-600 transition-transform duration-200"></i>
@@ -101,6 +110,9 @@
                     <i class="fas fa-bell text-lg md:text-xl"></i>
                     <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white hidden" id="notif-dot"></span>
                 </button>
+                <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
+                    <i class="fas fa-play mr-1"></i><span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Shift</span>
+                </button>
                 <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0 md:hidden" id="mobile-logout-btn">
                     <i class="fas fa-sign-out-alt text-base"></i>
                 </button>
@@ -110,6 +122,11 @@
             <div id="app-loading" class="flex flex-col items-center justify-center h-full min-h-64 gap-4">
                 <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 animate-pulse"><i class="fas fa-motorcycle text-white text-2xl"></i></div>
                 <div class="text-center"><p class="font-bold text-gray-700 text-lg">Dastak Portal</p><p class="text-sm text-gray-400 mt-1" id="loading-msg">Loading data...</p></div>
+                <div class="flex gap-1.5">
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+                    <div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+                </div>
             </div>
         </div>
     </main>
@@ -118,20 +135,50 @@
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
     </div>
 
+    <style id="dynamic-style"></style>
+
     <script>
     const app = {
         data: {
             currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [],
-            announcements: [], currentShift: null, sidebarOpen: false, chartRegistry: {},
+            announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
+            currentShift: null, sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
-            customersLoaded: false, companyExpensesLoaded: false, _listenersSetup: false, _currentViewId: null
+            custPage: 1, custPerPage: 50,
+            paymentDateFilter: new Date().toISOString().split('T')[0],
+            paymentMonthFilter: null,
+            riderPaymentFilter: 'all',
+            customersLoaded: false, companyExpensesLoaded: false,
+            _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
+            _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
+            _editReportId: null, _isSubmitting: false,
+            attMonth: null, attYear: null,
+            waReminderTemplate: 'Assalam o Alaikum {name},\n\nآپ کی payment pending ہے۔\n\n💰 *Amount: Rs {amount}*\n📅 Date: {date}\n\nبراہ کرم payment کریں۔\nشکریہ — Dastak 🙏',
+            waReceivedTemplate: 'Assalam o Alaikum *{name}*! 🙏\n\nآپ کی payment موصول ہو گئی۔ شکریہ!\n\n✅ *Rs {amount} Received*\n📅 Date: {date}\n\nDastak پر order کا شکریہ 🚀\n— Dastak Delivery Service',
         },
 
         init() {
             this.updateDate();
+            const savedReminder = localStorage.getItem('dastak_wa_reminder');
+            const savedReceived = localStorage.getItem('dastak_wa_received');
+            if (savedReminder) this.data.waReminderTemplate = savedReminder;
+            if (savedReceived) this.data.waReceivedTemplate = savedReceived;
+
             window.auth.onAuthStateChanged((user) => {
                 if (user) this.loadUserData(user.uid);
                 else this.showLogin();
+            });
+            window.addEventListener('resize', () => {
+                if (window.innerWidth >= 768) {
+                    document.getElementById('sidebar').classList.remove('mobile-visible');
+                    document.getElementById('sidebar-overlay').classList.add('hidden');
+                    this.data.sidebarOpen = false;
+                }
+            });
+            window.addEventListener('popstate', (e) => {
+                if (!this.data.currentUser) return;
+                const viewId = e.state?.viewId || location.hash.slice(1) || null;
+                if (viewId) this._renderView(viewId);
             });
         },
 
@@ -140,15 +187,36 @@
                 const userDoc = await window.db.collection('users').doc(uid).get();
                 if (userDoc.exists) {
                     this.data.currentUser = { id: uid, ...userDoc.data() };
+                } else {
+                    const user = window.auth.currentUser;
+                    const isAdmin = user.email === "admin@portal.com";
+                    const newUserData = {
+                        email: user.email, name: isAdmin ? "Administrator" : "New User",
+                        phone: "", zone: isAdmin ? "Head Office" : "Unassigned",
+                        vehicle: isAdmin ? "Admin" : "", role: isAdmin ? "admin" : "rider",
+                        joinDate: new Date().toISOString().split('T')[0],
+                        salaryBase: isAdmin ? 50000 : 15000, dailyWage: isAdmin ? 1000 : 500,
+                        disabled: false
+                    };
+                    await window.db.collection('users').doc(uid).set(newUserData);
+                    this.data.currentUser = { id: uid, ...newUserData };
+                }
+                if (this.data.currentUser.disabled && this.data.currentUser.role !== 'admin') {
+                    alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
+                    this.logout();
+                    return;
                 }
                 document.getElementById('sidebar').classList.remove('hidden');
                 document.getElementById('main-header').classList.remove('hidden');
                 this.renderSidebar();
                 this.initMonthPicker();
                 const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                history.replaceState({ viewId: initView }, '', '#' + initView);
                 await this.setupRealtimeListeners();
                 this._renderView(initView);
             } catch (error) {
+                console.error('Error loading user data:', error);
+                alert('Error loading user data: ' + error.message);
                 this.logout();
             }
         },
@@ -156,11 +224,75 @@
         async setupRealtimeListeners() {
             if (this.data._listenersSetup) return;
             this.data._listenersSetup = true;
-            const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
-            this.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const reportsSnap = await window.db.collection('reports').get();
-            this.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            await this.ensureCustomers();
+            const self = this;
+            const setMsg = (msg) => { const el = document.getElementById('loading-msg'); if (el) el.textContent = msg; };
+            try {
+                setMsg('Connecting...');
+                const now = new Date();
+                const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+                const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
+
+                setMsg('Loading users...');
+                const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
+                self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                setMsg('Loading reports...');
+                const reportsSnap = await window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).get();
+                self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                setMsg('Loading attendance...');
+                const attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
+                self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                setMsg('Loading notifications...');
+                const notifSnap = await window.db.collection('notifications').limit(30).get();
+                if (!notifSnap.empty) {
+                    self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
+                    const dot = document.getElementById('notif-dot');
+                    if (dot) dot.classList.remove('hidden');
+                }
+
+                setMsg('Loading expenses...');
+                const companyExpSnap = await window.db.collection('companyExpenses').get();
+                self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self.data.companyExpensesLoaded = true;
+
+                setMsg('Setting up listeners...');
+                let rf = true, af = true, uf = true;
+                self.data._unsubReports = window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).onSnapshot(snap => {
+                    self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if (rf) { rf = false; return; }
+                    self._debouncedRefresh();
+                });
+                self.data._unsubAtt = window.db.collection('attendance').where('date', '>=', monthStart).onSnapshot(snap => {
+                    self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if (af) { af = false; return; }
+                    self._debouncedRefresh();
+                });
+                self.data._unsubRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot(snap => {
+                    self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    if (uf) { uf = false; return; }
+                    self._debouncedRefresh();
+                });
+                setMsg('Ready!');
+            } catch(e) {
+                console.error('Data load error:', e);
+                setMsg('Error: ' + e.message);
+            }
+        },
+
+        _debouncedRefresh() {
+            if (this.data._refreshTimer) clearTimeout(this.data._refreshTimer);
+            this.data._refreshTimer = setTimeout(() => { this._refreshCurrentView(); this.data._refreshTimer = null; }, 300);
+        },
+
+        _refreshCurrentView() {
+            const id = this.data._currentViewId;
+            if (!id || ['rider-report'].includes(id)) return;
+            const ds = document.getElementById('dynamic-style');
+            if (ds) ds.textContent = '.fade-in{animation:none!important;}';
+            this._renderView(id);
+            requestAnimationFrame(() => requestAnimationFrame(() => { if (ds) ds.textContent = ''; }));
         },
 
         async ensureCustomers() {
@@ -170,19 +302,53 @@
             this.data.customersLoaded = true;
         },
 
+        async ensureCompanyExpenses() {
+            if (this.data.companyExpensesLoaded) return;
+            const snap = await window.db.collection('companyExpenses').get();
+            this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this.data.companyExpensesLoaded = true;
+        },
+
+        stopRealtimeListeners() {
+            if (this.data._unsubReports) { this.data._unsubReports(); this.data._unsubReports = null; }
+            if (this.data._unsubAtt) { this.data._unsubAtt(); this.data._unsubAtt = null; }
+            if (this.data._unsubRiders) { this.data._unsubRiders(); this.data._unsubRiders = null; }
+            this.data._listenersSetup = false;
+            if (this.data._refreshTimer) { clearTimeout(this.data._refreshTimer); this.data._refreshTimer = null; }
+            Object.values(this.data.chartRegistry).forEach(c => { try { c.destroy(); } catch(e){} });
+            this.data.chartRegistry = {};
+        },
+
+        createChart(id, config) {
+            if (this.data.chartRegistry[id]) { try { this.data.chartRegistry[id].destroy(); } catch(e){} delete this.data.chartRegistry[id]; }
+            const ctx = document.getElementById(id);
+            if (!ctx) return null;
+            const chart = new Chart(ctx.getContext('2d'), config);
+            this.data.chartRegistry[id] = chart;
+            return chart;
+        },
+
         updateDate() {
             const dateEl = document.getElementById('current-date');
             if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
         },
 
+        toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            this.data.sidebarOpen = !this.data.sidebarOpen;
+            if (this.data.sidebarOpen) { sidebar.classList.add('mobile-visible'); overlay.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+            else { sidebar.classList.remove('mobile-visible'); overlay.classList.add('hidden'); document.body.style.overflow = ''; }
+        },
+
         showLogin() {
+            this.stopRealtimeListeners();
             document.getElementById('main-container').innerHTML = `
-                <div class="min-h-full flex flex-col md:flex-row items-center justify-center gap-6 fade-in p-4 overflow-y-auto">
-                    <!-- Standard Portal Login -->
+                <div class="min-h-full flex items-center justify-center fade-in p-4">
                     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
                         <div class="text-center mb-6">
                             <div class="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4 shadow-lg shadow-indigo-200"><i class="fas fa-motorcycle"></i></div>
-                            <h2 class="text-xl font-bold text-gray-800">Dastak Portal</h2>
+                            <h2 class="text-xl font-bold text-gray-800">Welcome Back</h2>
                             <p class="text-gray-500 text-sm">Sign in to access your portal</p>
                         </div>
                         <form onsubmit="app.handleLogin(event)" class="space-y-4">
@@ -190,25 +356,16 @@
                             <input type="password" id="login-pass" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" required>
                             <button type="submit" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Sign In</button>
                         </form>
-                    </div>
-
-                    <!-- Read-only Customer Quick View Box -->
-                    <div class="bg-gradient-to-br from-purple-700 to-indigo-800 p-6 md:p-8 rounded-2xl shadow-xl w-full max-w-md text-white">
-                        <div class="text-center mb-4">
-                            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-xl mx-auto mb-2"><i class="fas fa-user-shield"></i></div>
-                            <h2 class="text-lg font-bold">Customer Payment Ledger</h2>
-                            <p class="text-purple-200 text-xs">Apni Online Payment Report Check Karein</p>
+                        <div class="mt-4 text-center space-y-2">
+                            <p class="text-sm text-gray-500">No account? <button onclick="app.showSignup()" class="text-indigo-600 font-semibold hover:underline">Sign Up</button></p>
+                            <button onclick="app.showForgotPassword()" class="text-sm text-gray-500 hover:text-indigo-600">Forgot Password?</button>
                         </div>
-                        <div class="space-y-3">
-                            <div>
-                                <label class="block text-xs font-medium text-purple-200 mb-1">Enter Customer ID (e.g., M081)</label>
-                                <div class="flex gap-2">
-                                    <input type="text" id="cust-search-id" class="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white font-bold placeholder-white/40 outline-none focus:ring-2 focus:ring-white/50 uppercase" placeholder="M081" autocomplete="off">
-                                    <button onclick="app.fetchCustomerLedgerPublic()" class="bg-white text-indigo-900 font-bold px-4 py-2 rounded-lg hover:bg-purple-100 transition-colors text-sm">Check Status</button>
-                                </div>
-                            </div>
-                            <div id="public-ledger-result" class="bg-white/10 rounded-xl p-3 hidden max-h-60 overflow-y-auto text-xs space-y-2">
-                                <!-- Results populate dynamically here -->
+                        
+                        <div class="mt-6 pt-6 border-t border-gray-200">
+                            <p class="text-center text-xs font-bold text-indigo-600 tracking-wider uppercase mb-3">📍 Customer Quick Status Check</p>
+                            <div class="flex gap-2">
+                                <input type="text" id="cust-search-id" placeholder="Enter Customer ID (Ex: M081)" class="flex-1 px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm uppercase">
+                                <button onclick="app.viewCustomerStatusDirect()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-search"></i> Check</button>
                             </div>
                         </div>
                     </div>
@@ -217,51 +374,90 @@
             document.getElementById('main-header').classList.add('hidden');
         },
 
-        // Customer read-only tracking system box logic
-        async fetchCustomerLedgerPublic() {
-            const searchId = document.getElementById('cust-search-id').value.trim().toUpperCase();
-            const resultBox = document.getElementById('public-ledger-result');
-            if(!searchId) { alert("Meherbani karke Customer ID enter karein."); return; }
+        async viewCustomerStatusDirect() {
+            const rawId = document.getElementById('cust-search-id').value.trim();
+            if(!rawId) { alert("Kindly apni Customer ID likhein!"); return; }
+            const custId = rawId.toUpperCase();
+            const msc = document.getElementById('main-container');
+            msc.innerHTML = `<div class="flex items-center justify-center py-16"><i class="fas fa-spinner fa-spin text-3xl text-indigo-600 mr-2"></i> Loading details...</div>`;
             
-            resultBox.classList.remove('hidden');
-            resultBox.innerHTML = `<p class="text-center animate-pulse py-2">Searching data...</p>`;
-
             try {
-                const querySnap = await window.db.collection('customers').where('customerId', '==', searchId).get();
-                if(querySnap.empty) {
-                    resultBox.innerHTML = `<p class="text-red-300 font-medium text-center">ID: ${searchId} Nahi Mili!</p>`;
-                    return;
-                }
-
-                let pendingHtml = '', paidHtml = '';
-                let tPending = 0, tPaid = 0;
-
-                this.data.reports.forEach(report => {
-                    if(report.status !== 'deleted' && report.onlinePayments) {
-                        report.onlinePayments.forEach(p => {
-                            if((p.customerId && p.customerId.toUpperCase() === searchId) || (p.customerDocId === querySnap.docs[0].id)) {
-                                const itemText = p.items ? ` (${p.items})` : '';
-                                if(p.status === 'pending') {
-                                    tPending += p.amount;
-                                    pendingHtml += `<div class="border-b border-white/10 pb-1 flex justify-between"><span>⏳ ${report.date}${itemText}</span><span class="font-bold text-orange-300">Rs ${p.amount}</span></div>`;
-                                } else {
-                                    tPaid += p.amount;
-                                    paidHtml += `<div class="border-b border-white/10 pb-1 flex justify-between"><span>✅ ${report.date}${itemText}</span><span class="font-bold text-green-300">Rs ${p.amount}</span></div>`;
-                                }
+                const snap = await window.db.collection('reports').get();
+                let allPending = [];
+                let allPaid = [];
+                
+                snap.docs.forEach(doc => {
+                    const r = doc.data();
+                    if(r.onlinePayments && Array.isArray(r.onlinePayments)) {
+                        r.onlinePayments.forEach(p => {
+                            if(p.customerId && p.customerId.trim().toUpperCase() === custId) {
+                                const pData = { ...p, date: r.date, riderName: r.riderName || 'Rider' };
+                                if(p.status === 'pending') allPending.push(pData);
+                                else allPaid.push(pData);
                             }
                         });
                     }
                 });
 
-                let finalOutput = `<div class="bg-black/20 p-2 rounded mb-2 text-center font-bold text-sm text-yellow-300">${querySnap.docs[0].data().name}</div>`;
-                finalOutput += `<div class="grid grid-cols-2 gap-2 mb-2 font-bold text-center"><div class="bg-orange-600/30 p-1.5 rounded">Pending:<br>Rs ${tPending}</div><div class="bg-green-600/30 p-1.5 rounded">Paid:<br>Rs ${tPaid}</div></div>`;
-                
-                finalOutput += `<p class="font-bold text-orange-200 uppercase tracking-wider text-[10px] mt-2">⚠️ Pending Invoices</p>` + (pendingHtml || '<p class="text-white/40">No pending payments</p>');
-                finalOutput += `<p class="font-bold text-green-200 uppercase tracking-wider text-[10px] mt-2">💼 Paid History</p>` + (paidHtml || '<p class="text-white/40">No paid ledger records found</p>');
-                
-                resultBox.innerHTML = finalOutput;
+                const totalPending = allPending.reduce((a,b)=>a+(b.amount||0),0);
+                const totalPaid = allPaid.reduce((a,b)=>a+(b.amount||0),0);
+
+                msc.innerHTML = `
+                <div class="max-w-2xl mx-auto p-4 space-y-4 fade-in pb-20">
+                    <div class="bg-white rounded-2xl p-5 shadow-md flex justify-between items-center border border-indigo-100">
+                        <div>
+                            <h3 class="font-bold text-xl text-gray-800">Online Payments Panel</h3>
+                            <p class="text-xs text-indigo-600 font-mono font-bold mt-1">CUSTOMER ID: ${custId}</p>
+                        </div>
+                        <button onclick="app.showLogin()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-semibold"><i class="fas fa-arrow-left mr-1"></i> Back to Login</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                            <p class="text-xs text-amber-700 font-medium">⏳ Total Pending</p>
+                            <p class="text-xl font-bold text-amber-800 mt-1">Rs ${totalPending.toLocaleString()}</p>
+                        </div>
+                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                            <p class="text-xs text-emerald-700 font-medium">✅ Total Paid</p>
+                            <p class="text-xl font-bold text-emerald-800 mt-1">Rs ${totalPaid.toLocaleString()}</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+                        <div>
+                            <h4 class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">⏳ Pending Payments (${allPending.length})</h4>
+                            <div class="space-y-2">
+                                ${allPending.length === 0 ? '<p class="text-xs text-gray-400 py-2">No pending payments.</p>' : allPending.map(p=>`
+                                    <div class="p-3 bg-amber-50/50 border border-amber-100 rounded-xl flex justify-between items-center">
+                                        <div>
+                                            <p class="text-xs font-semibold text-gray-800">${p.detail || 'Online Payment'}</p>
+                                            <p class="text-[11px] text-gray-500 mt-0.5">Date: ${p.date} · Rider: ${p.riderName}</p>
+                                        </div>
+                                        <p class="font-bold text-sm text-amber-700">Rs ${(p.amount||0).toLocaleString()}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <h4 class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2">✅ Paid / Received Payments (${allPaid.length})</h4>
+                            <div class="space-y-2">
+                                ${allPaid.length === 0 ? '<p class="text-xs text-gray-400 py-2">No paid records found.</p>' : allPaid.map(p=>`
+                                    <div class="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl flex justify-between items-center">
+                                        <div>
+                                            <p class="text-xs font-semibold text-gray-800">${p.detail || 'Online Payment'}</p>
+                                            <p class="text-[11px] text-gray-500 mt-0.5">Date: ${p.date} · Rider: ${p.riderName}</p>
+                                        </div>
+                                        <p class="font-bold text-sm text-emerald-700">Rs ${(p.amount||0).toLocaleString()}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
             } catch(e) {
-                resultBox.innerHTML = `<p class="text-red-400">Error fetching data.</p>`;
+                alert("Error fetching details: " + e.message);
+                this.showLogin();
             }
         },
 
@@ -270,11 +466,96 @@
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-pass').value;
             try {
-                await window.auth.signInWithEmailAndPassword(email, password);
-            } catch (error) { alert('Login failed: ' + error.message); }
+                const userCredential = await window.auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                const userDoc = await window.db.collection('users').doc(user.uid).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    if (userData.disabled && userData.role !== 'admin') {
+                        alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
+                        await window.auth.signOut();
+                        return;
+                    }
+                    this.data.currentUser = { id: user.uid, ...userData };
+                } else {
+                    const isAdmin = email === "admin@portal.com";
+                    const newUserData = { email: user.email, name: isAdmin ? "Administrator" : "New User", phone: "", zone: isAdmin ? "Head Office" : "Unassigned", vehicle: isAdmin ? "Admin" : "", role: isAdmin ? "admin" : "rider", joinDate: new Date().toISOString().split('T')[0], salaryBase: isAdmin ? 50000 : 15000, dailyWage: isAdmin ? 1000 : 500, disabled: false };
+                    await window.db.collection('users').doc(user.uid).set(newUserData);
+                    this.data.currentUser = { id: user.uid, ...newUserData };
+                }
+                document.getElementById('sidebar').classList.remove('hidden');
+                document.getElementById('main-header').classList.remove('hidden');
+                this.renderSidebar();
+                this.initMonthPicker();
+                const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                history.replaceState({ viewId: initView }, '', '#' + initView);
+                await this.setupRealtimeListeners();
+                this._renderView(initView);
+            } catch (error) {
+                if (error.code === 'auth/user-not-found') alert('User not found.');
+                else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') alert('Invalid email or password.');
+                else if (error.code === 'auth/too-many-requests') alert('Too many attempts. Try again later.');
+                else alert('Login failed: ' + error.message);
+            }
         },
 
-        logout() { this.data.currentUser = null; window.auth.signOut().then(() => location.reload()); },
+        showForgotPassword() {
+            document.getElementById('main-container').innerHTML = `
+                <div class="min-h-full flex items-center justify-center fade-in p-4">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md">
+                        <div class="text-center mb-6"><div class="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 text-xl mx-auto mb-4"><i class="fas fa-key"></i></div><h2 class="text-xl font-bold text-gray-800">Reset Password</h2></div>
+                        <form onsubmit="app.handleForgotPassword(event)" class="space-y-4">
+                            <input type="email" id="reset-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="your@email.com" required>
+                            <button type="submit" class="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold">Send Reset Link</button>
+                        </form>
+                        <div class="mt-4 text-center"><button onclick="app.showLogin()" class="text-orange-600 font-semibold">Back to Sign In</button></div>
+                    </div>
+                </div>`;
+        },
+
+        async handleForgotPassword(e) {
+            e.preventDefault();
+            try { await window.auth.sendPasswordResetEmail(document.getElementById('reset-email').value); alert('Password reset email sent!'); this.showLogin(); }
+            catch (error) { alert('Error: ' + error.message); }
+        },
+
+        showSignup() {
+            document.getElementById('main-container').innerHTML = `
+                <div class="min-h-full flex items-center justify-center fade-in p-4">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md">
+                        <div class="text-center mb-6"><div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4"><i class="fas fa-user-plus"></i></div><h2 class="text-xl font-bold text-gray-800">Join as Rider</h2></div>
+                        <form onsubmit="app.handleSignup(event)" class="space-y-4">
+                            <input type="text" id="signup-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Full Name" required>
+                            <input type="email" id="signup-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Email" required>
+                            <input type="password" id="signup-pass" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Password (min 6 chars)" minlength="6" required>
+                            <input type="tel" id="signup-phone" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="03001234567" required>
+                            <input type="text" id="signup-vehicle" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Vehicle Details">
+                            <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700">Create Account</button>
+                        </form>
+                        <div class="mt-4 text-center"><button onclick="app.showLogin()" class="text-green-600 font-semibold">Back to Sign In</button></div>
+                    </div>
+                </div>`;
+        },
+
+        async handleSignup(e) {
+            e.preventDefault();
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-pass').value;
+            const phone = document.getElementById('signup-phone').value;
+            const vehicle = document.getElementById('signup-vehicle').value;
+            try {
+                const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
+                await window.db.collection('users').doc(userCredential.user.uid).set({ name, email, phone, zone: 'Unassigned', vehicle, role: 'rider', joinDate: new Date().toISOString().split('T')[0], salaryBase: 15000, dailyWage: 500, disabled: false });
+                alert('Account created! Please sign in.'); this.showLogin();
+            } catch (error) { alert('Error: ' + error.message); }
+        },
+
+        logout() {
+            this.stopRealtimeListeners();
+            this.data.currentUser = null;
+            window.auth.signOut().then(() => location.reload());
+        },
 
         renderSidebar() {
             const nav = document.getElementById('nav-menu');
@@ -282,344 +563,461 @@
             const isAdmin = this.data.currentUser.role === 'admin';
             const menuItems = isAdmin ? [
                 { id:'admin-dashboard', icon:'fa-chart-line', label:'Dashboard' },
-                { id:'admin-customers', icon:'fa-address-book', label:'Customers / Contacts' }
+                { id:'admin-riders', icon:'fa-users', label:'Manage Riders' },
+                { id:'admin-reports', icon:'fa-clipboard-check', label:'Review Reports' },
+                { id:'admin-online-payments', icon:'fa-credit-card', label:'Online Payments' },
+                { id:'admin-expenses', icon:'fa-receipt', label:'Rider Expenses' },
+                { id:'admin-company-expenses', icon:'fa-building', label:'Company Expenses' },
+                { id:'admin-customers', icon:'fa-address-book', label:'Customers' },
+                { id:'admin-attendance', icon:'fa-calendar-check', label:'Attendance' },
+                { id:'admin-analytics', icon:'fa-chart-pie', label:'Analytics' },
+                { id:'admin-wa-settings', icon:'fa-whatsapp fab', label:'WhatsApp Templates' },
+                { id:'admin-settings', icon:'fa-cog', label:'Settings' }
             ] : [
-                { id:'rider-dashboard', icon:'fa-home', label:'Dashboard' }
+                { id:'rider-dashboard', icon:'fa-home', label:'Dashboard' },
+                { id:'rider-report', icon:'fa-file-invoice-dollar', label:'Daily Report' },
+                { id:'rider-history', icon:'fa-history', label:'My History' },
+                { id:'rider-payments', icon:'fa-wallet', label:'Online Payments' },
+                { id:'rider-salary', icon:'fa-money-bill-wave', label:'Salary & Slips' },
+                { id:'rider-settings', icon:'fa-cog', label:'Settings' }
             ];
             nav.innerHTML = menuItems.map(item => `
-                <button onclick="app.navigate('${item.id}')" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}">
-                    <i class="fas ${item.icon} w-5 text-center"></i><span>${item.label}</span>
+                <button onclick="app.navigate('${item.id}'); if(window.innerWidth<768) app.toggleSidebar();" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}">
+                    <i class="${item.icon.includes('fab') ? item.icon : 'fas ' + item.icon} w-5 text-center"></i><span class="truncate">${item.label}</span>
                 </button>`).join('');
+            document.getElementById('user-name').textContent = this.data.currentUser.name;
+            document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : `Rider - ${this.data.currentUser.zone || 'Unassigned'}`;
+            document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(this.data.currentUser.name)}&background=4f46e5&color=fff`;
+            const shiftBtn = document.getElementById('shift-btn');
+            if (shiftBtn) shiftBtn.style.display = isAdmin ? 'none' : '';
         },
 
-        initMonthPicker() {},
-        onMonthChange() {},
-        navigate(viewId) { this._renderView(viewId); },
+        initMonthPicker() {
+            const wrap = document.getElementById('month-picker-wrap');
+            const sel = document.getElementById('global-month-picker');
+            if (!wrap || !sel) return;
+            if (this.data.currentUser?.role !== 'admin') { wrap.classList.add('hidden'); return; }
+            wrap.classList.remove('hidden');
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            sel.innerHTML = '';
+            const now = new Date();
+            for (let i = 0; i < 24; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const opt = document.createElement('option');
+                opt.value = `${d.getFullYear()}-${d.getMonth()}`;
+                opt.textContent = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                if (d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        },
+
+        onMonthChange() {
+            const sel = document.getElementById('global-month-picker');
+            if (!sel) return;
+            const [year, month] = sel.value.split('-').map(Number);
+            this.data.selectedMonth = month;
+            this.data.selectedYear = year;
+            const activeBtn = document.querySelector('.sidebar-link.active');
+            if (activeBtn) this._renderView(activeBtn.id.replace('nav-', ''));
+            else this.renderAdminDashboard();
+        },
+
+        navigate(viewId, addToHistory = true) {
+            if (addToHistory) history.pushState({ viewId }, '', `#${viewId}`);
+            this._renderView(viewId);
+        },
 
         _renderView(viewId) {
             this.data._currentViewId = viewId;
             document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active', 'bg-indigo-600', 'text-white'));
             const activeBtn = document.getElementById(`nav-${viewId}`);
             if (activeBtn) activeBtn.classList.add('active');
-
-            if (viewId === 'admin-customers') this.renderAdminCustomers();
-            else if (viewId === 'admin-dashboard') this.renderAdminDashboard();
+            const views = {
+                'rider-dashboard': () => this.renderRiderDashboard(),
+                'rider-report': () => this.renderRiderReportForm(),
+                'rider-history': () => this.renderRiderHistory(),
+                'rider-payments': () => this.renderRiderPayments(),
+                'rider-salary': () => this.renderRiderSalary(),
+                'rider-settings': () => this.renderSettings(),
+                'admin-dashboard': () => this.renderAdminDashboard(),
+                'admin-riders': () => this.renderAdminRiders(),
+                'admin-reports': () => this.renderAdminReports(),
+                'admin-online-payments': () => this.renderAdminOnlinePayments(),
+                'admin-expenses': () => this.renderAdminExpenses(),
+                'admin-company-expenses': () => this.renderCompanyExpenses(),
+                'admin-customers': () => this.renderAdminCustomers(),
+                'admin-attendance': () => this.renderAdminAttendance(),
+                'admin-analytics': () => this.renderAdminAnalytics(),
+                'admin-wa-settings': () => this.renderWASettings(),
+                'admin-settings': () => this.renderSettings(),
+            };
+            if (views[viewId]) views[viewId]();
+            else this.navigate(this.data.currentUser?.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard');
         },
 
-        renderAdminDashboard() {
-            document.getElementById('page-title').textContent = 'Admin Dashboard';
-            document.getElementById('main-container').innerHTML = `
-                <div class="space-y-4 fade-in">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="stat-card cursor-pointer bg-white border-l-4 border-indigo-600 shadow-sm" onclick="app.navigate('admin-customers')">
-                            <h3 class="font-bold text-lg text-gray-800">Manage Customers & Contacts</h3>
-                            <p class="text-xs text-gray-500 mt-1">Deduplicate system, adjust CSV uploads and dynamic IDs.</p>
-                        </div>
-                        <div class="stat-card bg-white border-l-4 border-purple-600 shadow-sm">
-                            <h3 class="font-bold text-lg text-gray-800">Active Contacts Log</h3>
-                            <p class="text-2xl font-bold text-purple-700 mt-2">${this.data.customers.length}</p>
-                        </div>
-                    </div>
-                    <div id="duplicate-warning-banner"></div>
-                </div>`;
-            this.checkDuplicatesGlobal();
-        },
-
-        // Checks system dynamically for duplicates via phone numbers
-        checkDuplicatesGlobal() {
-            const banner = document.getElementById('duplicate-warning-banner');
-            if(!banner) return;
-            const seen = {};
-            const duplicates = [];
-            
-            this.data.customers.forEach(c => {
-                if(c.phone) {
-                    const norm = c.phone.replace(/\D/g,'');
-                    if(seen[norm]) duplicates.push(c);
-                    else seen[norm] = true;
-                }
+        getMonthFilteredReports(status = null) {
+            return this.data.reports.filter(r => {
+                const d = new Date(r.date);
+                const monthMatch = d.getMonth() === this.data.selectedMonth && d.getFullYear() === this.data.selectedYear;
+                const statusMatch = status ? r.status === status : r.status !== 'deleted';
+                return monthMatch && statusMatch;
             });
-
-            if(duplicates.length > 0) {
-                banner.innerHTML = `
-                    <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-amber-900 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                        <div>
-                            <p class="font-bold"><i class="fas fa-exclamation-triangle mr-2 text-amber-600"></i>Duplicate System Entry Detected!</p>
-                            <p class="text-xs text-amber-700">Total ${duplicates.length} duplicate customers/contacts matched via phone metrics.</p>
-                        </div>
-                        <button onclick="app.showDuplicateMergeModal()" class="bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-amber-700 whitespace-nowrap">Review & Merge/Delete</button>
-                    </div>`;
-            }
         },
 
-        // Render customer administration panel
-        renderAdminCustomers() {
-            document.getElementById('page-title').textContent = 'Customers / Contacts Management';
+        getMonthlyAbsences(riderId, month, year) {
+            return this.data.attendance.filter(a => {
+                const aDate = new Date(a.date);
+                return a.riderId === riderId && a.status === 'absent' && aDate.getMonth() === month && aDate.getFullYear() === year;
+            });
+        },
+
+        calculateAttendanceDeductions(riderId, month, year) {
+            const absences = this.getMonthlyAbsences(riderId, month, year);
+            const rider = this.data.users.find(u => u.id === riderId);
+            const dailyWage = rider?.dailyWage || 500;
+            const deductibleAbsences = Math.max(0, absences.length - 1);
+            return { totalAbsences: absences.length, reliefDays: Math.min(1, absences.length), deductibleAbsences, dailyWage, totalDeduction: deductibleAbsences * dailyWage };
+        },
+
+        renderRiderDashboard() {
+            document.getElementById('page-title').textContent = 'Dashboard';
             const container = document.getElementById('main-container');
+            const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && r.status !== 'draft' && r.status !== 'deleted');
+            const pendingOnline = myReports.flatMap(r => r.onlinePayments || []).filter(p => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
+            const totalDeliveries = myReports.reduce((a, r) => a + (r.orders || []).reduce((o, x) => o + (x.qty || 0), 0), 0);
+            const cm = new Date().getMonth(), cy = new Date().getFullYear();
+            const attInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, cm, cy);
+            const baseSalary = this.data.currentUser.salaryBase || 15000;
+            const netSalary = baseSalary - attInfo.totalDeduction;
             container.innerHTML = `
                 <div class="space-y-4 fade-in pb-20">
-                    <div class="flex flex-wrap gap-2 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div class="flex gap-2">
-                            <button onclick="app.openAddCustomerModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>New Contact</button>
-                            <button onclick="app.showDuplicateMergeModal()" class="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700"><i class="fas fa-clone mr-1"></i>Check Duplicates</button>
-                        </div>
-                        <!-- CSV Integration System Area -->
-                        <div class="border border-dashed border-gray-300 p-2 rounded-lg flex items-center gap-2 bg-gray-50">
-                            <span class="text-xs font-semibold text-gray-600">Import CSV:</span>
-                            <input type="file" id="csv-file-input" accept=".csv" class="text-xs text-gray-500 w-44">
-                            <button onclick="app.processCSVUpload()" class="bg-green-600 text-white font-bold text-xs px-3 py-1.5 rounded hover:bg-green-700">Upload & Adjust</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet text-lg"></i></div><span class="text-xs text-gray-500">Pending</span></div><p class="text-xs text-gray-500 mb-1">Online Pending</p><h3 class="text-xl font-bold text-gray-800">Rs ${pendingOnline.toLocaleString()}</h3></div>
+                        <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box text-lg"></i></div><span class="text-xs text-gray-500">Total</span></div><p class="text-xs text-gray-500 mb-1">Deliveries</p><h3 class="text-xl font-bold text-gray-800">${totalDeliveries}</h3></div>
+                        <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-purple-100 rounded-lg text-purple-600"><i class="fas fa-money-bill-wave text-lg"></i></div><span class="text-xs text-gray-500">Monthly</span></div><p class="text-xs text-gray-500 mb-1">Base Salary</p><h3 class="text-xl font-bold text-purple-600">Rs ${baseSalary.toLocaleString()}</h3></div>
+                        <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 ${attInfo.totalDeduction > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} rounded-lg"><i class="fas fa-calculator text-lg"></i></div><span class="text-xs text-gray-500">Net</span></div><p class="text-xs text-gray-500 mb-1">Net Salary</p><h3 class="text-xl font-bold ${attInfo.totalDeduction > 0 ? 'text-red-600' : 'text-green-600'}">Rs ${netSalary.toLocaleString()}</h3></div>
+                    </div>
+                    <div class="section-card">
+                        <h3 class="font-bold text-gray-800 mb-3">Quick Actions</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="app.navigate('rider-report')" class="quick-action-btn"><i class="fas fa-plus-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Submit Report</span></button>
+                            <button onclick="app.toggleShift()" class="quick-action-btn" style="background:linear-gradient(135deg,#10b981,#059669)"><i class="fas fa-play-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Start Shift</span></button>
+                            <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Cash</span></button>
+                            <button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb)"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">My Salary</span></button>
                         </div>
                     </div>
-
-                    <div class="section-card overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr class="bg-gray-100 border-b border-gray-200 font-bold text-gray-600"><th class="p-3">ID (B ID)</th><th class="p-3">Customer Name</th><th class="p-3">Phone</th><th class="p-3">Address</th><th class="p-3 text-center">Actions</th></tr>
-                            </thead>
-                            <tbody>
-                                ${this.data.customers.map(c => `
-                                    <tr class="border-b border-gray-100 hover:bg-gray-50">
-                                        <td class="p-3 font-bold text-indigo-600">${c.customerId || '<span class="text-red-500 italic text-xs">No B-ID</span>'}</td>
-                                        <td class="p-3 font-medium">${c.name}</td><td class="p-3">${c.phone || '—'}</td><td class="p-3 truncate max-w-xs">${c.address || '—'}</td>
-                                        <td class="p-3 text-center">
-                                            <button onclick="app.openEditCustomerModal('${c.id}')" class="text-indigo-600 hover:underline mx-1 text-xs font-bold"><i class="fas fa-edit mr-0.5"></i>Edit</button> | 
-                                            <button onclick="app.deleteCustomerDirect('${c.id}')" class="text-red-600 hover:underline mx-1 text-xs font-bold"><i class="fas fa-trash"></i>Delete</button>
-                                        </td>
-                                    </tr>`).join('')}
-                            </tbody>
-                        </table>
+                    <div class="section-card">
+                        <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Recent Reports</h3><button onclick="app.navigate('rider-history')" class="text-xs text-indigo-600 font-medium">View All</button></div>
+                        ${myReports.length === 0 ? '<p class="text-center text-gray-400 py-6 text-sm">No reports yet</p>' : `<div class="space-y-2">${myReports.slice(0,3).map(r => `<div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg"><div><p class="font-medium text-sm">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${(r.orders||[]).reduce((a,o)=>a+(o.qty||0),0)} orders · Rs ${(r.finalAmount||0).toLocaleString()}</p></div><span class="status-badge status-${r.status} text-xs">${r.status}</span></div>`).join('')}</div>`}
                     </div>
                 </div>`;
         },
 
-        // Generates clean system sequential B-IDs automatically
-        generateAutoID() {
-            let maxNum = 0;
-            this.data.customers.forEach(c => {
-                if(c.customerId && c.customerId.startsWith('M')) {
-                    const num = parseInt(c.customerId.substring(1));
-                    if(!isNaN(num) && num > maxNum) maxNum = num;
+        async addCustomer() {
+            const name = document.getElementById('cust-name').value.trim();
+            const phone = document.getElementById('cust-phone').value.trim();
+            const address = document.getElementById('cust-address').value.trim();
+            let customerId = document.getElementById('cust-id').value.trim();
+
+            if (!name || !phone) { alert('Name aur Phone zaroori hain!'); return; }
+
+            // 🆕 Auto ID setup dynamically if missing (For edit and creation mode parameters)
+            if (!customerId) {
+                const prefix = "M";
+                let maxNum = 80;
+                this.data.customers.forEach(c => {
+                    if (c.customerId && c.customerId.startsWith(prefix)) {
+                        const num = parseInt(c.customerId.slice(1)) || 0;
+                        if (num > maxNum) maxNum = num;
+                    }
+                });
+                customerId = prefix + String(maxNum + 1).padStart(3, '0');
+            }
+
+            try {
+                const cleanInputPhone = phone.replace(/\D/g,'');
+                const existing = this.data.customers.find(c => c.phone.replace(/\D/g,'') === cleanInputPhone);
+                
+                if (existing) {
+                    await window.db.collection('customers').doc(existing.id).update({ name, phone, address, customerId });
+                    existing.name = name;
+                    existing.phone = phone;
+                    existing.address = address;
+                    existing.customerId = customerId;
+                } else {
+                    const newCust = { name, phone, address, customerId };
+                    const docRef = await window.db.collection('customers').add({ ...newCust, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    this.data.customers.push({ id: docRef.id, ...newCust });
                 }
-            });
-            return 'M' + String(maxNum + 1).padStart(3, '0');
+
+                document.getElementById('cust-name').value = '';
+                document.getElementById('cust-phone').value = '';
+                document.getElementById('cust-address').value = '';
+                document.getElementById('cust-id').value = '';
+                this._renderCustomersPage();
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
         },
 
-        openAddCustomerModal() {
-            const mc = document.getElementById('modal-content');
-            const ov = document.getElementById('modal-overlay');
-            const newId = this.generateAutoID();
-            mc.innerHTML = `
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-bold">Add New Contact</h2><button onclick="app.closeModal()"><i class="fas fa-times"></i></button></div>
-                    <form onsubmit="app.saveNewCustomerForm(event)" class="space-y-3">
-                        <div><label class="block text-xs font-semibold mb-1">Customer ID (Auto-Generated)</label><input type="text" id="cust-modal-id" value="${newId}" class="w-full p-2 border rounded bg-gray-50 font-bold text-indigo-700 outline-none" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Name *</label><input type="text" id="cust-modal-name" class="w-full p-2 border rounded" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Phone *</label><input type="tel" id="cust-modal-phone" class="w-full p-2 border rounded" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Address</label><input type="text" id="cust-modal-addr" class="w-full p-2 border rounded"></div>
-                        <button type="submit" class="w-full bg-indigo-600 text-white p-2.5 rounded font-bold hover:bg-indigo-700">Save System Contact</button>
-                    </form>
-                </div>`;
-            ov.classList.remove('hidden');
-            mc.classList.remove('scale-95','opacity-0');
+        async processImportedCSVData(rows) {
+            let addedCount = 0;
+            let skippedCount = 0;
+            let mergedCount = 0;
+
+            for (let rowData of rows) {
+                if(!rowData.name || !rowData.phone) continue;
+                
+                const cleanPhone = rowData.phone.replace(/\D/g,'');
+                const existingIndex = this.data.customers.findIndex(c => (c.phone||'').replace(/\D/g,'') === cleanPhone);
+
+                if (existingIndex !== -1) {
+                    // 🆕 Adjust logic parameters for existing database profiles
+                    const choice = confirm(`Duplicate contact found for "${rowData.name}" (${rowData.phone}).\n\nOK: Merge data & allocate automated ID?\nCancel: Skip entry?`);
+                    if (choice) {
+                        const target = this.data.customers[existingIndex];
+                        let updatedId = target.customerId || rowData.customerId;
+                        if(!updatedId) {
+                            const prefix = "M";
+                            let maxNum = 80;
+                            this.data.customers.forEach(c => {
+                                if (c.customerId && c.customerId.startsWith(prefix)) {
+                                    const num = parseInt(c.customerId.slice(1)) || 0;
+                                    if (num > maxNum) maxNum = num;
+                                }
+                            });
+                            updatedId = prefix + String(maxNum + 1).padStart(3, '0');
+                        }
+                        
+                        await window.db.collection('customers').doc(target.id).update({
+                            address: rowData.address || target.address || '',
+                            customerId: updatedId
+                        });
+                        target.address = rowData.address || target.address || '';
+                        target.customerId = updatedId;
+                        mergedCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                } else {
+                    let cid = rowData.customerId;
+                    if(!cid) {
+                        const prefix = "M";
+                        let maxNum = 80;
+                        this.data.customers.forEach(c => {
+                            if (c.customerId && c.customerId.startsWith(prefix)) {
+                                const num = parseInt(c.customerId.slice(1)) || 0;
+                                if (num > maxNum) maxNum = num;
+                            }
+                        });
+                        cid = prefix + String(maxNum + 1).padStart(3, '0');
+                    }
+
+                    const newCust = { name: rowData.name, phone: rowData.phone, address: rowData.address || '', customerId: cid };
+                    const docRef = await window.db.collection('customers').add({ ...newCust, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    this.data.customers.push({ id: docRef.id, ...newCust });
+                    addedCount++;
+                }
+            }
+            alert(`CSV Import Complete!\nAdded: ${addedCount}\nMerged & Adjusted: ${mergedCount}\nSkipped: ${skippedCount}`);
+            this._renderCustomersPage();
         },
 
-        async saveNewCustomerForm(e) {
-            e.preventDefault();
-            const cId = document.getElementById('cust-modal-id').value.trim().toUpperCase();
-            const name = document.getElementById('cust-modal-name').value.trim();
-            const phone = document.getElementById('cust-modal-phone').value.trim();
-            const address = document.getElementById('cust-modal-addr').value.trim();
+        async mergeCustomers(groupIndex) {
+            const group = this._dupGroups[groupIndex];
+            if (!group || group.length < 2) return;
 
-            const payload = { customerId: cId, name, phone, address, createdAt: new Date().toISOString() };
-            const docRef = await window.db.collection('customers').add(payload);
-            this.data.customers.push({ id: docRef.id, ...payload });
-            this.closeModal();
-            this.renderAdminCustomers();
-            alert("Contact added seamlessly!");
-        },
+            const master = group[0];
+            let masterId = master.customerId;
 
-        // Automatically fixes missing IDs dynamically while editing an item
-        openEditCustomerModal(id) {
-            const customer = this.data.customers.find(c => c.id === id);
-            if(!customer) return;
-            const mc = document.getElementById('modal-content');
-            const ov = document.getElementById('modal-overlay');
-
-            // Requirement fulfilled: Pehle se save contact me ID nahi thi to automatic code inject text generation
-            let assignedId = customer.customerId;
-            if(!assignedId || assignedId === "") {
-                assignedId = this.generateAutoID(); // Auto-generates if B ID is missing on update
+            if (!masterId) {
+                const prefix = "M";
+                let maxNum = 80;
+                this.data.customers.forEach(c => {
+                    if (c.customerId && c.customerId.startsWith(prefix)) {
+                        const num = parseInt(c.customerId.slice(1)) || 0;
+                        if (num > maxNum) maxNum = num;
+                    }
+                });
+                masterId = prefix + String(maxNum + 1).padStart(3, '0');
             }
 
-            mc.innerHTML = `
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-bold">Edit System Contact Details</h2><button onclick="app.closeModal()"><i class="fas fa-times"></i></button></div>
-                    <form onsubmit="app.saveEditCustomerForm(event, '${id}')" class="space-y-3">
-                        <div><label class="block text-xs font-semibold mb-1">Customer ID (Auto-Injected if empty)</label><input type="text" id="cust-edit-id" value="${assignedId}" class="w-full p-2 border rounded bg-yellow-50 font-bold text-indigo-700 outline-none" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Name</label><input type="text" id="cust-edit-name" value="${customer.name}" class="w-full p-2 border rounded" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Phone</label><input type="text" id="cust-edit-phone" value="${customer.phone || ''}" class="w-full p-2 border rounded" required></div>
-                        <div><label class="block text-xs font-semibold mb-1">Address</label><input type="text" id="cust-edit-addr" value="${customer.address || ''}" class="w-full p-2 border rounded"></div>
-                        <button type="submit" class="w-full bg-indigo-600 text-white p-2.5 rounded font-bold hover:bg-indigo-700">Update Record</button>
-                    </form>
-                </div>`;
-            ov.classList.remove('hidden');
-            mc.classList.remove('scale-95','opacity-0');
-        },
+            try {
+                await window.db.collection('customers').doc(master.id).update({ customerId: masterId });
+                master.customerId = masterId;
 
-        async saveEditCustomerForm(e, docId) {
-            e.preventDefault();
-            const cId = document.getElementById('cust-edit-id').value.trim().toUpperCase();
-            const name = document.getElementById('cust-edit-name').value.trim();
-            const phone = document.getElementById('cust-edit-phone').value.trim();
-            const address = document.getElementById('cust-edit-addr').value.trim();
+                for (let i = 1; i < group.length; i++) {
+                    const duplicateDoc = group[i];
+                    await window.db.collection('customers').doc(duplicateDoc.id).delete();
+                    this.data.customers = this.data.customers.filter(c => c.id !== duplicateDoc.id);
+                }
 
-            await window.db.collection('customers').doc(docId).update({ customerId: cId, name, phone, address });
-            const localIndex = this.data.customers.findIndex(c => c.id === docId);
-            if(localIndex !== -1) {
-                this.data.customers[localIndex].customerId = cId;
-                this.data.customers[localIndex].name = name;
-                this.data.customers[localIndex].phone = phone;
-                this.data.customers[localIndex].address = address;
+                alert("Duplicates successfully merged under one single ID!");
+                app.closeModal();
+                app._renderCustomersPage();
+            } catch(e) {
+                alert("Merge failed: " + e.message);
             }
-            this.closeModal();
-            this.renderAdminCustomers();
-            alert("Contact data saved with assigned Auto ID structure!");
         },
 
-        // Duplicate Manager Modal View with Merge & Purge features
-        showDuplicateMergeModal() {
-            const mc = document.getElementById('modal-content');
-            const ov = document.getElementById('modal-overlay');
+        async keepThisDeleteOthers(targetDocId, groupIndex) {
+            if(!confirm("Are you sure you want to keep this profile and wipe out the other duplicates?")) return;
+            const group = this._dupGroups[groupIndex];
             
-            const matches = {};
-            this.data.customers.forEach(c => {
-                if(c.phone) {
-                    const cleanPhone = c.phone.replace(/\D/g,'');
-                    if(!matches[cleanPhone]) matches[cleanPhone] = [];
-                    matches[cleanPhone].push(c);
-                }
-            });
-
-            let dupHtml = '';
-            Object.keys(matches).forEach(key => {
-                if(matches[key].length > 1) {
-                    dupHtml += `<div class="bg-gray-50 border p-3 rounded-xl space-y-2 mb-3">
-                        <p class="font-bold text-red-600 text-xs">Phone Network Match: ${key}</p>`;
-                    matches[key].forEach(customer => {
-                        dupHtml += `<div class="flex justify-between items-center text-xs bg-white p-2 border rounded shadow-2xs">
-                            <div><span class="font-bold text-indigo-600">${customer.customerId || '[NO ID]'}</span> - <b>${customer.name}</b> (${customer.address || 'No Address'})</div>
-                            <div class="flex gap-1">
-                                <button onclick="app.executeInstantMerge('${matches[key][0].id}', '${customer.id}')" class="bg-indigo-100 text-indigo-700 font-bold px-2 py-1 rounded text-[10px] ${matches[key][0].id === customer.id ? 'hidden':''}">Merge Into Head</button>
-                                <button onclick="app.deleteCustomerDirect('${customer.id}', true)" class="bg-red-100 text-red-600 font-bold px-2 py-1 rounded text-[10px]">Delete</button>
-                            </div>
-                        </div>`;
-                    });
-                    dupHtml += `</div>`;
-                }
-            });
-
-            mc.innerHTML = `
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-base font-bold text-gray-800">Duplicate Management Interface</h2><button onclick="app.closeModal()"><i class="fas fa-times"></i></button></div>
-                    <div class="max-h-96 overflow-y-auto space-y-2">${dupHtml || '<p class="text-center text-gray-500 py-6 text-sm">System clean! No standard duplicates found.</p>'}</div>
-                </div>`;
-            ov.classList.remove('hidden');
-            mc.classList.remove('scale-95','opacity-0');
-        },
-
-        async executeInstantMerge(targetId, sourceId) {
-            if(targetId === sourceId) return;
-            if(!confirm("Kya aap is entry ka saara record primary head account me merge karna chahte hain?")) return;
-
-            // Updating payment tables references across reports locally
-            this.data.reports.forEach(async (rep) => {
-                let modified = false;
-                if(rep.onlinePayments) {
-                    rep.onlinePayments.forEach(pay => {
-                        if(pay.customerDocId === sourceId) {
-                            pay.customerDocId = targetId;
-                            modified = true;
+            try {
+                const selectedRecord = group.find(c => c.id === targetDocId);
+                if(selectedRecord && !selectedRecord.customerId) {
+                    const prefix = "M";
+                    let maxNum = 80;
+                    this.data.customers.forEach(c => {
+                        if (c.customerId && c.customerId.startsWith(prefix)) {
+                            const num = parseInt(c.customerId.slice(1)) || 0;
+                            if (num > maxNum) maxNum = num;
                         }
                     });
-                    if(modified) {
-                        await window.db.collection('reports').doc(rep.id).update({ onlinePayments: rep.onlinePayments });
-                    }
-                }
-            });
-
-            await window.db.collection('customers').doc(sourceId).delete();
-            this.data.customers = this.data.customers.filter(c => c.id !== sourceId);
-            alert("Ledger values merged and reference profile purged efficiently!");
-            this.closeModal();
-            this.renderAdminCustomers();
-        },
-
-        // CSV File Parser Engine with dynamic data duplication adjustment logic
-        async processCSVUpload() {
-            const input = document.getElementById('csv-file-input');
-            if(!input.files || input.files.length === 0) { alert("Pehle koi valid CSV file select karein."); return; }
-
-            const file = input.files[0];
-            const reader = new FileReader();
-            
-            reader.onload = async (e) => {
-                const text = e.target.result;
-                const rows = text.split('\n').map(row => row.split(','));
-                let importedCount = 0;
-                let adjustedCount = 0;
-
-                // Loop skips CSV headers -> Format expected: Name, Phone, Address, CustomerID
-                for(let i = 1; i < rows.length; i++) {
-                    if(rows[i].length < 2 || !rows[i][0]) continue;
-                    
-                    const name = rows[i][0].replace(/"/g, '').trim();
-                    const phone = rows[i][1].replace(/"/g, '').trim();
-                    const address = rows[i][2] ? rows[i][2].replace(/"/g, '').trim() : '';
-                    let cId = rows[i][3] ? rows[i][3].replace(/"/g, '').trim().toUpperCase() : '';
-
-                    const cleanPhone = phone.replace(/\D/g, '');
-                    // Cross checking system cache for existing customer profiles
-                    const duplicateMatch = this.data.customers.find(c => c.phone.replace(/\D/g, '') === cleanPhone || (cId && c.customerId === cId));
-
-                    if(duplicateMatch) {
-                        // Adjustment Rule: Overwrites details or retains current data if conflicting records found
-                        adjustedCount++;
-                        await window.db.collection('customers').doc(duplicateMatch.id).update({
-                            address: duplicateMatch.address || address
-                        });
-                    } else {
-                        // Regular Entry creation
-                        if(!cId) cId = this.generateAutoID();
-                        const payload = { customerId: cId, name, phone, address, createdAt: new Date().toISOString() };
-                        const res = await window.db.collection('customers').add(payload);
-                        this.data.customers.push({ id: res.id, ...payload });
-                        importedCount++;
-                    }
+                    selectedRecord.customerId = prefix + String(maxNum + 1).padStart(3, '0');
+                    await window.db.collection('customers').doc(selectedRecord.id).update({ customerId: selectedRecord.customerId });
                 }
 
-                alert(`CSV Processing completed! New Imported: ${importedCount}, Adjusted/Merged: ${adjustedCount}`);
-                this.renderAdminCustomers();
-            };
-            reader.readAsText(file);
-        },
-
-        async deleteCustomerDirect(docId, insideModal = false) {
-            if(!confirm("Kya aap is contact ko database se hamesha ke liye delete karna chahte hain?")) return;
-            await window.db.collection('customers').doc(docId).delete();
-            this.data.customers = this.data.customers.filter(c => c.id !== docId);
-            if(insideModal) this.closeModal();
-            this.renderAdminCustomers();
-            alert("Entry removed.");
+                for (let docItem of group) {
+                    if (docItem.id !== targetDocId) {
+                        await window.db.collection('customers').doc(docItem.id).delete();
+                        this.data.customers = this.data.customers.filter(c => c.id !== docItem.id);
+                    }
+                }
+                alert("Cleaned up successfully! Selected profile kept.");
+                app.closeModal();
+                app._renderCustomersPage();
+            } catch(e) {
+                alert("Action failed: " + e.message);
+            }
         },
 
         closeModal() {
-            const mc = document.getElementById('modal-content');
+            document.getElementById('modal-overlay').classList.add('hidden');
+        },
+
+        async ensureCompanyExpenses() {
+            if (this.data.companyExpensesLoaded) return;
+            const snap = await window.db.collection('companyExpenses').get();
+            this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this.data.companyExpensesLoaded = true;
+        },
+
+        // Rest of layout configuration handlers
+        renderAdminCustomers() {
+            this.ensureCustomers().then(() => this._renderCustomersPage());
+        },
+
+        _renderCustomersPage() {
+            document.getElementById('page-title').textContent = 'Manage Customers';
+            const container = document.getElementById('main-container');
+
+            // Scan for duplicate contacts
+            const phoneMap = {};
+            this.data.customers.forEach(c => {
+                const p = (c.phone || '').replace(/\D/g,'');
+                if(p.length >= 7) {
+                    if(!phoneMap[p]) phoneMap[p] = [];
+                    phoneMap[p].push(c);
+                }
+            });
+            const dupGroups = Object.values(phoneMap).filter(g => g.length > 1);
+            this._dupGroups = dupGroups;
+
+            container.innerHTML = `
+                <div class="space-y-4 fade-in pb-20">
+                    ${dupGroups.length > 0 ? `
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center">
+                        <div>
+                            <h4 class="text-red-800 font-bold text-sm">Duplicate Contacts Alert!</h4>
+                            <p class="text-xs text-red-600">${dupGroups.length} phone number matching group duplicates found.</p>
+                        </div>
+                        <button onclick="app.showDuplicatesModal()" class="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-700">Manage & Clean</button>
+                    </div>` : ''}
+
+                    <div class="section-card">
+                        <h3 class="font-bold text-gray-800 mb-3">Add / Edit Customer Contact</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <input type="text" id="cust-name" placeholder="Customer Name" class="border p-2 rounded-lg text-sm outline-none">
+                            <input type="tel" id="cust-phone" placeholder="Phone Number" class="border p-2 rounded-lg text-sm outline-none">
+                            <input type="text" id="cust-address" placeholder="Address (Optional)" class="border p-2 rounded-lg text-sm outline-none">
+                            <input type="text" id="cust-id" placeholder="B ID (Auto-allocated if blank)" class="border p-2 rounded-lg text-sm outline-none font-mono">
+                        </div>
+                        <button onclick="app.addCustomer()" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Save Contact Data</button>
+                    </div>
+
+                    <div class="section-card">
+                        <h3 class="font-bold text-gray-800 mb-3">Existing Customer List</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm text-gray-600">
+                                <thead>
+                                    <tr class="bg-gray-100"><th class="p-2">B ID</th><th class="p-2">Name</th><th class="p-2">Phone</th><th class="p-2">Address</th><th class="p-2">Actions</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${this.data.customers.map(c => `
+                                    <tr class="border-b">
+                                        <td class="p-2 font-mono font-bold text-indigo-600">${c.customerId || '---'}</td>
+                                        <td class="p-2 font-medium">${c.name}</td>
+                                        <td class="p-2">${c.phone}</td>
+                                        <td class="p-2 text-xs">${c.address || '---'}</td>
+                                        <td class="p-2">
+                                            <button onclick="app.editCustomerSetup('${c.id}')" class="text-indigo-600 hover:underline mr-2">Edit</button>
+                                        </td>
+                                    </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>`;
+        },
+
+        editCustomerSetup(id) {
+            const c = this.data.customers.find(x => x.id === id);
+            if(!c) return;
+            document.getElementById('cust-name').value = c.name || '';
+            document.getElementById('cust-phone').value = c.phone || '';
+            document.getElementById('cust-address').value = c.address || '';
+            document.getElementById('cust-id').value = c.customerId || '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+
+        showDuplicatesModal() {
             const ov = document.getElementById('modal-overlay');
-            mc.classList.add('scale-95','opacity-0');
-            ov.classList.add('hidden');
+            const mc = document.getElementById('modal-content');
+            if(!ov || !mc) return;
+
+            mc.innerHTML = `
+                <div class="p-5 space-y-4">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h3 class="font-bold text-lg text-gray-800">Duplicate Contacts Resolver Panel</h3>
+                        <button onclick="app.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+                    <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                        ${this._dupGroups.map((group, idx) => `
+                        <div class="bg-gray-50 border p-3 rounded-xl space-y-2">
+                            <p class="text-xs font-bold text-indigo-600 uppercase">Matching Group Group #${idx+1} (Phone: ${group[0].phone})</p>
+                            <div class="space-y-1">
+                                ${group.map(c => `
+                                <div class="p-2 bg-white rounded border flex justify-between items-center text-xs">
+                                    <div>
+                                        <p class="font-bold">${c.name} <span class="font-mono text-indigo-600">(${c.customerId || 'No ID'})</span></p>
+                                        <p class="text-gray-500">${c.address || 'No address allocated'}</p>
+                                    </div>
+                                    <button onclick="app.keepThisDeleteOthers('${c.id}', ${idx})" class="text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-red-200">Keep This Only</button>
+                                </div>`).join('')}
+                            </div>
+                            <div class="flex gap-2 justify-end pt-1">
+                                <button onclick="app.mergeCustomers(${idx})" class="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded font-semibold">Merge All Data Under Single ID</button>
+                            </div>
+                        </div>`).join('')}
+                    </div>
+                </div>`;
+
+            ov.classList.remove('hidden');
+            setTimeout(() => { mc.classList.remove('scale-95','opacity-0'); mc.classList.add('scale-100','opacity-100'); }, 10);
         }
     };
-
     window.onload = () => app.init();
     </script>
 </body>
