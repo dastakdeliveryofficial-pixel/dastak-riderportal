@@ -349,12 +349,14 @@
         showLogin() {
             this.stopRealtimeListeners();
             document.getElementById('main-container').innerHTML = `
-                <div class="min-h-full flex items-center justify-center fade-in p-4">
+                <div class="min-h-full flex flex-col items-center justify-center fade-in p-4 gap-4">
+
+                    <!-- Staff Login -->
                     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
                         <div class="text-center mb-6">
                             <div class="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4 shadow-lg shadow-indigo-200"><i class="fas fa-motorcycle"></i></div>
                             <h2 class="text-xl font-bold text-gray-800">Welcome Back</h2>
-                            <p class="text-gray-500 text-sm">Sign in to access your portal</p>
+                            <p class="text-gray-500 text-sm">Staff login — Rider / Admin</p>
                         </div>
                         <form onsubmit="app.handleLogin(event)" class="space-y-4">
                             <input type="email" id="login-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="rider@example.com" required>
@@ -366,10 +368,172 @@
                             <button onclick="app.showForgotPassword()" class="text-sm text-gray-500 hover:text-indigo-600">Forgot Password?</button>
                         </div>
                     </div>
+
+                    <!-- ✅ Customer Self-Lookup Panel -->
+                    <div class="bg-white rounded-2xl shadow-lg w-full max-w-md border border-green-100">
+                        <div class="bg-gradient-to-r from-green-600 to-teal-600 text-white p-5 rounded-t-2xl text-center">
+                            <i class="fas fa-user-circle text-3xl mb-2"></i>
+                            <h3 class="font-bold text-lg">Customer Payment Check</h3>
+                            <p class="text-green-100 text-xs mt-1">Apni Customer ID daal kar apni payments dekhen</p>
+                        </div>
+                        <div class="p-5">
+                            <div class="flex gap-2 mb-4">
+                                <div class="relative flex-1">
+                                    <i class="fas fa-id-card absolute left-3 top-1/2 -translate-y-1/2 text-green-500 text-sm"></i>
+                                    <input type="text" id="cust-lookup-id"
+                                        placeholder="e.g. M081, A567..."
+                                        class="w-full pl-10 pr-3 py-3 border-2 border-green-200 rounded-xl text-sm font-mono font-semibold outline-none focus:border-green-500 uppercase"
+                                        oninput="this.value=this.value.toUpperCase()"
+                                        onkeydown="if(event.key==='Enter') app.customerLookup()">
+                                </div>
+                                <button onclick="app.customerLookup()"
+                                    class="bg-green-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-green-700 transition-colors flex items-center gap-2">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                            <div id="cust-lookup-result" class="hidden"></div>
+                            <p class="text-xs text-gray-400 text-center">Customer ID rider se ya Dastak se hasil karein</p>
+                        </div>
+                    </div>
                 </div>`;
             document.getElementById('sidebar').classList.add('hidden');
             document.getElementById('main-header').classList.add('hidden');
         },
+
+        // ✅ Customer self-lookup — no login needed
+        async customerLookup() {
+            const inputId = (document.getElementById('cust-lookup-id')?.value || '').trim().toUpperCase();
+            const resultDiv = document.getElementById('cust-lookup-result');
+            if (!inputId) { alert('Customer ID likhein!'); return; }
+
+            resultDiv.innerHTML = `<div class="text-center py-4 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl"></i><p class="text-sm mt-2">Dhundh raha hoon...</p></div>`;
+            resultDiv.classList.remove('hidden');
+
+            try {
+                // Firebase se customer dhundho by customerId
+                const snap = await window.db.collection('customers').where('customerId', '==', inputId).limit(1).get();
+
+                if (snap.empty) {
+                    resultDiv.innerHTML = `<div class="text-center py-4">
+                        <i class="fas fa-times-circle text-red-400 text-3xl mb-2"></i>
+                        <p class="text-sm font-semibold text-red-600">Customer ID nahi mili</p>
+                        <p class="text-xs text-gray-400 mt-1">"${inputId}" — dobara check karein</p>
+                    </div>`;
+                    return;
+                }
+
+                const customer = { id: snap.docs[0].id, ...snap.docs[0].data() };
+
+                // Ab us customer ki saari payments dhundho
+                const reportsSnap = await window.db.collection('reports').get();
+                const allPending = [], allReceived = [];
+
+                reportsSnap.docs.forEach(doc => {
+                    const r = doc.data();
+                    (r.onlinePayments || []).forEach(p => {
+                        const custPhone = (customer.phone||'').replace(/\D/g,'').slice(-10);
+                        const custName = (customer.name||'').toLowerCase();
+                        const detail = (p.detail||'').toLowerCase();
+                        const dPhone = detail.replace(/\D/g,'').slice(-10);
+                        const idMatch = (p.customerId||'').toUpperCase() === inputId;
+                        const phoneMatch = custPhone.length>=10 && dPhone===custPhone;
+                        const nameMatch = custName.length>=3 && detail.includes(custName);
+                        const docIdMatch = (p.customerDocId||'') === customer.id;
+
+                        if (idMatch || phoneMatch || nameMatch || docIdMatch) {
+                            const payment = {
+                                date: r.date,
+                                amount: p.amount || 0,
+                                detail: p.detail || '',
+                                items: p.items || '',
+                                status: p.status || 'pending'
+                            };
+                            if (p.status === 'pending') allPending.push(payment);
+                            else allReceived.push(payment);
+                        }
+                    });
+                });
+
+                allPending.sort((a,b) => new Date(b.date)-new Date(a.date));
+                allReceived.sort((a,b) => new Date(b.date)-new Date(a.date));
+
+                const totalPending = allPending.reduce((a,p)=>a+p.amount,0);
+                const totalReceived = allReceived.reduce((a,p)=>a+p.amount,0);
+
+                resultDiv.innerHTML = `
+                    <div class="border-t border-gray-100 pt-4">
+                        <!-- Customer info -->
+                        <div class="flex items-center gap-3 mb-4 bg-green-50 rounded-xl p-3">
+                            <div class="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center font-bold text-xl">${(customer.name||'?').charAt(0).toUpperCase()}</div>
+                            <div>
+                                <p class="font-bold text-gray-800">${customer.name}</p>
+                                <p class="text-xs text-green-700 font-mono font-semibold">🆔 ${customer.customerId}</p>
+                                ${customer.address ? `<p class="text-xs text-gray-500">${customer.address}</p>` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <div class="grid grid-cols-2 gap-3 mb-4">
+                            <div class="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+                                <p class="text-xs text-orange-600 font-medium">⏳ Pending</p>
+                                <p class="text-xl font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</p>
+                                <p class="text-xs text-orange-500">${allPending.length} payment${allPending.length!==1?'s':''}</p>
+                            </div>
+                            <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                                <p class="text-xs text-green-600 font-medium">✅ Paid</p>
+                                <p class="text-xl font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</p>
+                                <p class="text-xs text-green-500">${allReceived.length} payment${allReceived.length!==1?'s':''}</p>
+                            </div>
+                        </div>
+
+                        <!-- Pending list -->
+                        ${allPending.length > 0 ? `
+                        <div class="mb-3">
+                            <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2">⏳ Pending Payments</h4>
+                            <div class="space-y-2">
+                                ${allPending.map(p => `
+                                <div class="bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <p class="text-xs text-gray-500">${new Date(p.date).toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</p>
+                                            ${p.items ? `<p class="text-xs text-gray-600 mt-0.5">🛒 ${p.items}</p>` : ''}
+                                        </div>
+                                        <p class="font-bold text-orange-700">Rs ${p.amount.toLocaleString()}</p>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : '<div class="bg-green-50 rounded-xl p-3 text-center text-green-700 text-sm font-semibold mb-3">🎉 Koi pending payment nahi!</div>'}
+
+                        <!-- Received list -->
+                        ${allReceived.length > 0 ? `
+                        <div>
+                            <h4 class="text-xs font-bold text-green-600 uppercase tracking-wider mb-2">✅ Paid Payments</h4>
+                            <div class="space-y-2">
+                                ${allReceived.map(p => `
+                                <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 opacity-75">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <p class="text-xs text-gray-500">${new Date(p.date).toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</p>
+                                            ${p.items ? `<p class="text-xs text-gray-500 mt-0.5">🛒 ${p.items}</p>` : ''}
+                                        </div>
+                                        <p class="font-bold text-green-600">Rs ${p.amount.toLocaleString()}</p>
+                                    </div>
+                                </div>`).join('')}
+                            </div>
+                        </div>` : ''}
+
+                        ${allPending.length===0 && allReceived.length===0 ? `
+                        <div class="text-center py-4 text-gray-400">
+                            <i class="fas fa-receipt text-3xl mb-2"></i>
+                            <p class="text-sm">Koi payment record nahi mili</p>
+                        </div>` : ''}
+                    </div>`;
+
+            } catch(e) {
+                resultDiv.innerHTML = `<div class="text-center py-4 text-red-500"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">Error: ${e.message}</p></div>`;
+            }
+        },
+
 
         async handleLogin(e) {
             e.preventDefault();
