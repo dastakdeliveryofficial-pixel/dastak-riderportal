@@ -245,6 +245,20 @@
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
 
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBdKbba0NjNmW2LNxEILiIcjv3DU3LTnks",
+            authDomain: "dastak-rider-portal-1b9d9.firebaseapp.com",
+            projectId: "dastak-rider-portal-1b9d9",
+            storageBucket: "dastak-rider-portal-1b9d9.firebasestorage.app",
+            messagingSenderId: "714540074485",
+            appId: "1:714540074485:web:cf393ebd7edbedae518cbc"
+        };
+        firebase.initializeApp(firebaseConfig);
+        window.auth = firebase.auth();
+        window.db = firebase.firestore();
+    </script>
+
     <!-- Pull to Refresh -->
     <div id="pull-to-refresh" class="fixed top-0 left-0 right-0 flex items-center justify-center pointer-events-none transition-transform duration-200 ease-out z-50" style="transform:translateY(-50px);height:50px;">
         <div class="bg-white p-2 rounded-full shadow-md flex items-center justify-center border border-gray-200">
