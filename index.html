@@ -619,8 +619,15 @@
 
                 const customer = { id: snap.docs[0].id, ...snap.docs[0].data() };
 
-                // Ab us customer ki saari payments dhundho
-                const reportsSnap = await window.db.collection('reports').get();
+                // Customer ki payments dhundho - last 6 months ki reports mein
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                const dateStr = sixMonthsAgo.toISOString().split('T')[0];
+                const reportsSnap = await window.db.collection('reports')
+                    .where('date', '>=', dateStr)
+                    .orderBy('date', 'desc')
+                    .limit(500)
+                    .get();
                 const allPending = [], allReceived = [];
 
                 reportsSnap.docs.forEach(doc => {
@@ -822,7 +829,15 @@
 
         logout() {
             this.stopRealtimeListeners();
+            this.data._listenersSetup = false;
             this.data.currentUser = null;
+            this.data.users = [];
+            this.data.reports = [];
+            this.data.attendance = [];
+            this.data.customers = [];
+            this.data.companyExpenses = [];
+            this.data.customersLoaded = false;
+            this.data.companyExpensesLoaded = false;
             window.auth.signOut().then(() => location.reload());
         },
 
@@ -3352,15 +3367,15 @@
                 // Re-authenticate
                 const cred = firebase.auth.EmailAuthProvider.credential(user.email, pass);
                 await user.reauthenticateWithCredential(cred);
-                // Send verification to new email (safer than direct update)
-                await user.verifyBeforeUpdateEmail(newEmail);
+                // Update email in Firebase Auth
+                await user.updateEmail(newEmail);
                 // Also update in Firestore immediately (will be verified separately)
                 await window.db.collection('users').doc(this.data.currentUser.id).update({ email: newEmail });
                 // Update local data
                 this.data.currentUser.email = newEmail;
-                alert(`✅ Verification email bhej diya gaya!\n\nNaye email (${newEmail}) ko check karein aur verify karein.\n\nVerify karne ke baad Firebase Auth mein update hoga.`);
-                document.getElementById('set-email-pass').value = ''; document.getElementById('set-new-email').value = '';
-                this.renderSettings();
+                alert(`✅ Email update ho gaya!\n\nNaya email: ${newEmail}\n\nAb is email se login karein.`);
+                // Update local data
+                this.data.currentUser.email = newEmail;
             } catch(e) {
                 if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') alert('Password ghalat hai!');
                 else if (e.code === 'auth/email-already-in-use') alert('Yeh email already use ho rahi hai!');
