@@ -237,6 +237,41 @@
         /* ===== MISC ===== */
         #dynamic-style { display:none; }
         .partial-pay-modal { background: linear-gradient(135deg, #667eea, #764ba2); }
+
+        /* Ensure content is above blobs */
+        #sidebar, #main-header, #main-container, #modal-overlay { position: relative; z-index: 1; }
+        #sidebar { z-index: 50; }
+        #modal-overlay { z-index: 100; }
+
+        /* Loading screen glass */
+        #app-loading {
+            background: transparent;
+        }
+        #main-container {
+            background: transparent;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ===== COLORFUL GLASS CARDS ===== */
+        .stat-card:nth-child(1) { background: linear-gradient(135deg, rgba(239,246,255,0.85), rgba(219,234,254,0.85)); }
+        .stat-card:nth-child(2) { background: linear-gradient(135deg, rgba(240,253,244,0.85), rgba(209,250,229,0.85)); }
+        .stat-card:nth-child(3) { background: linear-gradient(135deg, rgba(255,247,237,0.85), rgba(254,215,170,0.85)); }
+        .stat-card:nth-child(4) { background: linear-gradient(135deg, rgba(253,242,248,0.85), rgba(251,207,232,0.85)); }
+
+        /* ===== QUICK ACTION BUTTONS — multicolor ===== */
+        .quick-action-btn:nth-child(1) { background: linear-gradient(135deg, #667eea, #764ba2); }
+        .quick-action-btn:nth-child(2) { background: linear-gradient(135deg, #11998e, #38ef7d); }
+        .quick-action-btn:nth-child(3) { background: linear-gradient(135deg, #f7971e, #ffd200); }
+        .quick-action-btn:nth-child(4) { background: linear-gradient(135deg, #2193b0, #6dd5ed); }
+
+        /* ===== DELIVERY ROW ===== */
+        .delivery-row {
+            background: rgba(238,242,255,0.7);
+            border: 1px solid rgba(165,180,252,0.4);
+            border-radius: 14px;
+            padding: 12px;
+        }
     </style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex">
@@ -329,7 +364,7 @@
     </main>
 
     <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
+        <div class="bg-white/92 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-95 opacity-0" id="modal-content"></div>
     </div>
 
     <style id="dynamic-style"></style>
@@ -350,9 +385,10 @@
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
             _editReportId: null, _isSubmitting: false,
             attMonth: null, attYear: null,
-            // WhatsApp template (editable by admin)
-            waReminderTemplate: 'Assalam o Alaikum {name},\n\nآپ کی payment pending ہے۔\n\n💰 *Amount: Rs {amount}*\n📅 Date: {date}\n\nبراہ کرم payment کریں۔\nشکریہ — Dastak 🙏',
-            waReceivedTemplate: 'Assalam o Alaikum *{name}*! 🙏\n\nآپ کی payment موصول ہو گئی۔ شکریہ!\n\n✅ *Rs {amount} Received*\n📅 Date: {date}\n\nDastak پر order کا شکریہ 🚀\n— Dastak Delivery Service',
+            // WhatsApp templates (editable by admin)
+            waReminderTemplate: '{name},\n\nDastak Delivery ki taraf se aap ko yaad-dehani (reminder) bheji ja rahi hai ke aap ki payment abhi pending hai.\n\n💰 Amount: Rs {amount}\n📅 Date: {date}\n🆔 ID: {id}\n\nAap neeche diye gaye link par click kar ke, apni ID enter kar ke payment details check kar sakte hain:\n\n🔗 https://dastakdeliveryofficial-pixel.github.io/customer-portal/\n\nBurai meharbani jald az jald payment clear karen.\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏',
+            waReceivedTemplate: '{name},\n\nAap ki payment humein mil gayi. Shukriya!\n\n✅ Amount Received: Rs {amount}\n📅 Date: {date}\n🆔 ID: {id}\n\nDastak par order karne ka shukriya.\nHum hamesha aap ki khidmat ke liye haazir hain! 🚀\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏',
+            waStatementTemplate: '{name},\n\nAap ki darj zail payments abhi tak pending hain:\n\n{lines}\n\n━━━━━━━━━━━━━━━\n💰 Kul Baqi: Rs {total}\n📆 {days} din se pending\n🆔 ID: {id}\n━━━━━━━━━━━━━━━\n\nAap apni details is link par check kar sakte hain:\n🔗 https://dastakdeliveryofficial-pixel.github.io/customer-portal/\n\nBurai meharbani jald az jald payment clear karen.\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏',
         },
 
         init() {
@@ -360,8 +396,10 @@
             // Load saved WA templates
             const savedReminder = localStorage.getItem('dastak_wa_reminder');
             const savedReceived = localStorage.getItem('dastak_wa_received');
+            const savedStatement = localStorage.getItem('dastak_wa_statement');
             if (savedReminder) this.data.waReminderTemplate = savedReminder;
             if (savedReceived) this.data.waReceivedTemplate = savedReceived;
+            if (savedStatement) this.data.waStatementTemplate = savedStatement;
 
             window.auth.onAuthStateChanged((user) => {
                 if (user) this.loadUserData(user.uid);
@@ -429,6 +467,8 @@
             try {
                 setMsg('Connecting...');
                 const now = new Date();
+                // 6 months pehle se data lo — taake month change karne pe zero na dikhe
+                const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
                 const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
                 const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
@@ -437,7 +477,11 @@
                 self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                 setMsg('Loading reports...');
-                const reportsSnap = await window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).get();
+                // 6 months ki reports load karo limit 600
+                const reportsSnap = await window.db.collection('reports')
+                    .where('date', '>=', sixMonthsAgo)
+                    .orderBy('date', 'desc')
+                    .limit(600).get();
                 self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                 setMsg('Loading attendance...');
@@ -457,13 +501,23 @@
                 self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 self.data.companyExpensesLoaded = true;
 
-                setMsg('Setting up listeners...');
+                // Customers bhi load karo upfront (online payment matching ke liye)
+                setMsg('Loading customers...');
+                const custSnap = await window.db.collection('customers').get();
+                self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self.data.customersLoaded = true;
+
+                setMsg('Setting up live sync...');
                 let rf = true, af = true, uf = true;
-                self.data._unsubReports = window.db.collection('reports').where('date', '>=', twoMonthsAgo).limit(300).onSnapshot(snap => {
-                    self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (rf) { rf = false; return; }
-                    self._debouncedRefresh();
-                });
+                self.data._unsubReports = window.db.collection('reports')
+                    .where('date', '>=', sixMonthsAgo)
+                    .orderBy('date', 'desc')
+                    .limit(600)
+                    .onSnapshot(snap => {
+                        self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        if (rf) { rf = false; return; }
+                        self._debouncedRefresh();
+                    });
                 self.data._unsubAtt = window.db.collection('attendance').where('date', '>=', monthStart).onSnapshot(snap => {
                     self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     if (af) { af = false; return; }
@@ -547,7 +601,7 @@
                 <div class="min-h-full flex flex-col items-center justify-center fade-in p-4 gap-4">
 
                     <!-- Staff Login -->
-                    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
+                    <div class="bg-white/80 backdrop-blur-md p-6 md:p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
                         <div class="text-center mb-6">
                             <div class="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4 shadow-lg shadow-indigo-200"><i class="fas fa-motorcycle"></i></div>
                             <h2 class="text-xl font-bold text-gray-800">Welcome Back</h2>
@@ -712,7 +766,7 @@
                             <h4 class="text-xs font-bold text-green-600 uppercase tracking-wider mb-2">✅ Paid Payments</h4>
                             <div class="space-y-2">
                                 ${allReceived.map(p => `
-                                <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 opacity-75">
+                                <div class="bg-white/60 border border-gray-100 rounded-xl p-3 opacity-75">
                                     <div class="flex justify-between items-start">
                                         <div>
                                             <p class="text-xs text-gray-500">${new Date(p.date).toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</p>
@@ -778,7 +832,7 @@
         showForgotPassword() {
             document.getElementById('main-container').innerHTML = `
                 <div class="min-h-full flex items-center justify-center fade-in p-4">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md">
+                    <div class="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-lg w-full max-w-md">
                         <div class="text-center mb-6"><div class="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 text-xl mx-auto mb-4"><i class="fas fa-key"></i></div><h2 class="text-xl font-bold text-gray-800">Reset Password</h2></div>
                         <form onsubmit="app.handleForgotPassword(event)" class="space-y-4">
                             <input type="email" id="reset-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="your@email.com" required>
@@ -798,7 +852,7 @@
         showSignup() {
             document.getElementById('main-container').innerHTML = `
                 <div class="min-h-full flex items-center justify-center fade-in p-4">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg w-full max-w-md">
+                    <div class="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-lg w-full max-w-md">
                         <div class="text-center mb-6"><div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center text-white text-xl mx-auto mb-4"><i class="fas fa-user-plus"></i></div><h2 class="text-xl font-bold text-gray-800">Join as Rider</h2></div>
                         <form onsubmit="app.handleSignup(event)" class="space-y-4">
                             <input type="text" id="signup-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg outline-none" placeholder="Full Name" required>
@@ -993,7 +1047,7 @@
                     </div>
                     <div class="section-card">
                         <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Recent Reports</h3><button onclick="app.navigate('rider-history')" class="text-xs text-indigo-600 font-medium">View All</button></div>
-                        ${myReports.length === 0 ? '<p class="text-center text-gray-400 py-6 text-sm">No reports yet</p>' : `<div class="space-y-2">${myReports.slice(0,3).map(r => `<div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg"><div><p class="font-medium text-sm">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${(r.orders||[]).reduce((a,o)=>a+(o.qty||0),0)} orders · Rs ${(r.finalAmount||0).toLocaleString()}</p></div><span class="status-badge status-${r.status} text-xs">${r.status}</span></div>`).join('')}</div>`}
+                        ${myReports.length === 0 ? '<p class="text-center text-gray-400 py-6 text-sm">No reports yet</p>' : `<div class="space-y-2">${myReports.slice(0,3).map(r => `<div class="flex justify-between items-center p-3 bg-white/60 rounded-lg"><div><p class="font-medium text-sm">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${(r.orders||[]).reduce((a,o)=>a+(o.qty||0),0)} orders · Rs ${(r.finalAmount||0).toLocaleString()}</p></div><span class="status-badge status-${r.status} text-xs">${r.status}</span></div>`).join('')}</div>`}
                     </div>
                     <div class="section-card">
                         <h3 class="font-bold text-gray-800 mb-3">Announcements</h3>
@@ -1033,7 +1087,7 @@
                         <div class="section-card">
                             <h3 class="font-bold text-gray-800 mb-4">Order Details</h3>
                             <div class="space-y-3">${[1,2,3].map(i => `
-                                <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                                <div class="bg-white/60 p-3 rounded-lg space-y-2">
                                     <div class="flex justify-between"><span class="text-sm font-medium text-gray-700">Order Type ${i}</span><span class="text-xs text-gray-400">Rate × Qty</span></div>
                                     <div class="grid grid-cols-2 gap-2">
                                         <div><label class="text-xs text-gray-500 mb-1 block">Qty</label><input type="number" id="order-qty-${i}" min="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" oninput="app.calculateTotals()"></div>
@@ -1100,7 +1154,7 @@
             if (!container) return;
             const rowId = 'opr-' + Date.now();
             const div = document.createElement('div');
-            div.className = 'bg-gray-50 p-3 rounded-lg space-y-2';
+            div.className = 'bg-white/60 p-3 rounded-lg space-y-2';
             div.id = rowId;
             div.innerHTML = `
                 <div class="flex justify-between items-start">
@@ -1331,7 +1385,7 @@
             const mc = document.getElementById('modal-content'); const ov = document.getElementById('modal-overlay');
             mc.innerHTML = `<div class="p-5">
                 <div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold text-gray-800">Report Details</h2><button onclick="app.closeModal()" class="text-gray-400 p-2"><i class="fas fa-times text-xl"></i></button></div>
-                <div class="grid grid-cols-2 gap-3 mb-4"><div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Date</p><p class="font-semibold">${new Date(report.date).toLocaleDateString()}</p></div><div class="bg-gray-50 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div></div>
+                <div class="grid grid-cols-2 gap-3 mb-4"><div class="bg-white/60 p-3 rounded-lg"><p class="text-xs text-gray-500">Date</p><p class="font-semibold">${new Date(report.date).toLocaleDateString()}</p></div><div class="bg-white/60 p-3 rounded-lg"><p class="text-xs text-gray-500">Status</p><span class="status-badge status-${report.status}">${report.status}</span></div></div>
                 <h3 class="font-bold text-gray-700 mb-2 text-sm">Orders</h3>
                 <div class="space-y-2 mb-4">${(report.orders||[]).map(o => `<div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm"><span>${o.type}: x${o.qty} × Rs ${(o.rate||0).toLocaleString()}</span><span class="font-bold text-indigo-600">Rs ${(o.gross||0).toLocaleString()}</span></div>`).join('') || '<p class="text-xs text-gray-400">No orders</p>'}</div>
                 ${(report.onlinePayments||[]).length > 0 ? `<h3 class="font-bold text-gray-700 mb-2 text-sm">Online Payments</h3><div class="space-y-2 mb-4">${report.onlinePayments.map(p => `<div class="flex justify-between p-2 bg-gray-50 rounded text-sm"><span>${p.customerName||p.detail||'—'}</span><span class="${p.status==='received'?'text-green-600':'text-orange-600'}">Rs ${(p.amount||0).toLocaleString()}</span></div>`).join('')}</div>` : ''}
@@ -1382,7 +1436,7 @@
                     ${pendingPayments.length===0&&receivedPayments.length===0 ? '<div class="text-center py-8 text-gray-400"><i class="fas fa-credit-card text-4xl mb-2"></i><p class="text-sm">Koi payment nahi</p></div>' :
                     `<div>
                         ${pendingPayments.length>0?`<h4 class="text-xs font-bold text-orange-600 uppercase mb-2">⏳ Pending</h4><div class="space-y-2 mb-4">${pendingPayments.map(p=>`<div class="flex justify-between items-center p-3 rounded-xl border bg-orange-50 border-orange-200"><div><p class="font-medium text-sm">${p.detail||'—'}</p><p class="text-xs text-gray-500">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p></div><p class="font-bold">Rs ${(p.amount||0).toLocaleString()}</p></div>`).join('')}</div>`:''}
-                        ${receivedPayments.length>0?`<h4 class="text-xs font-bold text-green-600 uppercase mb-2">✅ Received</h4><div class="space-y-2">${receivedPayments.map(p=>`<div class="flex justify-between items-center p-3 rounded-xl border bg-gray-50 border-gray-200 opacity-70"><div><p class="font-medium text-sm text-gray-500">${p.detail||'—'}</p><p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p></div><p class="font-bold text-gray-400">Rs ${(p.amount||0).toLocaleString()}</p></div>`).join('')}</div>`:''}
+                        ${receivedPayments.length>0?`<h4 class="text-xs font-bold text-green-600 uppercase mb-2">✅ Received</h4><div class="space-y-2">${receivedPayments.map(p=>`<div class="flex justify-between items-center p-3 rounded-xl border bg-white/60 border-gray-200 opacity-70"><div><p class="font-medium text-sm text-gray-500">${p.detail||'—'}</p><p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short'})}</p></div><p class="font-bold text-gray-400">Rs ${(p.amount||0).toLocaleString()}</p></div>`).join('')}</div>`:''}
                     </div>`}
                 </div>
             </div>`;
@@ -1489,7 +1543,7 @@
                 </div>
                 <div class="section-card">
                     <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-gray-800">Pending Reports</h3><div class="flex gap-2"><button onclick="app.exportMonthlyExcel()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fas fa-file-excel mr-1"></i>Excel</button><button onclick="app.navigate('admin-reports')" class="text-xs text-indigo-600">View All</button></div></div>
-                    ${this.getMonthFilteredReports('pending').length===0?'<p class="text-gray-400 text-center py-4">No pending reports</p>':`<div class="space-y-2">${this.getMonthFilteredReports('pending').slice(0,5).map(r=>`<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${r.riderName.charAt(0)}</div><div><p class="font-semibold text-sm">${r.riderName}</p><p class="text-xs text-gray-500">Rs ${(r.finalAmount||0).toLocaleString()}</p></div></div><div class="flex gap-1"><button onclick="app.updateReportStatus('${r.id}','approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button><button onclick="app.updateReportStatus('${r.id}','rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button></div></div>`).join('')}</div>`}
+                    ${this.getMonthFilteredReports('pending').length===0?'<p class="text-gray-400 text-center py-4">No pending reports</p>':`<div class="space-y-2">${this.getMonthFilteredReports('pending').slice(0,5).map(r=>`<div class="flex items-center justify-between p-3 bg-white/60 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${r.riderName.charAt(0)}</div><div><p class="font-semibold text-sm">${r.riderName}</p><p class="text-xs text-gray-500">Rs ${(r.finalAmount||0).toLocaleString()}</p></div></div><div class="flex gap-1"><button onclick="app.updateReportStatus('${r.id}','approved')" class="p-2 text-green-600 hover:bg-green-100 rounded"><i class="fas fa-check"></i></button><button onclick="app.updateReportStatus('${r.id}','rejected')" class="p-2 text-red-600 hover:bg-red-100 rounded"><i class="fas fa-times"></i></button></div></div>`).join('')}</div>`}
                 </div>
 
                 <!-- Rider-wise Deliveries Section -->
@@ -1519,7 +1573,7 @@
                             return riderData.map((d, i) => {
                                 const pct = totalDeliveries > 0 ? Math.round((d.rOrders / totalDeliveries) * 100) : 0;
                                 const barW = Math.round((d.rOrders / maxOrders) * 100);
-                                return `<div class="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                                return `<div class="bg-white/60 border border-gray-100 rounded-xl p-3">
                                     <div class="flex items-center justify-between mb-2">
                                         <div class="flex items-center gap-2">
                                             <span class="text-lg leading-none">${medals[i] || '📦'}</span>
@@ -1760,7 +1814,7 @@
                 {type:'Type 2',qty:0,rate:150,gross:0},
                 {type:'Type 3',qty:0,rate:200,gross:0}
             ]).map((o, i) => `
-                <div class="bg-gray-50 rounded-lg p-3">
+                <div class="bg-white/60 rounded-lg p-3">
                     <p class="text-xs font-semibold text-indigo-700 mb-2">${o.type||'Order '+(i+1)}</p>
                     <div class="grid grid-cols-2 gap-2">
                         <div><label class="text-xs text-gray-500">Quantity</label>
@@ -1873,7 +1927,7 @@
                                 <i class="fas fa-credit-card text-indigo-500"></i> Online Payments
                                 <span class="text-xs font-normal bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Customer ID se auto-fill</span>
                             </h3>
-                            ${paymentsHTML || '<p class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Is report mein koi online payment nahi</p>'}
+                            ${paymentsHTML || '<p class="text-xs text-gray-400 bg-white/60 rounded-lg p-3">Is report mein koi online payment nahi</p>'}
                         </div>
 
                         <!-- Expenses -->
@@ -2137,6 +2191,10 @@
                                     class="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
                                     <i class="fab fa-whatsapp"></i> Statement
                                 </button>
+                                <button onclick="app.receiveAllPayments('${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}')"
+                                    class="text-xs bg-purple-600 text-white px-3 py-1.5 rounded-lg font-semibold">
+                                    ✅ Receive All
+                                </button>
                             </div>
                         </div>`).join('')}
                     </div>
@@ -2145,7 +2203,7 @@
                 <div>
                     <h4 class="text-xs font-bold text-green-600 uppercase tracking-wider mb-2">✅ Received (${receivedPayments.length})</h4>
                     <div class="space-y-2">${receivedPayments.map(p => `
-                        <div class="flex justify-between items-center p-3 rounded-xl border bg-gray-50 border-gray-200 opacity-70">
+                        <div class="flex justify-between items-center p-3 rounded-xl border bg-white/60 border-gray-200 opacity-70">
                             <div class="min-w-0 flex-1">
                                 <p class="font-semibold text-sm text-gray-500">${p.riderName}</p>
                                 <p class="text-xs text-gray-400 truncate">${p.detail||'—'}</p>
@@ -2261,214 +2319,260 @@
         },
 
         // NEW: Open WhatsApp reminder with direct phone number
-        openWAReminder(riderName, customerDetail, customerPhone, amount, date) {
-            const customers = this.data.customers || [];
-            const detail = (customerDetail||'').toLowerCase();
-            const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
-            const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
-            const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
-            const matched = byPhone || byName;
-            const custName = matched ? matched.name : (customerDetail||'Customer');
-            let waNumber = '';
-            // Priority: passed phone → customer in DB → extract from detail
-            if (customerPhone) {
-                const p = customerPhone.replace(/\D/g,'');
-                waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
-            } else if (matched && matched.phone) {
-                const p = matched.phone.replace(/\D/g,'');
-                waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
-            } else if (phoneInDetail.length >= 10) {
-                waNumber = '92' + phoneInDetail;
-            }
-
-            const template = this.data.waReminderTemplate
-                .replace('{name}', custName)
-                .replace('{amount}', Number(amount).toLocaleString())
-                .replace('{date}', new Date(date).toLocaleDateString('en-PK'));
-            const encoded = encodeURIComponent(template);
-
-            if (waNumber.length >= 12) {
-                window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`, '_blank');
-            } else {
-                // No number found — open WhatsApp with text only
-                if (confirm(`Customer ka phone number nahi mila!\n\nKya bina number ke WhatsApp open karna chahte hain?\n(Manually number type karna hoga)`)) {
-                    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
-                }
-            }
-        },
-
-        // NEW: Send full statement — saari pending payments ek message mein
-        sendWhatsAppStatement(customerDetail, customerPhone) {
-            const detail = (customerDetail || '').toLowerCase();
-            const customers = this.data.customers || [];
-
-            // Customer match karo — phone se ya naam se
-            const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
-            const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
-            const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
-            const matched = byPhone || byName;
-            const custName = matched ? matched.name : (customerDetail || 'Customer');
-
-            // Saari PENDING payments dhoondo is customer ki — sari reports mein se
-            const allPending = [];
-            this.data.reports.forEach(r => {
-                (r.onlinePayments || []).forEach(p => {
-                    if (p.status !== 'pending') return;
-                    const d = (p.detail || '').toLowerCase();
-                    const dPhone = d.replace(/\D/g,'').slice(-10);
-
-                    // Match: phone exact match YA naam match YA detail exact match
-                    const phoneMatch = phoneInDetail.length >= 10 && dPhone === phoneInDetail;
-                    const nameMatch = matched && (matched.name||'').length >= 3 && d.includes((matched.name||'').toLowerCase());
-                    const exactMatch = p.detail === customerDetail;
-                    const passedPhoneMatch = customerPhone && (p.customerPhone||'').replace(/\D/g,'').slice(-10) === customerPhone.replace(/\D/g,'').slice(-10) && customerPhone.replace(/\D/g,'').length >= 10;
-
-                    if (phoneMatch || nameMatch || exactMatch || passedPhoneMatch) {
-                        allPending.push({
-                            date: r.date,
-                            amount: p.amount || 0,
-                            detail: p.detail || '',
-                            items: p.items || ''
-                        });
-                    }
-                });
-            });
-
-            if (allPending.length === 0) {
-                alert(`"${custName}" ki koi pending payment nahi mili.\n\nTip: Customer ID ya exact naam use karein.`);
-                return;
-            }
-
-            // Sort by date (purani pehle)
-            allPending.sort((a, b) => new Date(a.date) - new Date(b.date));
-            const totalPending = allPending.reduce((a, p) => a + p.amount, 0);
-            const oldestDate = allPending[0].date;
-            const daysSince = Math.floor((new Date() - new Date(oldestDate)) / (1000 * 60 * 60 * 24));
-
-            // Build statement lines
-            const lines = allPending.map((p, i) => {
-                const d = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
-                const dateFormatted = new Date(p.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
-                return `${i + 1}. 📅 ${dateFormatted} — *Rs ${p.amount.toLocaleString()}* (${d} din پہلے)${p.items ? '\n   🛒 ' + p.items : ''}`;
-            }).join('\n');
-
-            const message = `Assalam o Alaikum *${custName}*! 🙏\n\nآپ کی درج ذیل payments ابھی تک pending ہیں:\n\n${lines}\n\n━━━━━━━━━━━━━━━\n💰 *کل باقی: Rs ${totalPending.toLocaleString()}*\n📆 *${daysSince} دن سے pending*\n━━━━━━━━━━━━━━━\n\nبراہ کرم جلد از جلد payment کریں۔\nشکریہ — Dastak Delivery Service 🚀`;
-
-            // Phone number determine karo
+        // Helper: get WA number from customer
+        _getWaNumber(matched, customerPhone, phoneInDetail) {
             let waNumber = '';
             if (customerPhone) {
                 const p = customerPhone.replace(/\D/g,'');
                 if (p.length >= 10) waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
             }
-            if (!waNumber && matched && matched.phone) {
+            if (!waNumber && matched?.phone) {
                 const p = matched.phone.replace(/\D/g,'');
                 waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,'');
             }
-            if (!waNumber && phoneInDetail.length >= 10) {
-                waNumber = '92' + phoneInDetail;
-            }
+            if (!waNumber && (phoneInDetail||'').length >= 10) waNumber = '92' + phoneInDetail;
+            return waNumber;
+        },
 
-            const encoded = encodeURIComponent(message);
+        // Helper: find customer from detail/phone
+        _matchCustomer(customerDetail, customerPhone) {
+            const customers = this.data.customers || [];
+            const detail = (customerDetail||'').toLowerCase();
+            const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
+            const byPassedPhone = customerPhone && customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === customerPhone.replace(/\D/g,'').slice(-10) && customerPhone.replace(/\D/g,'').length >= 10);
+            const byPhone = !byPassedPhone && customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
+            const byName = !byPassedPhone && !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
+            return { matched: byPassedPhone || byPhone || byName, phoneInDetail };
+        },
+
+        openWAReminder(riderName, customerDetail, customerPhone, amount, date) {
+            const { matched, phoneInDetail } = this._matchCustomer(customerDetail, customerPhone);
+            const custName = matched ? matched.name : (customerDetail||'Customer');
+            const custId = matched?.customerId || '';
+            const waNumber = this._getWaNumber(matched, customerPhone, phoneInDetail);
+            const template = this.data.waReminderTemplate
+                .replace('{name}', custName)
+                .replace('{amount}', Number(amount).toLocaleString())
+                .replace('{date}', new Date(date).toLocaleDateString('en-PK'))
+                .replace('{id}', custId);
+            const encoded = encodeURIComponent(template);
             if (waNumber.length >= 12) {
                 window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`, '_blank');
             } else {
-                if (confirm(`Customer ka phone number nahi mila!\n\nKya bina number ke WhatsApp open karna chahte hain?\n(Manually number type karna hoga)`)) {
+                if (confirm(`Customer ka phone number nahi mila!\nKya bina number ke WhatsApp open karein?`)) {
                     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
                 }
             }
         },
 
-        // Updated: Send received thank you with direct phone
-        sendReceivedThankYou(customerDetail, amount, date) {
-            const customers = this.data.customers || [];
-            const detail = (customerDetail||'').toLowerCase();
-            const phoneInDetail = detail.replace(/\D/g,'').slice(-10);
-            const byPhone = customers.find(c => (c.phone||'').replace(/\D/g,'').slice(-10) === phoneInDetail && phoneInDetail.length >= 10);
-            const byName = !byPhone && customers.find(c => (c.name||'').length >= 3 && detail.includes((c.name||'').toLowerCase()));
-            const matched = byPhone || byName;
+        // Statement WA — saari pending payments ek message mein
+        sendWhatsAppStatement(customerDetail, customerPhone) {
+            const { matched, phoneInDetail } = this._matchCustomer(customerDetail, customerPhone);
             const custName = matched ? matched.name : (customerDetail||'Customer');
-            let waNumber = '';
-            if (matched && matched.phone) { const p = matched.phone.replace(/\D/g,''); waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,''); }
-            else if (phoneInDetail.length >= 10) { waNumber = '92' + phoneInDetail; }
+            const custId = matched?.customerId || '';
+            const waNumber = this._getWaNumber(matched, customerPhone, phoneInDetail);
+
+            const allPending = this._getCustomerPending(customerDetail, customerPhone, matched, phoneInDetail);
+            if (allPending.length === 0) { alert(`"${custName}" ki koi pending payment nahi mili.`); return; }
+
+            allPending.sort((a, b) => new Date(a.date) - new Date(b.date));
+            const totalPending = allPending.reduce((a, p) => a + p.amount, 0);
+            const oldestDate = allPending[0].date;
+            const daysSince = Math.floor((new Date() - new Date(oldestDate)) / (1000*60*60*24));
+
+            const lines = allPending.map((p, i) => {
+                const d = Math.floor((new Date() - new Date(p.date)) / (1000*60*60*24));
+                const df = new Date(p.date).toLocaleDateString('en-PK', {day:'numeric',month:'short',year:'numeric'});
+                return `${i+1}. 📅 ${df} — Rs ${p.amount.toLocaleString()} (${d} din pehle)${p.items ? '\n   🛒 '+p.items : ''}`;
+            }).join('\n');
+
+            const template = this.data.waStatementTemplate
+                .replace('{name}', custName)
+                .replace('{lines}', lines)
+                .replace('{total}', totalPending.toLocaleString())
+                .replace('{days}', daysSince)
+                .replace('{id}', custId);
+
+            const encoded = encodeURIComponent(template);
+            if (waNumber.length >= 12) {
+                window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}`, '_blank');
+            } else {
+                if (confirm(`Phone number nahi mila!\nKya bina number ke WhatsApp open karein?`)) {
+                    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+                }
+            }
+        },
+
+        // ✅ NEW: Receive ALL pending payments of a customer at once
+        async receiveAllPayments(customerDetail, customerPhone) {
+            const { matched, phoneInDetail } = this._matchCustomer(customerDetail, customerPhone);
+            const custName = matched ? matched.name : (customerDetail||'Customer');
+
+            const allPending = this._getCustomerPendingWithReport(customerDetail, customerPhone, matched, phoneInDetail);
+            if (allPending.length === 0) { alert('Koi pending payment nahi mili!'); return; }
+
+            const totalAmount = allPending.reduce((a,p) => a + p.amount, 0);
+            if (!confirm(`${custName} ki saari ${allPending.length} pending payments receive karein?\n\nKul: Rs ${totalAmount.toLocaleString()}`)) return;
+
+            const currentFilter = this.data.paymentDateFilter;
+            try {
+                // Group by reportId for batch updates
+                const reportGroups = {};
+                allPending.forEach(p => {
+                    if (!reportGroups[p.reportId]) reportGroups[p.reportId] = { report: p.reportObj, indices: [] };
+                    reportGroups[p.reportId].indices.push(p.paymentIdx);
+                });
+
+                for (const [reportId, group] of Object.entries(reportGroups)) {
+                    const updatedPayments = [...(group.report.onlinePayments||[])];
+                    group.indices.forEach(idx => {
+                        if (updatedPayments[idx]) updatedPayments[idx] = { ...updatedPayments[idx], status: 'received' };
+                    });
+                    await window.db.collection('reports').doc(reportId).update({ onlinePayments: updatedPayments });
+                    group.report.onlinePayments = updatedPayments;
+                }
+
+                // Send thank you WA
+                this.sendReceivedThankYou(customerDetail, totalAmount, new Date().toISOString().split('T')[0]);
+                alert(`✅ ${allPending.length} payments receive ho gayi!\nKul: Rs ${totalAmount.toLocaleString()}`);
+                this.renderAdminOnlinePayments(currentFilter);
+            } catch(e) { alert('Error: ' + e.message); }
+        },
+
+        // Helper: get all pending payments of a customer (for statement)
+        _getCustomerPending(customerDetail, customerPhone, matched, phoneInDetail) {
+            const allPending = [];
+            this.data.reports.forEach(r => {
+                (r.onlinePayments||[]).forEach(p => {
+                    if (p.status !== 'pending') return;
+                    if (this._paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail)) {
+                        allPending.push({ date: r.date, amount: p.amount||0, detail: p.detail||'', items: p.items||'' });
+                    }
+                });
+            });
+            return allPending;
+        },
+
+        // Helper: get all pending payments WITH report reference (for batch receive)
+        _getCustomerPendingWithReport(customerDetail, customerPhone, matched, phoneInDetail) {
+            const allPending = [];
+            this.data.reports.forEach(r => {
+                (r.onlinePayments||[]).forEach((p, idx) => {
+                    if (p.status !== 'pending') return;
+                    if (this._paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail)) {
+                        allPending.push({ reportId: r.id, reportObj: r, paymentIdx: idx, amount: p.amount||0, date: r.date });
+                    }
+                });
+            });
+            return allPending;
+        },
+
+        // Helper: check if a payment belongs to a customer
+        _paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail) {
+            const d = (p.detail||'').toLowerCase();
+            const dPhone = d.replace(/\D/g,'').slice(-10);
+            const phoneMatch = phoneInDetail?.length >= 10 && dPhone === phoneInDetail;
+            const nameMatch = matched && (matched.name||'').length >= 3 && d.includes((matched.name||'').toLowerCase());
+            const exactMatch = p.detail === customerDetail;
+            const passedPhoneMatch = customerPhone && (p.customerPhone||'').replace(/\D/g,'').slice(-10) === customerPhone.replace(/\D/g,'').slice(-10) && customerPhone.replace(/\D/g,'').length >= 10;
+            return phoneMatch || nameMatch || exactMatch || passedPhoneMatch;
+        },
+
+        sendReceivedThankYou(customerDetail, amount, date) {
+            const { matched, phoneInDetail } = this._matchCustomer(customerDetail, '');
+            const custName = matched ? matched.name : (customerDetail||'Customer');
+            const custId = matched?.customerId || '';
+            const waNumber = this._getWaNumber(matched, '', phoneInDetail);
             const template = this.data.waReceivedTemplate
                 .replace('{name}', custName)
                 .replace('{amount}', Number(amount).toLocaleString())
-                .replace('{date}', new Date(date).toLocaleDateString('en-PK'));
+                .replace('{date}', new Date(date).toLocaleDateString('en-PK'))
+                .replace('{id}', custId);
             const encoded = encodeURIComponent(template);
             const url = waNumber.length >= 12 ? `https://api.whatsapp.com/send?phone=${waNumber}&text=${encoded}` : `https://api.whatsapp.com/send?text=${encoded}`;
             window.open(url, '_blank');
         },
 
-        // ========== WHATSAPP TEMPLATE SETTINGS (NEW PAGE) ==========
+        // ========== WHATSAPP TEMPLATE SETTINGS ==========
         renderWASettings() {
             document.getElementById('page-title').textContent = 'WhatsApp Templates';
             const container = document.getElementById('main-container');
             container.innerHTML = `<div class="fade-in pb-20 space-y-4 max-w-lg mx-auto">
                 <div class="bg-green-50 border border-green-200 rounded-2xl p-4">
                     <div class="flex items-center gap-3 mb-2"><i class="fab fa-whatsapp text-green-600 text-2xl"></i><h3 class="font-bold text-green-800">WhatsApp Templates</h3></div>
-                    <p class="text-xs text-green-700">Yeh templates admin panel mein use hote hain. Variables: <code class="bg-green-100 px-1 rounded">{name}</code> <code class="bg-green-100 px-1 rounded">{amount}</code> <code class="bg-green-100 px-1 rounded">{date}</code></p>
+                    <p class="text-xs text-green-700">Variables jo auto fill honge: <code class="bg-green-100 px-1 rounded">{name}</code> <code class="bg-green-100 px-1 rounded">{amount}</code> <code class="bg-green-100 px-1 rounded">{date}</code> <code class="bg-green-100 px-1 rounded">{id}</code> <code class="bg-green-100 px-1 rounded">{lines}</code> <code class="bg-green-100 px-1 rounded">{total}</code> <code class="bg-green-100 px-1 rounded">{days}</code></p>
                 </div>
+                <!-- Reminder -->
                 <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-clock text-orange-500 mr-2"></i>Payment Reminder Template</h3>
-                    <p class="text-xs text-gray-500 mb-2">Jab pending payment ka reminder bhejna ho</p>
-                    <textarea id="wa-reminder-template" rows="8" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReminderTemplate}</textarea>
-                    <div class="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-                        <strong>Preview:</strong><br><span id="reminder-preview" class="whitespace-pre-wrap">${this.data.waReminderTemplate.replace('{name}','Ali Hassan').replace('{amount}','1,040').replace('{date}','8/6/2026')}</span>
-                    </div>
+                    <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-clock text-orange-500 mr-2"></i>Reminder Template</h3>
+                    <p class="text-xs text-gray-500 mb-2">Pending payment ka reminder</p>
+                    <textarea id="wa-reminder-template" rows="10" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReminderTemplate}</textarea>
                 </div>
+                <!-- Received -->
                 <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-check-circle text-green-500 mr-2"></i>Payment Received Template</h3>
-                    <p class="text-xs text-gray-500 mb-2">Jab payment receive ho jaye toh thank you message</p>
-                    <textarea id="wa-received-template" rows="8" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReceivedTemplate}</textarea>
-                    <div class="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-                        <strong>Preview:</strong><br><span id="received-preview" class="whitespace-pre-wrap">${this.data.waReceivedTemplate.replace('{name}','Ali Hassan').replace('{amount}','1,040').replace('{date}','8/6/2026')}</span>
-                    </div>
+                    <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-check-circle text-green-500 mr-2"></i>Received Template</h3>
+                    <p class="text-xs text-gray-500 mb-2">Payment milne ke baad thank you</p>
+                    <textarea id="wa-received-template" rows="10" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReceivedTemplate}</textarea>
+                </div>
+                <!-- Statement -->
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-file-invoice text-blue-500 mr-2"></i>Statement Template</h3>
+                    <p class="text-xs text-gray-500 mb-2">Saari pending payments ka ek message — {lines} mein sab aata hai</p>
+                    <textarea id="wa-statement-template" rows="12" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waStatementTemplate}</textarea>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="app.resetWATemplates()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300">🔄 Reset Default</button>
-                    <button onclick="app.saveWATemplates()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg"><i class="fab fa-whatsapp mr-2"></i>Save Templates</button>
+                    <button onclick="app.resetWATemplates()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300">Reset</button>
+                    <button onclick="app.saveWATemplates()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg"><i class="fab fa-whatsapp mr-2"></i>Save</button>
                 </div>
+                <!-- Test -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3">Test Templates</h3>
                     <input type="tel" id="test-wa-number" placeholder="03001234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none mb-3">
-                    <div class="flex gap-3">
-                        <button onclick="app.testWATemplate('reminder')" class="flex-1 bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold"><i class="fab fa-whatsapp mr-1"></i>Test Reminder</button>
-                        <button onclick="app.testWATemplate('received')" class="flex-1 bg-green-500 text-white py-2 rounded-lg text-sm font-semibold"><i class="fab fa-whatsapp mr-1"></i>Test Received</button>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="app.testWATemplate('reminder')" class="bg-orange-500 text-white py-2 rounded-lg text-xs font-semibold"><i class="fab fa-whatsapp mr-1"></i>Reminder</button>
+                        <button onclick="app.testWATemplate('received')" class="bg-green-500 text-white py-2 rounded-lg text-xs font-semibold"><i class="fab fa-whatsapp mr-1"></i>Received</button>
+                        <button onclick="app.testWATemplate('statement')" class="bg-blue-500 text-white py-2 rounded-lg text-xs font-semibold"><i class="fab fa-whatsapp mr-1"></i>Statement</button>
                     </div>
                 </div>
             </div>`;
-            // Live preview
-            document.getElementById('wa-reminder-template').addEventListener('input', function() {
-                const preview = document.getElementById('reminder-preview');
-                if (preview) preview.textContent = this.value.replace('{name}','Ali Hassan').replace('{amount}','1,040').replace('{date}','8/6/2026');
-            });
-            document.getElementById('wa-received-template').addEventListener('input', function() {
-                const preview = document.getElementById('received-preview');
-                if (preview) preview.textContent = this.value.replace('{name}','Ali Hassan').replace('{amount}','1,040').replace('{date}','8/6/2026');
-            });
         },
 
         saveWATemplates() {
             const reminder = document.getElementById('wa-reminder-template')?.value;
             const received = document.getElementById('wa-received-template')?.value;
+            const statement = document.getElementById('wa-statement-template')?.value;
             if (reminder) { this.data.waReminderTemplate = reminder; localStorage.setItem('dastak_wa_reminder', reminder); }
             if (received) { this.data.waReceivedTemplate = received; localStorage.setItem('dastak_wa_received', received); }
-            alert('WhatsApp templates save ho gayi! ✅');
+            if (statement) { this.data.waStatementTemplate = statement; localStorage.setItem('dastak_wa_statement', statement); }
+            alert('Templates save ho gayi! ✅');
         },
 
         resetWATemplates() {
-            if (!confirm('Templates reset karne hain? Aapki changes kho jaayengi.')) return;
-            this.data.waReminderTemplate = 'Assalam o Alaikum {name},\n\nآپ کی payment pending ہے۔\n\n💰 *Amount: Rs {amount}*\n📅 Date: {date}\n\nبراہ کرم payment کریں۔\nشکریہ — Dastak 🙏';
-            this.data.waReceivedTemplate = 'Assalam o Alaikum *{name}*! 🙏\n\nآپ کی payment موصول ہو گئی۔ شکریہ!\n\n✅ *Rs {amount} Received*\n📅 Date: {date}\n\nDastak پر order کا شکریہ 🚀\n— Dastak Delivery Service';
-            localStorage.removeItem('dastak_wa_reminder'); localStorage.removeItem('dastak_wa_received');
+            if (!confirm('Templates reset karein? Changes kho jayengi.')) return;
+            this.data.waReminderTemplate = '{name},\n\nDastak Delivery ki taraf se aap ko yaad-dehani (reminder) bheji ja rahi hai ke aap ki payment abhi pending hai.\n\n💰 Amount: Rs {amount}\n📅 Date: {date}\n🆔 ID: {id}\n\nAap neeche diye gaye link par click kar ke, apni ID enter kar ke payment details check kar sakte hain:\n\n🔗 https://dastakdeliveryofficial-pixel.github.io/customer-portal/\n\nBurai meharbani jald az jald payment clear karen.\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏';
+            this.data.waReceivedTemplate = '{name},\n\nAap ki payment humein mil gayi. Shukriya!\n\n✅ Amount Received: Rs {amount}\n📅 Date: {date}\n🆔 ID: {id}\n\nDastak par order karne ka shukriya.\nHum hamesha aap ki khidmat ke liye haazir hain! 🚀\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏';
+            this.data.waStatementTemplate = '{name},\n\nAap ki darj zail payments abhi tak pending hain:\n\n{lines}\n\n━━━━━━━━━━━━━━━\n💰 Kul Baqi: Rs {total}\n📆 {days} din se pending\n🆔 ID: {id}\n━━━━━━━━━━━━━━━\n\nAap apni details is link par check kar sakte hain:\n🔗 https://dastakdeliveryofficial-pixel.github.io/customer-portal/\n\nBurai meharbani jald az jald payment clear karen.\n\nShukriya — Dastak - Apki Zaroorat Hamari Zimedari! 🙏';
+            localStorage.removeItem('dastak_wa_reminder');
+            localStorage.removeItem('dastak_wa_received');
+            localStorage.removeItem('dastak_wa_statement');
             this.renderWASettings();
             alert('Default templates restore ho gayi!');
         },
 
         testWATemplate(type) {
             const phone = document.getElementById('test-wa-number')?.value.trim();
-            const template = type === 'reminder' ? this.data.waReminderTemplate : this.data.waReceivedTemplate;
-            const msg = template.replace('{name}','Test User').replace('{amount}','1,000').replace('{date}',new Date().toLocaleDateString('en-PK'));
+            let template = '';
+            if (type === 'reminder') template = this.data.waReminderTemplate;
+            else if (type === 'received') template = this.data.waReceivedTemplate;
+            else template = this.data.waStatementTemplate;
+            const msg = template
+                .replace('{name}','Test Customer')
+                .replace('{amount}','1,000')
+                .replace('{date}', new Date().toLocaleDateString('en-PK'))
+                .replace('{id}','T001')
+                .replace('{lines}','1. 📅 1 Jun 2026 — Rs 500\n2. 📅 3 Jun 2026 — Rs 500')
+                .replace('{total}','1,000')
+                .replace('{days}','5');
             const encoded = encodeURIComponent(msg);
             let waNumber = '';
             if (phone) { const p = phone.replace(/\D/g,''); waNumber = p.startsWith('92') ? p : '92' + p.replace(/^0/,''); }
@@ -2490,7 +2594,7 @@
             allExpenses.forEach(e => { if (!riderExp[e.riderId]) riderExp[e.riderId]={name:e.riderName,fuel:0,food:0,maint:0}; if(e.type==='Fuel') riderExp[e.riderId].fuel+=e.amount; if(e.type==='Food') riderExp[e.riderId].food+=e.amount; if(e.type==='Maintenance') riderExp[e.riderId].maint+=e.amount; });
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
                 <div class="grid grid-cols-2 gap-3"><div class="stat-card border-l-4 border-red-500 col-span-2"><p class="text-xs text-gray-500">Total</p><h3 class="text-xl font-bold text-red-600">Rs ${(totalFuel+totalFood+totalMaint).toLocaleString()}</h3></div><div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">Fuel</p><h3 class="text-lg font-bold text-orange-600">Rs ${totalFuel.toLocaleString()}</h3></div><div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">Food</p><h3 class="text-lg font-bold text-green-600">Rs ${totalFood.toLocaleString()}</h3></div></div>
-                <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Per Rider</h3><div class="space-y-3">${Object.values(riderExp).map(r=>`<div class="bg-gray-50 rounded-xl p-4"><div class="flex justify-between items-center mb-2"><p class="font-bold text-gray-800">${r.name}</p><p class="font-bold text-red-600">Rs ${(r.fuel+r.food+r.maint).toLocaleString()}</p></div><div class="grid grid-cols-3 gap-2 text-center text-xs"><div class="bg-orange-50 rounded-lg p-2"><p class="text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${r.fuel.toLocaleString()}</p></div><div class="bg-green-50 rounded-lg p-2"><p class="text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${r.food.toLocaleString()}</p></div><div class="bg-blue-50 rounded-lg p-2"><p class="text-gray-500">Maint.</p><p class="font-bold text-blue-600">Rs ${r.maint.toLocaleString()}</p></div></div></div>`).join('')||'<p class="text-center text-gray-400 py-4">No data</p>'}</div></div>
+                <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Per Rider</h3><div class="space-y-3">${Object.values(riderExp).map(r=>`<div class="bg-white/60 rounded-xl p-4"><div class="flex justify-between items-center mb-2"><p class="font-bold text-gray-800">${r.name}</p><p class="font-bold text-red-600">Rs ${(r.fuel+r.food+r.maint).toLocaleString()}</p></div><div class="grid grid-cols-3 gap-2 text-center text-xs"><div class="bg-orange-50 rounded-lg p-2"><p class="text-gray-500">Fuel</p><p class="font-bold text-orange-600">Rs ${r.fuel.toLocaleString()}</p></div><div class="bg-green-50 rounded-lg p-2"><p class="text-gray-500">Food</p><p class="font-bold text-green-600">Rs ${r.food.toLocaleString()}</p></div><div class="bg-blue-50 rounded-lg p-2"><p class="text-gray-500">Maint.</p><p class="font-bold text-blue-600">Rs ${r.maint.toLocaleString()}</p></div></div></div>`).join('')||'<p class="text-center text-gray-400 py-4">No data</p>'}</div></div>
             </div>`;
         },
 
@@ -2639,7 +2743,7 @@
                         ${filteredExpenses.length === 0 ?
                             `<div class="text-center py-10 text-gray-400"><i class="fas fa-building text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
                             [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
-                            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <div class="flex justify-between items-center p-3 bg-white/60 rounded-xl border border-gray-100">
                                 <div class="flex-1 min-w-0">
                                     <p class="font-semibold text-sm text-gray-800">${e.description || e.category}</p>
                                     <div class="flex items-center gap-2 mt-0.5">
@@ -2881,7 +2985,7 @@
             const stats = this.getCustomerPaymentStats(c);
             const phone=(c.phone||'').replace(/\D/g,'');
             const wa=phone.startsWith('92')?phone:'92'+phone.replace(/^0/,'');
-            return `<div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+            return `<div class="flex items-center gap-2 p-3 bg-white/60 rounded-lg hover:bg-gray-100 transition-colors">
                 <input type="checkbox" class="cust-checkbox w-4 h-4 accent-indigo-600 flex-shrink-0" data-id="${c.id}" onchange="app.updateBulkDeleteBtn()">
                 <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm flex-shrink-0">${(c.name||'?').charAt(0).toUpperCase()}</div>
                 <div class="flex-1 min-w-0">
@@ -3199,7 +3303,7 @@
                 <div class="space-y-4">${riders.map(rider => {
                     const present = this.data.attendance.filter(a=>a.riderId===rider.id&&a.status==='present'&&new Date(a.date).getMonth()===cm&&new Date(a.date).getFullYear()===cy).length;
                     const ai = this.calculateAttendanceDeductions(rider.id, cm, cy);
-                    return `<div class="bg-gray-50 rounded-xl p-4">
+                    return `<div class="bg-white/60 rounded-xl p-4">
                         <div class="flex justify-between items-start mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">${rider.name.charAt(0)}</div><div><p class="font-bold text-gray-800">${rider.name}</p><p class="text-xs text-gray-500">Rs ${rider.dailyWage||500}/day</p></div></div><p class="text-2xl font-bold text-gray-800">${present}<span class="text-sm text-gray-500 font-normal"> days</span></p></div>
                         <div class="grid grid-cols-3 gap-2 mb-3"><div class="bg-green-100 text-green-700 rounded-lg p-2 text-center"><p class="text-xs">Present</p><p class="text-lg font-bold">${present}</p></div><div class="bg-red-100 text-red-700 rounded-lg p-2 text-center"><p class="text-xs">Absent</p><p class="text-lg font-bold">${ai.totalAbsences}</p></div><div class="${ai.deductibleAbsences>0?'bg-red-100 text-red-700':'bg-green-100 text-green-700'} rounded-lg p-2 text-center"><p class="text-xs">Deduction</p><p class="text-lg font-bold">Rs ${ai.totalDeduction.toLocaleString()}</p></div></div>
                         <button onclick="app.showAttendanceCalendar('${rider.id}', ${cm}, ${cy})" class="w-full text-center text-sm text-indigo-600 font-medium hover:bg-white py-2 rounded-lg">View Calendar</button>
@@ -3326,10 +3430,10 @@
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-user text-indigo-500 mr-2"></i>Account Info</h3>
                     <div class="space-y-2 text-sm">
-                        <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Name</span><span class="font-medium">${this.data.currentUser?.name||''}</span></div>
-                        <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Email</span><span class="font-medium">${this.data.currentUser?.email||''}</span></div>
-                        <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Role</span><span class="font-medium capitalize">${this.data.currentUser?.role||''}</span></div>
-                        <div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-gray-500">Joined</span><span class="font-medium">${this.data.currentUser?.joinDate||''}</span></div>
+                        <div class="flex justify-between p-2 bg-white/60 rounded-lg"><span class="text-gray-500">Name</span><span class="font-medium">${this.data.currentUser?.name||''}</span></div>
+                        <div class="flex justify-between p-2 bg-white/60 rounded-lg"><span class="text-gray-500">Email</span><span class="font-medium">${this.data.currentUser?.email||''}</span></div>
+                        <div class="flex justify-between p-2 bg-white/60 rounded-lg"><span class="text-gray-500">Role</span><span class="font-medium capitalize">${this.data.currentUser?.role||''}</span></div>
+                        <div class="flex justify-between p-2 bg-white/60 rounded-lg"><span class="text-gray-500">Joined</span><span class="font-medium">${this.data.currentUser?.joinDate||''}</span></div>
                     </div>
                 </div>
                 <div class="section-card border border-red-200">
