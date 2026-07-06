@@ -93,23 +93,35 @@
         /* ===== SIDEBAR ===== */
         #sidebar {
             transition: transform 0.3s ease-in-out;
-            background: rgba(255,255,255,0.88);
+            background: rgba(255,255,255,0.92);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
             border-right: 1px solid rgba(255,255,255,0.5);
-            box-shadow: 4px 0 24px rgba(0,0,0,0.07);
+            box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            /* Mobile: always fixed, always starts hidden */
+            position: fixed;
+            left: 0; top: 0;
+            height: 100vh;
+            width: 256px;
             z-index: 50;
+            transform: translateX(-100%);
+            flex-direction: column;
+            display: flex !important;
         }
-        @media (max-width: 768px) {
+        /* Desktop: sidebar visible as part of flex layout */
+        @media (min-width: 769px) {
             #sidebar {
-                position: fixed;
-                left: 0; top: 0;
-                height: 100vh;
-                transform: translateX(-100%);
+                position: relative;
+                transform: translateX(0) !important;
+                height: auto;
+                flex-shrink: 0;
             }
+        }
+        /* Mobile open state */
+        @media (max-width: 768px) {
             #sidebar.mobile-visible {
                 transform: translateX(0);
-                box-shadow: 0 0 40px rgba(0,0,0,0.18);
+                box-shadow: 0 0 40px rgba(0,0,0,0.2);
             }
         }
 
@@ -239,21 +251,17 @@
         .partial-pay-modal { background: linear-gradient(135deg, #667eea, #764ba2); }
 
         /* Ensure content is above blobs */
-        #sidebar, #main-header, #main-container, #modal-overlay { position: relative; z-index: 1; }
-        #sidebar { z-index: 50; }
+        #main-header, #main-container, #modal-overlay { position: relative; z-index: 1; }
         #modal-overlay { z-index: 100; }
 
         /* Loading screen glass */
-        #app-loading {
-            background: transparent;
-        }
-        #main-container {
-            background: transparent;
-            position: relative;
-            z-index: 1;
-        }
+        #app-loading { background: transparent; }
+        #main-container { background: transparent; }
 
-        /* ===== COLORFUL GLASS CARDS ===== */
+        /* Sidebar hidden until logged in */
+        #sidebar:not([data-ready]) {
+            display: none !important;
+        }
         .stat-card:nth-child(1) { background: linear-gradient(135deg, rgba(239,246,255,0.85), rgba(219,234,254,0.85)); }
         .stat-card:nth-child(2) { background: linear-gradient(135deg, rgba(240,253,244,0.85), rgba(209,250,229,0.85)); }
         .stat-card:nth-child(3) { background: linear-gradient(135deg, rgba(255,247,237,0.85), rgba(254,215,170,0.85)); }
@@ -302,7 +310,7 @@
     </div>
 
     <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden" onclick="app.toggleSidebar()"></div>
-    <aside class="w-64 bg-white shadow-xl z-50 flex flex-col h-full hidden" id="sidebar">
+    <aside id="sidebar" class="w-64 flex flex-col h-full">
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl"><i class="fas fa-motorcycle"></i></div>
@@ -444,7 +452,7 @@
                     this.logout();
                     return;
                 }
-                document.getElementById('sidebar').classList.remove('hidden');
+                document.getElementById('sidebar').setAttribute('data-ready','1');
                 document.getElementById('main-header').classList.remove('hidden');
                 this.renderSidebar();
                 this.initMonthPicker();
@@ -645,7 +653,7 @@
                         </div>
                     </div>
                 </div>`;
-            document.getElementById('sidebar').classList.add('hidden');
+            document.getElementById('sidebar').removeAttribute('data-ready');
             document.getElementById('main-header').classList.add('hidden');
         },
 
@@ -813,7 +821,7 @@
                     await window.db.collection('users').doc(user.uid).set(newUserData);
                     this.data.currentUser = { id: user.uid, ...newUserData };
                 }
-                document.getElementById('sidebar').classList.remove('hidden');
+                document.getElementById('sidebar').setAttribute('data-ready','1');
                 document.getElementById('main-header').classList.remove('hidden');
                 this.renderSidebar();
                 this.initMonthPicker();
