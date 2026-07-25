@@ -428,6 +428,27 @@
             });
         },
 
+        // ========== LOCAL CACHE (TTL based) — customers & companyExpenses ke liye ==========
+        // Ye Firestore reads kam karta hai. Cache TTL ke andar dusra device bhi
+        // max TTL time ke andar accurate data dekh lega. Jis device par edit hota hai
+        // wahan cache turant update ho jata hai (neeche mutation functions mein).
+        _cacheGet(key, maxAgeMs) {
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (!obj || !obj.ts || (Date.now() - obj.ts) > maxAgeMs) return null;
+                return obj.data;
+            } catch(e) { return null; }
+        },
+        _cacheSet(key, data) {
+            try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
+        },
+        _cacheClear(key) {
+            try { localStorage.removeItem(key); } catch(e) {}
+        },
+        CACHE_TTL_MS: 10 * 60 * 1000, // 10 minute — customers/expenses roz-roz nahi badalte
+
         async loadUserData(uid) {
             try {
                 const userDoc = await window.db.collection('users').doc(uid).get();
@@ -506,14 +527,26 @@
                 }
 
                 setMsg('Loading expenses...');
-                const companyExpSnap = await window.db.collection('companyExpenses').get();
-                self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const cachedExp = self._cacheGet('cache_companyExpenses', self.CACHE_TTL_MS);
+                if (cachedExp) {
+                    self.data.companyExpenses = cachedExp;
+                } else {
+                    const companyExpSnap = await window.db.collection('companyExpenses').get();
+                    self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self._cacheSet('cache_companyExpenses', self.data.companyExpenses);
+                }
                 self.data.companyExpensesLoaded = true;
 
-                // Customers bhi load karo upfront (online payment matching ke liye)
+                // Customers bhi load karo upfront (online payment matching ke liye) — cache se
                 setMsg('Loading customers...');
-                const custSnap = await window.db.collection('customers').get();
-                self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const cachedCust = self._cacheGet('cache_customers', self.CACHE_TTL_MS);
+                if (cachedCust) {
+                    self.data.customers = cachedCust;
+                } else {
+                    const custSnap = await window.db.collection('customers').get();
+                    self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    self._cacheSet('cache_customers', self.data.customers);
+                }
                 self.data.customersLoaded = true;
 
                 setMsg('Setting up live sync...');
@@ -558,18 +591,38 @@
             requestAnimationFrame(() => requestAnimationFrame(() => { if (ds) ds.textContent = ''; }));
         },
 
+        async forceRefreshCustomers() {
+            this._cacheClear('cache_customers');
+            this.data.customersLoaded = false;
+            document.getElementById('main-container').innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Refreshing...</p></div>`;
+            await this.ensureCustomers();
+            this._renderCustomersPage();
+        },
+
         async ensureCustomers() {
             if (this.data.customersLoaded) return;
+            const cached = this._cacheGet('cache_customers', this.CACHE_TTL_MS);
+            if (cached) { this.data.customers = cached; this.data.customersLoaded = true; return; }
             const snap = await window.db.collection('customers').get();
             this.data.customers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.customersLoaded = true;
+            this._cacheSet('cache_customers', this.data.customers);
+        },
+
+        async forceRefreshExpenses() {
+            this._cacheClear('cache_companyExpenses');
+            this.data.companyExpensesLoaded = false;
+            await this.renderCompanyExpenses();
         },
 
         async ensureCompanyExpenses() {
             if (this.data.companyExpensesLoaded) return;
+            const cached = this._cacheGet('cache_companyExpenses', this.CACHE_TTL_MS);
+            if (cached) { this.data.companyExpenses = cached; this.data.companyExpensesLoaded = true; return; }
             const snap = await window.db.collection('companyExpenses').get();
             this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.companyExpensesLoaded = true;
+            this._cacheSet('cache_companyExpenses', this.data.companyExpenses);
         },
 
         stopRealtimeListeners() {
@@ -2657,7 +2710,10 @@
                 <!-- Totals -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="stat-card border-l-4 border-purple-500">
-                        <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
+                            <button onclick="app.forceRefreshExpenses()" title="Dusre device ka naya data turant lao" class="text-gray-400 text-xs"><i class="fas fa-sync-alt"></i></button>
+                        </div>
                         <h3 class="text-2xl font-bold text-purple-600">Rs ${totalAll.toLocaleString()}</h3>
                     </div>
                     ${isFiltered ? `<div class="stat-card border-l-4 border-indigo-400">
@@ -2784,13 +2840,14 @@
                 const newExp = {category,amount,description,date};
                 const docRef = await window.db.collection('companyExpenses').add({...newExp,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
                 this.data.companyExpenses.push({id:docRef.id,...newExp});
+                this._cacheSet('cache_companyExpenses', this.data.companyExpenses);
                 this.renderCompanyExpenses();
             } catch(e) { alert('Error: '+e.message); }
         },
 
         async deleteCompanyExpense(id) {
             if (!confirm('Delete?')) return;
-            try { await window.db.collection('companyExpenses').doc(id).delete(); this.data.companyExpenses=this.data.companyExpenses.filter(e=>e.id!==id); this.renderCompanyExpenses(); }
+            try { await window.db.collection('companyExpenses').doc(id).delete(); this.data.companyExpenses=this.data.companyExpenses.filter(e=>e.id!==id); this._cacheSet('cache_companyExpenses', this.data.companyExpenses); this.renderCompanyExpenses(); }
             catch(e) { alert('Error: '+e.message); }
         },
 
@@ -2829,6 +2886,7 @@
                         <h3 class="font-bold text-gray-800">Add Customer</h3>
                         <div class="flex gap-2 flex-wrap justify-end">
                             ${dupCount > 0 ? `<button onclick="app.showDuplicates()" class="text-xs bg-orange-500 text-white px-3 py-2 rounded-lg font-semibold flex items-center gap-1"><i class="fas fa-copy"></i> ${dupCount} Duplicates</button>` : ''}
+                            <button onclick="app.forceRefreshCustomers()" title="Dusre device ka naya data turant lao" class="text-xs bg-gray-100 text-gray-700 px-3 py-2 rounded-lg font-semibold"><i class="fas fa-sync-alt"></i></button>
                             <label class="text-xs bg-green-600 text-white px-3 py-2 rounded-lg cursor-pointer font-semibold"><i class="fas fa-file-excel mr-1"></i>Import CSV<input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="app.importCustomersFile(this)"></label>
                         </div>
                     </div>
@@ -2920,6 +2978,7 @@
                 await batch.commit();
                 const ids = new Set(toDelete.map(c=>c.id));
                 this.data.customers = this.data.customers.filter(c=>!ids.has(c.id));
+                this._cacheSet('cache_customers', this.data.customers);
                 this._dupGroups.splice(gi, 1);
                 if (this._dupGroups.length > 0) this.showDuplicates();
                 else { this.closeModal(); alert('✅ Sab duplicates resolve ho gaye!'); }
@@ -2951,6 +3010,7 @@
                 if (pl) Object.assign(pl, mergedData);
                 const ids = new Set(others.map(c=>c.id));
                 this.data.customers = this.data.customers.filter(c=>!ids.has(c.id));
+                this._cacheSet('cache_customers', this.data.customers);
                 this._dupGroups.splice(gi, 1);
                 if (this._dupGroups.length > 0) this.showDuplicates();
                 else { this.closeModal(); alert(`✅ Merge ho gaya! 🆔 ${mergedData.customerId}`); }
@@ -2963,6 +3023,7 @@
             try {
                 await window.db.collection('customers').doc(id).delete();
                 this.data.customers = this.data.customers.filter(c=>c.id!==id);
+                this._cacheSet('cache_customers', this.data.customers);
                 if (this._dupGroups?.[gi]) {
                     this._dupGroups[gi] = this._dupGroups[gi].filter(c=>c.id!==id);
                     if (this._dupGroups[gi].length < 2) this._dupGroups.splice(gi, 1);
@@ -3060,6 +3121,7 @@
             try {
                 const docRef = await window.db.collection('customers').add({name, phone, address, customerId, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
                 this.data.customers.push({id: docRef.id, name, phone, address, customerId});
+                this._cacheSet('cache_customers', this.data.customers);
                 document.getElementById('cust-name').value = '';
                 document.getElementById('cust-phone').value = '';
                 document.getElementById('cust-address').value = '';
@@ -3071,7 +3133,7 @@
 
         async deleteCustomer(id) {
             if (!confirm('Delete?')) return;
-            try { await window.db.collection('customers').doc(id).delete(); this.data.customers=this.data.customers.filter(c=>c.id!==id); this._renderCustomersPage(); }
+            try { await window.db.collection('customers').doc(id).delete(); this.data.customers=this.data.customers.filter(c=>c.id!==id); this._cacheSet('cache_customers', this.data.customers); this._renderCustomersPage(); }
             catch(e) { alert('Error: '+e.message); }
         },
 
@@ -3083,6 +3145,7 @@
             try {
                 for (let i=0;i<ids.length;i+=400) { const batch=window.db.batch(); ids.slice(i,i+400).forEach(id=>batch.delete(window.db.collection('customers').doc(id))); await batch.commit(); }
                 this.data.customers=this.data.customers.filter(c=>!new Set(ids).has(c.id));
+                this._cacheSet('cache_customers', this.data.customers);
                 alert(`✅ ${ids.length} deleted!`); this._renderCustomersPage();
             } catch(e) { alert('Error: '+e.message); }
         },
@@ -3163,6 +3226,7 @@
                 await window.db.collection('customers').doc(id).update({name, phone, address, customerId});
                 const c = this.data.customers.find(x => x.id === id);
                 if (c) { c.name=name; c.phone=phone; c.address=address; c.customerId=customerId; }
+                this._cacheSet('cache_customers', this.data.customers);
                 this.closeModal();
                 this._renderCustomersPage();
                 alert(`✅ Customer updated!\n🆔 ID: ${customerId}`);
@@ -3275,6 +3339,7 @@
                         }
 
                         self.data.customers = [...self.data.customers, ...newCustomers];
+                        self._cacheSet('cache_customers', self.data.customers);
                         self.data.custPage = 1;
 
                         alert(
