@@ -124,6 +124,33 @@
                 box-shadow: 0 0 40px rgba(0,0,0,0.2);
             }
         }
+        /* Rider mode: sidebar hamesha khula rahe, hamburger/overlay ki zaroorat nahi */
+        body.rider-mode #sidebar {
+            position: relative !important;
+            transform: translateX(0) !important;
+            height: auto !important;
+            flex-shrink: 0;
+            width: 84px;
+            box-shadow: none;
+        }
+        body.rider-mode #sidebar #hdr-portal-text,
+        body.rider-mode #sidebar .sidebar-link span,
+        body.rider-mode #sidebar #user-name,
+        body.rider-mode #sidebar #user-role { display: none; }
+        body.rider-mode #sidebar .sidebar-link { justify-content: center; padding-left: 0; padding-right: 0; }
+        body.rider-mode #sidebar #sidebar-footer-row { flex-direction: column; gap: 0.5rem; padding: 0.5rem; }
+        body.rider-mode #sidebar-overlay { display: none !important; }
+        body.rider-mode #hamburger-btn { display: none !important; }
+        body.rider-mode #sidebar-close-btn { display: none !important; }
+        @media (min-width: 480px) {
+            body.rider-mode #sidebar { width: 256px; }
+            body.rider-mode #sidebar #hdr-portal-text,
+            body.rider-mode #sidebar .sidebar-link span,
+            body.rider-mode #sidebar #user-name,
+            body.rider-mode #sidebar #user-role { display: block; }
+            body.rider-mode #sidebar .sidebar-link { justify-content: flex-start; padding-left: 1rem; padding-right: 1rem; }
+            body.rider-mode #sidebar #sidebar-footer-row { flex-direction: row; gap: 0.75rem; padding: 0.5rem; }
+        }
 
         /* ===== SIDEBAR LINKS ===== */
         .sidebar-link {
@@ -314,13 +341,13 @@
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl"><i class="fas fa-motorcycle"></i></div>
-                <div><h1 class="font-bold text-lg text-gray-800 leading-tight">Dastak Portal</h1><p class="text-xs text-gray-500">Dastak Delivery Service</p></div>
+                <div id="hdr-portal-text"><h1 class="font-bold text-lg text-gray-800 leading-tight">Dastak Portal</h1><p class="text-xs text-gray-500">Dastak Delivery Service</p></div>
             </div>
-            <button onclick="app.toggleSidebar()" class="md:hidden text-gray-500 hover:text-gray-700 p-2"><i class="fas fa-times text-xl"></i></button>
+            <button onclick="app.toggleSidebar()" id="sidebar-close-btn" class="md:hidden text-gray-500 hover:text-gray-700 p-2"><i class="fas fa-times text-xl"></i></button>
         </div>
         <nav class="flex-1 overflow-y-auto p-3 space-y-1" id="nav-menu"></nav>
         <div class="p-4 border-t border-gray-100">
-            <div class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+            <div id="sidebar-footer-row" class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
                 <img id="user-avatar" src="https://ui-avatars.com/api/?name=Rider&background=4f46e5&color=fff" class="w-10 h-10 rounded-full border-2 border-white shadow-sm">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-gray-900 truncate" id="user-name">Loading...</p>
@@ -336,7 +363,7 @@
     <main class="flex-1 flex flex-col h-full relative overflow-hidden w-full">
         <header class="bg-white shadow-sm z-30 px-4 py-3 flex justify-between items-center hidden" id="main-header">
             <div class="flex items-center gap-3">
-                <button onclick="app.toggleSidebar()" class="md:hidden p-2 text-gray-600 hover:text-indigo-600 transition-colors"><i class="fas fa-bars text-xl"></i></button>
+                <button onclick="app.toggleSidebar()" id="hamburger-btn" class="md:hidden p-2 text-gray-600 hover:text-indigo-600 transition-colors"><i class="fas fa-bars text-xl"></i></button>
                 <div>
                     <h2 class="text-xl md:text-2xl font-bold text-gray-800" id="page-title">Dashboard</h2>
                     <p class="text-xs text-gray-500 hidden sm:block" id="current-date">Loading date...</p>
@@ -349,9 +376,6 @@
                 <button id="notif-btn" onclick="app.showNotifications()" class="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
                     <i class="fas fa-bell text-lg md:text-xl"></i>
                     <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white hidden" id="notif-dot"></span>
-                </button>
-                <button onclick="app.toggleShift()" id="shift-btn" class="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap">
-                    <i class="fas fa-play mr-1"></i><span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Shift</span>
                 </button>
                 <button onclick="app.logout()" title="Logout" class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0 md:hidden" id="mobile-logout-btn">
                     <i class="fas fa-sign-out-alt text-base"></i>
@@ -382,12 +406,14 @@
         data: {
             currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [],
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
-            currentShift: null, sidebarOpen: false, chartRegistry: {},
+            sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
             custPage: 1, custPerPage: 50,
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
-            riderPaymentFilter: 'all',
+            reportsDateFilter: null,
+            reportsMonthFilter: null,
+            riderPaymentFilter: null,
             customersLoaded: false, companyExpensesLoaded: false,
             _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
@@ -982,14 +1008,15 @@
                 { id:'rider-settings', icon:'fa-cog', label:'Settings' }
             ];
             nav.innerHTML = menuItems.map(item => `
-                <button onclick="app.navigate('${item.id}'); if(window.innerWidth<768) app.toggleSidebar();" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}">
+                <button onclick="app.navigate('${item.id}');${isAdmin ? " if(window.innerWidth<768) app.toggleSidebar();" : ""}" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 font-medium hover:bg-gray-50 text-left" id="nav-${item.id}" title="${item.label}">
                     <i class="${item.icon.includes('fab') ? item.icon : 'fas ' + item.icon} w-5 text-center"></i><span class="truncate">${item.label}</span>
                 </button>`).join('');
             document.getElementById('user-name').textContent = this.data.currentUser.name;
             document.getElementById('user-role').textContent = isAdmin ? 'Administrator' : `Rider - ${this.data.currentUser.zone || 'Unassigned'}`;
             document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(this.data.currentUser.name)}&background=4f46e5&color=fff`;
-            const shiftBtn = document.getElementById('shift-btn');
-            if (shiftBtn) shiftBtn.style.display = isAdmin ? 'none' : '';
+            // Rider ke liye sidebar hamesha khula rahe — hamburger/overlay ki zaroorat nahi
+            document.body.classList.toggle('rider-mode', !isAdmin);
+            if (!isAdmin) document.getElementById('sidebar').classList.add('mobile-visible');
         },
 
         initMonthPicker() {
@@ -1094,7 +1121,7 @@
                 <div class="space-y-4 fade-in pb-20">
                     <div class="grid grid-cols-2 gap-3">
                         <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-green-100 rounded-lg text-green-600"><i class="fas fa-wallet text-lg"></i></div><span class="text-xs text-gray-500">Pending</span></div><p class="text-xs text-gray-500 mb-1">Online Pending</p><h3 class="text-xl font-bold text-gray-800">Rs ${pendingOnline.toLocaleString()}</h3></div>
-                        <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box text-lg"></i></div><span class="text-xs text-gray-500">Total</span></div><p class="text-xs text-gray-500 mb-1">Deliveries</p><h3 class="text-xl font-bold text-gray-800">${totalDeliveries}</h3></div>
+                        <div class="stat-card cursor-pointer" onclick="app.navigate('rider-history')"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-blue-100 rounded-lg text-blue-600"><i class="fas fa-box text-lg"></i></div><span class="text-xs text-gray-500">Total</span></div><p class="text-xs text-gray-500 mb-1">Deliveries</p><h3 class="text-xl font-bold text-gray-800">${totalDeliveries}</h3></div>
                         <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 bg-purple-100 rounded-lg text-purple-600"><i class="fas fa-money-bill-wave text-lg"></i></div><span class="text-xs text-gray-500">Monthly</span></div><p class="text-xs text-gray-500 mb-1">Base Salary</p><h3 class="text-xl font-bold text-purple-600">Rs ${baseSalary.toLocaleString()}</h3></div>
                         <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 ${attInfo.totalDeduction > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} rounded-lg"><i class="fas fa-calculator text-lg"></i></div><span class="text-xs text-gray-500">Net</span></div><p class="text-xs text-gray-500 mb-1">Net Salary</p><h3 class="text-xl font-bold ${attInfo.totalDeduction > 0 ? 'text-red-600' : 'text-green-600'}">Rs ${netSalary.toLocaleString()}</h3></div>
                     </div>
@@ -1102,9 +1129,7 @@
                         <h3 class="font-bold text-gray-800 mb-3">Quick Actions</h3>
                         <div class="grid grid-cols-2 gap-3">
                             <button onclick="app.navigate('rider-report')" class="quick-action-btn"><i class="fas fa-plus-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Submit Report</span></button>
-                            <button onclick="app.toggleShift()" class="quick-action-btn" style="background:linear-gradient(135deg,#10b981,#059669)"><i class="fas fa-play-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Start Shift</span></button>
                             <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Cash</span></button>
-                            <button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb)"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">My Salary</span></button>
                         </div>
                     </div>
                     <div class="section-card">
@@ -1548,6 +1573,12 @@
         },
 
         // ========== ADMIN DASHBOARD ==========
+        toggleWaButtons(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.display = (el.style.display === 'none') ? 'flex' : 'none';
+        },
+
         toggleEl(id) {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('hidden');
@@ -1608,7 +1639,7 @@
                     <div class="flex justify-between items-center mb-1"><h3 class="font-bold text-gray-800">Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span></div>
                     <p class="text-xs text-gray-400 mb-3">Net Profit = Gross − Wages − Rider Exp − Company Exp</p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                        <div class="stat-card border-l-4 border-green-500 col-span-2 md:col-span-1"><p class="text-xs text-gray-500">🏆 Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400">After all expenses</p></div>
+                        <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">🏆 Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400">After all expenses</p></div>
                         <div class="stat-card border-l-4 border-yellow-500"><p class="text-xs text-gray-500">Total Wages</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalWages.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">⛽ Fuel/Petrol</p><h3 class="text-lg font-bold text-orange-600">Rs ${totalFuelExp.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">🍔 Food</p><h3 class="text-lg font-bold text-green-600">Rs ${totalFoodExp.toLocaleString()}</h3></div>
@@ -1832,13 +1863,42 @@
         },
 
         // ========== ADMIN REPORTS ==========
-        renderAdminReports() {
+        renderAdminReports(selectedDate = null) {
+            const activeFilter = selectedDate !== null ? selectedDate : (this.data.reportsDateFilter || 'month');
+            this.data.reportsDateFilter = activeFilter;
+            if (activeFilter === 'month' && !this.data.reportsMonthFilter) {
+                const now = new Date();
+                this.data.reportsMonthFilter = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            }
             document.getElementById('page-title').textContent = 'Review Reports';
             const container = document.getElementById('main-container');
-            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const monthLabel = `${monthNames[this.data.selectedMonth]} ${this.data.selectedYear}`;
+            const fullMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const now = new Date();
+            let monthOptions = '<option value="">-- Month --</option>';
+            for (let i = 0; i < 18; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                monthOptions += `<option value="${val}" ${this.data.reportsMonthFilter===val?'selected':''}>${fullMonthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+            }
+            const dateLabel = activeFilter === 'all' ? 'All Time' : activeFilter === 'month' ? (this.data.reportsMonthFilter ? (() => { const [fy,fm] = this.data.reportsMonthFilter.split('-').map(Number); return `${fullMonthNames[fm-1]} ${fy}`; })() : 'Month') : new Date(activeFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
             container.innerHTML = `<div class="fade-in pb-20">
-                <div class="flex justify-between items-center mb-3"><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span><button onclick="app.exportMonthlyExcel()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fas fa-file-excel mr-1"></i>Export</button></div>
+                <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3 mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                            <input type="date" value="${(activeFilter!=='all'&&activeFilter!=='month')?activeFilter:''}" max="${now.toISOString().split('T')[0]}"
+                                onchange="app.data.reportsMonthFilter=null;app.renderAdminReports(this.value||'all')"
+                                class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-indigo-700 outline-none cursor-pointer">
+                        </div>
+                        <button onclick="app.data.reportsMonthFilter=null;app.renderAdminReports('all')" class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${activeFilter==='all'?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">All</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-calendar text-indigo-400 text-sm ml-1"></i>
+                        <select onchange="app.data.reportsMonthFilter=this.value||null;app.renderAdminReports(this.value?'month':'all')" class="flex-1 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">${monthOptions}</select>
+                    </div>
+                    <p class="text-xs text-gray-500"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
+                </div>
+                <div class="flex justify-between items-center mb-3"><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${dateLabel}</span><button onclick="app.exportMonthlyExcel()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fas fa-file-excel mr-1"></i>Export</button></div>
                 <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
                     <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
                     <select id="filter-rider" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Riders</option>${this.data.users.filter(u=>u.role==='rider').map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}</select>
@@ -1848,8 +1908,17 @@
         },
 
         getFilteredAdminReports() {
-            const m = this.data.selectedMonth, y = this.data.selectedYear;
-            let reports = this.data.reports.filter(r => { const d = new Date(r.date); return d.getMonth()===m && d.getFullYear()===y; });
+            const activeFilter = this.data.reportsDateFilter || 'month';
+            let reports = this.data.reports.filter(r => {
+                if (activeFilter === 'all') return true;
+                if (activeFilter === 'month') {
+                    if (!this.data.reportsMonthFilter) return true;
+                    const [fy, fm] = this.data.reportsMonthFilter.split('-').map(Number);
+                    const rd = new Date(r.date);
+                    return rd.getFullYear() === fy && rd.getMonth() === fm - 1;
+                }
+                return r.date === activeFilter;
+            });
             const riderFilter = document.getElementById('filter-rider')?.value;
             if (riderFilter) reports = reports.filter(r => r.riderId === riderFilter);
             const statusFilter = document.getElementById('filter-status')?.value;
@@ -2270,14 +2339,20 @@
                                     class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-semibold">
                                     ✓ Receive
                                 </button>
-                                <button onclick="app.openWAReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}',${p.amount},'${p.date}')"
+                                <button onclick="app.toggleWaButtons('wa-${p.reportId}-${p.idx}')"
                                     class="text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                    <i class="fab fa-whatsapp"></i> Reminder
+                                    <i class="fab fa-whatsapp"></i> WhatsApp
                                 </button>
-                                <button onclick="app.sendWhatsAppStatement('${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}')"
-                                    class="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                    <i class="fab fa-whatsapp"></i> Statement
-                                </button>
+                                <div id="wa-${p.reportId}-${p.idx}" style="display:none" class="flex-col gap-1.5">
+                                    <button onclick="app.sendWhatsAppStatement('${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}')"
+                                        class="text-xs bg-teal-600 text-white px-3 py-1.5 rounded-lg">
+                                        Statement
+                                    </button>
+                                    <button onclick="app.openWAReminder('${p.riderName}','${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}',${p.amount},'${p.date}')"
+                                        class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg">
+                                        This Payment
+                                    </button>
+                                </div>
                                 <button onclick="app.receiveAllPayments('${(p.detail||'').replace(/'/g,"\\'")}','${p.customerPhone||''}')"
                                     class="text-xs bg-purple-600 text-white px-3 py-1.5 rounded-lg font-semibold">
                                     ✅ Receive All
@@ -2398,8 +2473,7 @@
                     report.onlinePayments = updatedPayments;
                     alert(`✅ Rs ${enteredAmount.toLocaleString()} received!\n⏳ Rs ${remaining.toLocaleString()} pending mein raha.`);
                 }
-                // Send WhatsApp thank you
-                this.sendReceivedThankYou(originalPayment.detail, enteredAmount, report.date);
+                // Note: Received payment par WhatsApp message customer ko NAHI jata (admin ki request par band kiya gaya)
                 this.closeModal();
                 this.renderAdminOnlinePayments(currentFilter);
             } catch (error) { alert('Error: ' + error.message); }
@@ -2519,8 +2593,7 @@
                     group.report.onlinePayments = updatedPayments;
                 }
 
-                // Send thank you WA
-                this.sendReceivedThankYou(customerDetail, totalAmount, new Date().toISOString().split('T')[0]);
+                // Note: Received payment par WhatsApp message customer ko NAHI jata (admin ki request par band kiya gaya)
                 alert(`✅ ${allPending.length} payments receive ho gayi!\nKul: Rs ${totalAmount.toLocaleString()}`);
                 this.renderAdminOnlinePayments(currentFilter);
             } catch(e) { alert('Error: ' + e.message); }
@@ -3639,12 +3712,6 @@
                 XLSX.writeFile(wb,`Dastak_${monthLabel}.xlsx`);
             };
             if(window.XLSX){doExport();}else{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=doExport;document.head.appendChild(s);}
-        },
-
-        toggleShift() {
-            const btn=document.getElementById('shift-btn');
-            if (!this.data.currentShift) { this.data.currentShift={start:new Date(),isActive:true}; btn.innerHTML='<i class="fas fa-pause mr-1"></i><span class="hidden sm:inline">End Shift</span><span class="sm:hidden">End</span>'; btn.className="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors whitespace-nowrap"; alert("Shift Started!"); }
-            else { this.data.currentShift=null; btn.innerHTML='<i class="fas fa-play mr-1"></i><span class="hidden sm:inline">Start Shift</span><span class="sm:hidden">Start</span>'; btn.className="px-3 py-2 rounded-full text-xs md:text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap"; alert("Shift Ended!"); }
         },
 
         closeModal() {
