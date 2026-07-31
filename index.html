@@ -124,33 +124,12 @@
                 box-shadow: 0 0 40px rgba(0,0,0,0.2);
             }
         }
-        /* Rider mode: sidebar hamesha khula rahe, hamburger/overlay ki zaroorat nahi */
-        body.rider-mode #sidebar {
-            position: relative !important;
-            transform: translateX(0) !important;
-            height: auto !important;
-            flex-shrink: 0;
-            width: 84px;
-            box-shadow: none;
-        }
-        body.rider-mode #sidebar #hdr-portal-text,
-        body.rider-mode #sidebar .sidebar-link span,
-        body.rider-mode #sidebar #user-name,
-        body.rider-mode #sidebar #user-role { display: none; }
-        body.rider-mode #sidebar .sidebar-link { justify-content: center; padding-left: 0; padding-right: 0; }
-        body.rider-mode #sidebar #sidebar-footer-row { flex-direction: column; gap: 0.5rem; padding: 0.5rem; }
-        body.rider-mode #sidebar-overlay { display: none !important; }
+        /* Rider mode: sidebar bilkul hide — navigation Dashboard ke bade cards se hoti hai */
+        body.rider-mode #sidebar { display: none !important; }
         body.rider-mode #hamburger-btn { display: none !important; }
         body.rider-mode #sidebar-close-btn { display: none !important; }
-        @media (min-width: 480px) {
-            body.rider-mode #sidebar { width: 256px; }
-            body.rider-mode #sidebar #hdr-portal-text,
-            body.rider-mode #sidebar .sidebar-link span,
-            body.rider-mode #sidebar #user-name,
-            body.rider-mode #sidebar #user-role { display: block; }
-            body.rider-mode #sidebar .sidebar-link { justify-content: flex-start; padding-left: 1rem; padding-right: 1rem; }
-            body.rider-mode #sidebar #sidebar-footer-row { flex-direction: row; gap: 0.75rem; padding: 0.5rem; }
-        }
+        body.rider-mode #sidebar-overlay { display: none !important; }
+        body.rider-mode #mobile-logout-btn { display: flex !important; }
 
         /* ===== SIDEBAR LINKS ===== */
         .sidebar-link {
@@ -364,6 +343,7 @@
         <header class="bg-white shadow-sm z-30 px-4 py-3 flex justify-between items-center hidden" id="main-header">
             <div class="flex items-center gap-3">
                 <button onclick="app.toggleSidebar()" id="hamburger-btn" class="md:hidden p-2 text-gray-600 hover:text-indigo-600 transition-colors"><i class="fas fa-bars text-xl"></i></button>
+                <button onclick="app.navigate('rider-dashboard')" id="back-btn" class="hidden p-2 text-gray-600 hover:text-indigo-600 transition-colors"><i class="fas fa-arrow-left text-xl"></i></button>
                 <div>
                     <h2 class="text-xl md:text-2xl font-bold text-gray-800" id="page-title">Dashboard</h2>
                     <p class="text-xs text-gray-500 hidden sm:block" id="current-date">Loading date...</p>
@@ -408,6 +388,9 @@
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
             sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
+            _loadedMonths: new Set(),
+            _riderHistoryLoaded: false,
+            _allReportsLoaded: false,
             custPage: 1, custPerPage: 50,
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
@@ -519,30 +502,78 @@
             if (this.data._listenersSetup) return;
             this.data._listenersSetup = true;
             const self = this;
+            const isAdmin = self.data.currentUser.role === 'admin';
+            const uid = self.data.currentUser.id;
             const setMsg = (msg) => { const el = document.getElementById('loading-msg'); if (el) el.textContent = msg; };
             try {
                 setMsg('Connecting...');
                 const now = new Date();
-                // 6 months pehle se data lo — taake month change karne pe zero na dikhe
-                const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
-                const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-                const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                self.data._loadedMonths.add(`${now.getFullYear()}-${now.getMonth()}`);
 
-                setMsg('Loading users...');
-                const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
-                self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (isAdmin) {
+                    // ===== ADMIN: sirf riders list + IS MONTH ki reports/attendance. Purani months "Load" hone par aati hain =====
+                    setMsg('Loading riders...');
+                    const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
+                    self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                setMsg('Loading reports...');
-                // 6 months ki reports load karo limit 600
-                const reportsSnap = await window.db.collection('reports')
-                    .where('date', '>=', sixMonthsAgo)
-                    .orderBy('date', 'desc')
-                    .limit(600).get();
-                self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setMsg('Loading this month reports...');
+                    const reportsSnap = await window.db.collection('reports').where('date', '>=', monthStart).orderBy('date', 'desc').get();
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                setMsg('Loading attendance...');
-                const attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
-                self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setMsg('Loading attendance...');
+                    const attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
+                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    setMsg('Setting up live sync...');
+                    let rf = true, af = true, uf = true;
+                    self.data._unsubReports = window.db.collection('reports').where('date', '>=', monthStart).orderBy('date', 'desc').onSnapshot(snap => {
+                        const liveIds = new Set(snap.docs.map(d => d.id));
+                        const liveDocs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        self.data.reports = [...liveDocs, ...self.data.reports.filter(r => !liveIds.has(r.id) && r.date < monthStart)];
+                        if (rf) { rf = false; return; }
+                        self._debouncedRefresh();
+                    });
+                    self.data._unsubAtt = window.db.collection('attendance').where('date', '>=', monthStart).onSnapshot(snap => {
+                        const liveIds = new Set(snap.docs.map(d => d.id));
+                        const liveDocs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        self.data.attendance = [...liveDocs, ...self.data.attendance.filter(a => !liveIds.has(a.id) && a.date < monthStart)];
+                        if (af) { af = false; return; }
+                        self._debouncedRefresh();
+                    });
+                    self.data._unsubRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot(snap => {
+                        self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        if (uf) { uf = false; return; }
+                        self._debouncedRefresh();
+                    });
+                } else {
+                    // ===== RIDER: sirf apna data — dusre riders ka kuch bhi nahi =====
+                    self.data.users = [self.data.currentUser];
+
+                    setMsg('Loading your reports...');
+                    const reportsSnap = await window.db.collection('reports').where('riderId', '==', uid).where('date', '>=', monthStart).orderBy('date', 'desc').get();
+                    self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    setMsg('Loading attendance...');
+                    const attSnap = await window.db.collection('attendance').where('riderId', '==', uid).where('date', '>=', monthStart).get();
+                    self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    setMsg('Setting up live sync...');
+                    let rf = true, af = true;
+                    self.data._unsubReports = window.db.collection('reports').where('riderId', '==', uid).where('date', '>=', monthStart).orderBy('date', 'desc').onSnapshot(snap => {
+                        self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        if (rf) { rf = false; return; }
+                        self._debouncedRefresh();
+                    });
+                    self.data._unsubAtt = window.db.collection('attendance').where('riderId', '==', uid).where('date', '>=', monthStart).onSnapshot(snap => {
+                        self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        if (af) { af = false; return; }
+                        self._debouncedRefresh();
+                    });
+                    self.data._unsubRiders = window.db.collection('users').doc(uid).onSnapshot(doc => {
+                        if (doc.exists) { self.data.currentUser = { id: uid, ...doc.data() }; self.data.users = [self.data.currentUser]; }
+                    });
+                }
 
                 setMsg('Loading notifications...');
                 const notifSnap = await window.db.collection('notifications').limit(30).get();
@@ -552,55 +583,58 @@
                     if (dot) dot.classList.remove('hidden');
                 }
 
-                setMsg('Loading expenses...');
-                const cachedExp = self._cacheGet('cache_companyExpenses', self.CACHE_TTL_MS);
-                if (cachedExp) {
-                    self.data.companyExpenses = cachedExp;
-                } else {
-                    const companyExpSnap = await window.db.collection('companyExpenses').get();
-                    self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self._cacheSet('cache_companyExpenses', self.data.companyExpenses);
-                }
-                self.data.companyExpensesLoaded = true;
-
-                // Customers bhi load karo upfront (online payment matching ke liye) — cache se
-                setMsg('Loading customers...');
-                const cachedCust = self._cacheGet('cache_customers', self.CACHE_TTL_MS);
-                if (cachedCust) {
-                    self.data.customers = cachedCust;
-                } else {
-                    const custSnap = await window.db.collection('customers').get();
-                    self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    self._cacheSet('cache_customers', self.data.customers);
-                }
-                self.data.customersLoaded = true;
-
-                setMsg('Setting up live sync...');
-                let rf = true, af = true, uf = true;
-                self.data._unsubReports = window.db.collection('reports')
-                    .where('date', '>=', sixMonthsAgo)
-                    .orderBy('date', 'desc')
-                    .limit(600)
-                    .onSnapshot(snap => {
-                        self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        if (rf) { rf = false; return; }
-                        self._debouncedRefresh();
-                    });
-                self.data._unsubAtt = window.db.collection('attendance').where('date', '>=', monthStart).onSnapshot(snap => {
-                    self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (af) { af = false; return; }
-                    self._debouncedRefresh();
-                });
-                self.data._unsubRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot(snap => {
-                    self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (uf) { uf = false; return; }
-                    self._debouncedRefresh();
-                });
                 setMsg('Ready!');
             } catch(e) {
                 console.error('Data load error:', e);
                 setMsg('Error: ' + e.message);
             }
+        },
+
+        // Admin global month-picker se purani month select hone par sirf tab uska data lao (on-demand)
+        async ensureMonthData(year, month) {
+            const key = `${year}-${month}`;
+            if (this.data._loadedMonths.has(key)) return;
+            const start = new Date(year, month, 1).toISOString().split('T')[0];
+            const end = new Date(year, month + 1, 1).toISOString().split('T')[0];
+            const [repSnap, attSnap] = await Promise.all([
+                window.db.collection('reports').where('date', '>=', start).where('date', '<', end).get(),
+                window.db.collection('attendance').where('date', '>=', start).where('date', '<', end).get()
+            ]);
+            const existingRepIds = new Set(this.data.reports.map(r => r.id));
+            repSnap.docs.forEach(doc => { if (!existingRepIds.has(doc.id)) this.data.reports.push({ id: doc.id, ...doc.data() }); });
+            const existingAttIds = new Set(this.data.attendance.map(a => a.id));
+            attSnap.docs.forEach(doc => { if (!existingAttIds.has(doc.id)) this.data.attendance.push({ id: doc.id, ...doc.data() }); });
+            this.data._loadedMonths.add(key);
+        },
+
+        // Rider "My History" pehli baar khulte hi apni poori (200 tak) history lao
+        async ensureRiderFullHistory() {
+            if (this.data._riderHistoryLoaded) return;
+            const uid = this.data.currentUser.id;
+            const snap = await window.db.collection('reports').where('riderId', '==', uid).orderBy('date', 'desc').limit(200).get();
+            const existingIds = new Set(this.data.reports.map(r => r.id));
+            snap.docs.forEach(doc => { if (!existingIds.has(doc.id)) this.data.reports.push({ id: doc.id, ...doc.data() }); });
+            this.data._riderHistoryLoaded = true;
+        },
+
+        // Admin Analytics page — poore saal ki reports lazy-load karo (sirf tab jab page khule)
+        async ensureYearReports(year) {
+            const now = new Date();
+            const jobs = [];
+            for (let mo = 0; mo < 12; mo++) {
+                if (new Date(year, mo, 1) > now) continue;
+                jobs.push(this.ensureMonthData(year, mo));
+            }
+            await Promise.all(jobs);
+        },
+
+        // Admin "All" filter — bade daayre ki reports (max 1000, sabse recent pehle)
+        async ensureAllReportsHistory() {
+            if (this.data._allReportsLoaded) return;
+            const snap = await window.db.collection('reports').orderBy('date', 'desc').limit(1000).get();
+            const existingIds = new Set(this.data.reports.map(r => r.id));
+            snap.docs.forEach(doc => { if (!existingIds.has(doc.id)) this.data.reports.push({ id: doc.id, ...doc.data() }); });
+            this.data._allReportsLoaded = true;
         },
 
         _debouncedRefresh() {
@@ -1038,11 +1072,12 @@
             }
         },
 
-        onMonthChange() {
+        async onMonthChange() {
             const sel = document.getElementById('global-month-picker');
             if (!sel) return;
             const [year, month] = sel.value.split('-').map(Number);
             this.data.selectedMonth = month; this.data.selectedYear = year;
+            await this.ensureMonthData(year, month);
             const activeBtn = document.querySelector('.sidebar-link.active');
             if (activeBtn) this._renderView(activeBtn.id.replace('nav-', ''));
             else this.renderAdminDashboard();
@@ -1058,6 +1093,11 @@
             document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active', 'bg-indigo-600', 'text-white'));
             const activeBtn = document.getElementById(`nav-${viewId}`);
             if (activeBtn) activeBtn.classList.add('active');
+            const backBtn = document.getElementById('back-btn');
+            if (backBtn) {
+                const isRider = this.data.currentUser?.role !== 'admin';
+                backBtn.classList.toggle('hidden', !(isRider && viewId !== 'rider-dashboard'));
+            }
 
             const views = {
                 'rider-dashboard': () => this.renderRiderDashboard(),
@@ -1126,10 +1166,13 @@
                         <div class="stat-card"><div class="flex items-center justify-between mb-2"><div class="p-2 ${attInfo.totalDeduction > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} rounded-lg"><i class="fas fa-calculator text-lg"></i></div><span class="text-xs text-gray-500">Net</span></div><p class="text-xs text-gray-500 mb-1">Net Salary</p><h3 class="text-xl font-bold ${attInfo.totalDeduction > 0 ? 'text-red-600' : 'text-green-600'}">Rs ${netSalary.toLocaleString()}</h3></div>
                     </div>
                     <div class="section-card">
-                        <h3 class="font-bold text-gray-800 mb-3">Quick Actions</h3>
+                        <h3 class="font-bold text-gray-800 mb-3">Menu</h3>
                         <div class="grid grid-cols-2 gap-3">
-                            <button onclick="app.navigate('rider-report')" class="quick-action-btn"><i class="fas fa-plus-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Submit Report</span></button>
-                            <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Cash</span></button>
+                            <button onclick="app.navigate('rider-report')" class="quick-action-btn"><i class="fas fa-plus-circle text-2xl mb-2 block"></i><span class="text-sm font-semibold">Daily Report</span></button>
+                            <button onclick="app.navigate('rider-history')" class="quick-action-btn" style="background:linear-gradient(135deg,#6366f1,#4f46e5)"><i class="fas fa-history text-2xl mb-2 block"></i><span class="text-sm font-semibold">My History</span></button>
+                            <button onclick="app.navigate('rider-payments')" class="quick-action-btn" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fas fa-hand-holding-usd text-2xl mb-2 block"></i><span class="text-sm font-semibold">Online Payments</span></button>
+                            <button onclick="app.navigate('rider-salary')" class="quick-action-btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb)"><i class="fas fa-money-bill-wave text-2xl mb-2 block"></i><span class="text-sm font-semibold">Salary & Slips</span></button>
+                            <button onclick="app.navigate('rider-settings')" class="quick-action-btn col-span-2" style="background:linear-gradient(135deg,#64748b,#475569)"><i class="fas fa-cog text-2xl mb-2 block"></i><span class="text-sm font-semibold">Settings</span></button>
                         </div>
                     </div>
                     <div class="section-card">
@@ -1448,9 +1491,14 @@
 
         editReport(id) { this.data._editReportId = id; this.navigate('rider-report'); },
 
-        renderRiderHistory(activeTab = 'submitted') {
+        async renderRiderHistory(activeTab = 'submitted') {
             document.getElementById('page-title').textContent = 'My History';
             const container = document.getElementById('main-container');
+            if (!this.data._riderHistoryLoaded) {
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading history...</p></div>`;
+                await this.ensureRiderFullHistory();
+                if (this.data._currentViewId !== 'rider-history') return;
+            }
             const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date)-new Date(a.date));
             const submittedReports = myReports.filter(r => r.status !== 'draft');
             const draftReports = myReports.filter(r => r.status === 'draft');
@@ -1490,11 +1538,16 @@
             setTimeout(() => { mc.classList.remove('scale-95','opacity-0'); mc.classList.add('scale-100','opacity-100'); }, 10);
         },
 
-        renderRiderPayments(selectedDate = null) {
+        async renderRiderPayments(selectedDate = null) {
             const activeFilter = selectedDate || this.data.riderPaymentFilter || new Date().toISOString().split('T')[0];
             this.data.riderPaymentFilter = activeFilter;
             document.getElementById('page-title').textContent = 'Online Payments';
             const container = document.getElementById('main-container');
+            if (!this.data._riderHistoryLoaded) {
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                await this.ensureRiderFullHistory();
+                if (this.data._currentViewId !== 'rider-payments') return;
+            }
             const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id);
             let pendingPayments = [], receivedPayments = [];
             myReports.forEach(r => {
@@ -1584,10 +1637,16 @@
             if (el) el.classList.toggle('hidden');
         },
 
-        renderAdminDashboard() {
+        async renderAdminDashboard() {
             document.getElementById('page-title').textContent = 'Admin Dashboard';
             const container = document.getElementById('main-container');
             const m = this.data.selectedMonth, y = this.data.selectedYear;
+            const needsLoad = !this.data._loadedMonths.has(`${y}-${m}`) || !this.data.companyExpensesLoaded;
+            if (needsLoad) {
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading dashboard...</p></div>`;
+                await Promise.all([this.ensureMonthData(y, m), this.ensureCompanyExpenses()]);
+                if (this.data._currentViewId !== 'admin-dashboard') return;
+            }
             const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const monthLabel = `${monthNames[m]} ${y}`;
             const monthReports = this.getMonthFilteredReports('approved');
@@ -1863,7 +1922,7 @@
         },
 
         // ========== ADMIN REPORTS ==========
-        renderAdminReports(selectedDate = null) {
+        async renderAdminReports(selectedDate = null) {
             const activeFilter = selectedDate !== null ? selectedDate : (this.data.reportsDateFilter || 'month');
             this.data.reportsDateFilter = activeFilter;
             if (activeFilter === 'month' && !this.data.reportsMonthFilter) {
@@ -1872,6 +1931,25 @@
             }
             document.getElementById('page-title').textContent = 'Review Reports';
             const container = document.getElementById('main-container');
+            if (activeFilter === 'month' && this.data.reportsMonthFilter) {
+                const [fy, fm] = this.data.reportsMonthFilter.split('-').map(Number);
+                if (!this.data._loadedMonths.has(`${fy}-${fm-1}`)) {
+                    container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                    await this.ensureMonthData(fy, fm - 1);
+                    if (this.data._currentViewId !== 'admin-reports') return;
+                }
+            } else if (activeFilter === 'all') {
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                await this.ensureAllReportsHistory();
+                if (this.data._currentViewId !== 'admin-reports') return;
+            } else {
+                const d = new Date(activeFilter + 'T12:00:00');
+                if (!this.data._loadedMonths.has(`${d.getFullYear()}-${d.getMonth()}`)) {
+                    container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                    await this.ensureMonthData(d.getFullYear(), d.getMonth());
+                    if (this.data._currentViewId !== 'admin-reports') return;
+                }
+            }
             const fullMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const now = new Date();
             let monthOptions = '<option value="">-- Month --</option>';
@@ -2232,11 +2310,30 @@
         async adminDeleteReport(id) { if (!confirm('Delete this report?')) return; try { await window.db.collection('reports').doc(id).update({status:'deleted'}); const r=this.data.reports.find(r=>r.id===id); if(r) r.status='deleted'; this.renderAdminReports(); } catch(e) { alert('Error: '+e.message); } },
 
         // ========== ADMIN ONLINE PAYMENTS (with all new features) ==========
-        renderAdminOnlinePayments(selectedDate = null) {
+        async renderAdminOnlinePayments(selectedDate = null) {
             const activeFilter = selectedDate !== null ? selectedDate : (this.data.paymentDateFilter || new Date().toISOString().split('T')[0]);
             this.data.paymentDateFilter = activeFilter;
             document.getElementById('page-title').textContent = 'Online Payments';
             const container = document.getElementById('main-container');
+            if (activeFilter === 'all') {
+                container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                await this.ensureAllReportsHistory();
+                if (this.data._currentViewId !== 'admin-online-payments') return;
+            } else if (activeFilter === 'month' && this.data.paymentMonthFilter) {
+                const [fy, fm] = this.data.paymentMonthFilter.split('-').map(Number);
+                if (!this.data._loadedMonths.has(`${fy}-${fm-1}`)) {
+                    container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                    await this.ensureMonthData(fy, fm - 1);
+                    if (this.data._currentViewId !== 'admin-online-payments') return;
+                }
+            } else if (activeFilter !== 'month') {
+                const d = new Date(activeFilter + 'T12:00:00');
+                if (!this.data._loadedMonths.has(`${d.getFullYear()}-${d.getMonth()}`)) {
+                    container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+                    await this.ensureMonthData(d.getFullYear(), d.getMonth());
+                    if (this.data._currentViewId !== 'admin-online-payments') return;
+                }
+            }
             const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             const fullMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const now = new Date();
@@ -2741,9 +2838,12 @@
         },
 
         // ========== ADMIN EXPENSES ==========
-        renderAdminExpenses() {
+        async renderAdminExpenses() {
             document.getElementById('page-title').textContent = 'Rider Expenses';
             const container = document.getElementById('main-container');
+            container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading...</p></div>`;
+            await this.ensureAllReportsHistory();
+            if (this.data._currentViewId !== 'admin-expenses') return;
             let allExpenses = [];
             this.data.reports.filter(r => r.status==='approved').forEach(r => { (r.expenses||[]).forEach(e => { allExpenses.push({...e, riderName:r.riderName, riderId:r.riderId, date:r.date}); }); });
             allExpenses.sort((a,b) => new Date(b.date)-new Date(a.date));
@@ -3544,9 +3644,13 @@
         },
 
         // ========== ANALYTICS ==========
-        renderAdminAnalytics() {
+        async renderAdminAnalytics() {
             document.getElementById('page-title').textContent = 'Analytics';
             const container = document.getElementById('main-container');
+            const year = new Date().getFullYear();
+            container.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400"><i class="fas fa-spinner fa-spin text-3xl mr-3"></i><p>Loading analytics...</p></div>`;
+            await Promise.all([this.ensureYearReports(year), this.ensureCompanyExpenses()]);
+            if (this.data._currentViewId !== 'admin-analytics') return;
             const monthlyProfits = this.getMonthlyProfits();
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
                 <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">Monthly Revenue</h3><canvas id="monthlyChart" height="200"></canvas></div>
