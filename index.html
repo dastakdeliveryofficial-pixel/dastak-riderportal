@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -380,7 +380,7 @@
     <script>
     const app = {
         data: {
-            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [],
+            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [], businessExpenses: [],
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
             currentShift: null, sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
@@ -388,7 +388,7 @@
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
             riderPaymentFilter: 'all',
-            customersLoaded: false, companyExpensesLoaded: false,
+            customersLoaded: false, companyExpensesLoaded: false, businessExpensesLoaded: false,
             _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
             _editReportId: null, _isSubmitting: false,
@@ -509,6 +509,9 @@
                 const companyExpSnap = await window.db.collection('companyExpenses').get();
                 self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 self.data.companyExpensesLoaded = true;
+                const businessExpSnap = await window.db.collection('businessExpenses').get();
+                self.data.businessExpenses = businessExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self.data.businessExpensesLoaded = true;
 
                 // Customers bhi load karo upfront (online payment matching ke liye)
                 setMsg('Loading customers...');
@@ -570,6 +573,13 @@
             const snap = await window.db.collection('companyExpenses').get();
             this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.companyExpensesLoaded = true;
+        },
+
+        async ensureBusinessExpenses() {
+            if (this.data.businessExpensesLoaded) return;
+            const snap = await window.db.collection('businessExpenses').get();
+            this.data.businessExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this.data.businessExpensesLoaded = true;
         },
 
         stopRealtimeListeners() {
@@ -899,8 +909,10 @@
             this.data.attendance = [];
             this.data.customers = [];
             this.data.companyExpenses = [];
+            this.data.businessExpenses = [];
             this.data.customersLoaded = false;
             this.data.companyExpensesLoaded = false;
+            this.data.businessExpensesLoaded = false;
             window.auth.signOut().then(() => location.reload());
         },
 
@@ -914,6 +926,7 @@
                 { id:'admin-reports', icon:'fa-clipboard-check', label:'Review Reports' },
                 { id:'admin-online-payments', icon:'fa-credit-card', label:'Online Payments' },
                 { id:'admin-expenses', icon:'fa-receipt', label:'Rider Expenses' },
+                { id:'admin-business-expenses', icon:'fa-building', label:'Company Expenses' },
                 { id:'admin-company-expenses', icon:'fa-school', label:'School Expenses' },
                 { id:'admin-customers', icon:'fa-address-book', label:'Customers' },
                 { id:'admin-attendance', icon:'fa-calendar-check', label:'Attendance' },
@@ -991,6 +1004,7 @@
                 'admin-reports': () => this.renderAdminReports(),
                 'admin-online-payments': () => this.renderAdminOnlinePayments(),
                 'admin-expenses': () => this.renderAdminExpenses(),
+                'admin-business-expenses': () => this.renderBusinessExpenses(),
                 'admin-company-expenses': () => this.renderCompanyExpenses(),
                 'admin-customers': () => this.renderAdminCustomers(),
                 'admin-attendance': () => this.renderAdminAttendance(),
@@ -1504,13 +1518,14 @@
             const monthReports = this.getMonthFilteredReports('approved');
             const totalRiders = this.data.users.filter(u => u.role==='rider').length;
             const pendingReports = this.getMonthFilteredReports('pending').length;
-            const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0) - (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0) - (this.data.businessExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             const totalWages = monthReports.reduce((a,r)=>a+(r.dailyWage||0),0);
             const totalRiderExpenses = monthReports.reduce((a,r)=>a+(r.totalExpenses||0),0);
             const totalRiderFood = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Food').reduce((s,e)=>s+e.amount,0),0);
             const totalRiderFuel = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0),0);
             const totalRiderMaint = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((s,e)=>s+e.amount,0),0);
-            const totalCompanyExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            const totalBusinessExp = (this.data.businessExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            const totalSchoolExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             // Total deliveries for selected month
             const totalDeliveries = monthReports.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
             const daysInMonth = new Date(y,m+1,0).getDate();
@@ -1550,7 +1565,8 @@
                         <div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">🍽 Food</p><h3 class="text-lg font-bold text-green-500">Rs ${totalRiderFood.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">⛽ Fuel</p><h3 class="text-lg font-bold text-orange-500">Rs ${totalRiderFuel.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-blue-400"><p class="text-xs text-gray-500">🔧 Maintenance</p><h3 class="text-lg font-bold text-blue-500">Rs ${totalRiderMaint.toLocaleString()}</h3></div>
-                        <div class="stat-card border-l-4 border-purple-500 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">🏫 School Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3><p class="text-xs text-purple-400">Minus from Net Profit ↑</p></div>
+                        <div class="stat-card border-l-4 border-indigo-500 cursor-pointer" onclick="app.navigate('admin-business-expenses')"><p class="text-xs text-gray-500">🏢 Company Exp.</p><h3 class="text-lg font-bold text-indigo-600">Rs ${totalBusinessExp.toLocaleString()}</h3><p class="text-xs text-indigo-400">Minus from Net Profit ↑</p></div>
+                        <div class="stat-card border-l-4 border-purple-500 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">🏫 School Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalSchoolExp.toLocaleString()}</h3><p class="text-xs text-purple-400">Salary se deduct (Net Profit se nahi)</p></div>
                         <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold">${totalRiders}</h3></div>
                         <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
                     </div>
@@ -2686,16 +2702,16 @@
 
                 <!-- TOP EXPENSE CARDS -->
                 <div class="grid grid-cols-2 gap-3">
-                    <!-- Total - full width -->
-                    <div class="stat-card border-l-4 border-red-500 col-span-2">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-xs text-gray-500 font-medium">💸 Total Rider Expenses</p>
-                                <h3 class="text-2xl font-bold text-red-600">Rs ${totalAll.toLocaleString()}</h3>
-                                <p class="text-xs text-gray-400 mt-0.5">${filterLabel}</p>
+                    <!-- Total -->
+                    <div class="stat-card border-l-4 border-red-500">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-wallet text-red-500"></i>
                             </div>
-                            <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-wallet text-red-500 text-xl"></i>
+                            <div>
+                                <p class="text-xs text-gray-500">💸 Total Expenses</p>
+                                <h3 class="text-lg font-bold text-red-600">Rs ${totalAll.toLocaleString()}</h3>
+                                <p class="text-xs text-gray-400">${filterLabel}</p>
                             </div>
                         </div>
                     </div>
@@ -2719,20 +2735,20 @@
                                 <i class="fas fa-gas-pump text-orange-600"></i>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500">⛽ Fuel Expense</p>
+                                <p class="text-xs text-gray-500">⛽ Petrol Expense</p>
                                 <h3 class="text-lg font-bold text-orange-600">Rs ${totalFuel.toLocaleString()}</h3>
                                 <p class="text-xs text-gray-400">Petrol kharch</p>
                             </div>
                         </div>
                     </div>
                     <!-- Maintenance -->
-                    <div class="stat-card border-l-4 border-blue-500 col-span-2">
+                    <div class="stat-card border-l-4 border-blue-500">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
                                 <i class="fas fa-wrench text-blue-600"></i>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500">🔧 Maintenance Expense</p>
+                                <p class="text-xs text-gray-500">🔧 Maintenance</p>
                                 <h3 class="text-lg font-bold text-blue-600">Rs ${totalMaint.toLocaleString()}</h3>
                                 <p class="text-xs text-gray-400">Repair / tuning kharch</p>
                             </div>
@@ -2850,6 +2866,187 @@
                 this.data._expCustomTo = new Date().toISOString().split('T')[0];
             }
             this.renderAdminExpenses(filter);
+        },
+
+        // ========== BUSINESS / COMPANY EXPENSES (generic — Dastak business kharch) ==========
+        async renderBusinessExpenses(filterDate = null, filterMonth = null) {
+            document.getElementById('page-title').textContent = 'Company Expenses';
+            const container = document.getElementById('main-container');
+            await this.ensureBusinessExpenses();
+            const allExpenses = this.data.businessExpenses || [];
+            const categories = ['Rent','Salary','Utilities','Marketing','Transport','Stationery','Maintenance','Other'];
+
+            const activeDateFilter = filterDate !== null ? filterDate : (this.data.beFilterDate || '');
+            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.beFilterMonth || '');
+            this.data.beFilterDate = activeDateFilter;
+            this.data.beFilterMonth = activeMonthFilter;
+
+            let filteredExpenses = [...allExpenses];
+            if (activeDateFilter) {
+                filteredExpenses = filteredExpenses.filter(e => e.date === activeDateFilter);
+            } else if (activeMonthFilter) {
+                const [fy, fm] = activeMonthFilter.split('-').map(Number);
+                filteredExpenses = filteredExpenses.filter(e => {
+                    const d = new Date(e.date);
+                    return d.getFullYear() === fy && d.getMonth() === fm - 1;
+                });
+            }
+
+            const totalAll = allExpenses.reduce((a,e)=>a+e.amount,0);
+            const totalFiltered = filteredExpenses.reduce((a,e)=>a+e.amount,0);
+            const isFiltered = activeDateFilter || activeMonthFilter;
+
+            const now = new Date();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            let monthOptions = '<option value="">-- Sab Months --</option>';
+            for (let i = 0; i < 24; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                monthOptions += `<option value="${val}" ${activeMonthFilter===val?'selected':''}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
+            }
+
+            const catTotals = {};
+            categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
+
+            container.innerHTML = `<div class="fade-in pb-20 space-y-4">
+
+                <!-- Totals -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="stat-card border-l-4 border-indigo-500">
+                        <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
+                        <h3 class="text-2xl font-bold text-indigo-600">Rs ${totalAll.toLocaleString()}</h3>
+                    </div>
+                    ${isFiltered ? `<div class="stat-card border-l-4 border-blue-400">
+                        <p class="text-xs text-gray-500">Filter ka Total</p>
+                        <h3 class="text-2xl font-bold text-blue-600">Rs ${totalFiltered.toLocaleString()}</h3>
+                    </div>` : `<div class="stat-card border-l-4 border-gray-300">
+                        <p class="text-xs text-gray-400">Entries</p>
+                        <h3 class="text-2xl font-bold text-gray-600">${allExpenses.length}</h3>
+                    </div>`}
+                </div>
+
+                <!-- Filters -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+                    <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
+                            <input type="date" value="${activeDateFilter}"
+                                max="${now.toISOString().split('T')[0]}"
+                                onchange="app.data.beFilterMonth='';app.renderBusinessExpenses(this.value,'')"
+                                class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-indigo-700 outline-none cursor-pointer">
+                        </div>
+                        <button onclick="app.renderBusinessExpenses('','')"
+                            class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!activeDateFilter&&!activeMonthFilter?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">
+                            Sab
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-calendar text-indigo-400 text-sm ml-1"></i>
+                        <select onchange="app.data.beFilterDate='';app.renderBusinessExpenses('',this.value)"
+                            class="flex-1 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
+                            ${monthOptions}
+                        </select>
+                    </div>
+                    ${isFiltered ? `<div class="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                        <i class="fas fa-filter text-indigo-500 text-xs"></i>
+                        <span class="text-xs text-indigo-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : (() => { const [fy,fm] = activeMonthFilter.split('-').map(Number); return monthNames[fm-1]+' '+fy; })()}</span>
+                        <button onclick="app.renderBusinessExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
+                    </div>` : ''}
+                </div>
+
+                <!-- Add Company Expense -->
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-building text-indigo-500 mr-2"></i>Naya Company Expense</h3>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
+                                <select id="be-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                    ${categories.map(c=>`<option>${c}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
+                                <input type="number" id="be-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
+                            </div>
+                        </div>
+                        <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
+                            <input type="text" id="be-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent, Marketing kharch...">
+                        </div>
+                        <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
+                            <input type="date" id="be-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
+                        </div>
+                        <button onclick="app.addBusinessExpense()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Add Company Expense
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Category breakdown -->
+                ${filteredExpenses.length > 0 ? `
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-3">🏢 Company Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        ${categories.filter(c=>catTotals[c]>0).map(c=>`
+                        <div class="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                            <p class="text-xs text-gray-500">${c}</p>
+                            <p class="font-bold text-indigo-700">Rs ${catTotals[c].toLocaleString()}</p>
+                        </div>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                <!-- All Entries -->
+                <div class="section-card">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
+                        ${isFiltered ? `<span class="text-xs text-indigo-600 font-semibold">Total: Rs ${totalFiltered.toLocaleString()}</span>` : ''}
+                    </div>
+                    <div class="space-y-2">
+                        ${filteredExpenses.length === 0 ?
+                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-building text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
+                            [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
+                            <div class="flex justify-between items-center p-3 bg-white/60 rounded-xl border border-gray-100">
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-sm text-gray-800">${e.description || e.category}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">${e.category}</span>
+                                        <span class="text-xs text-gray-400">${new Date(e.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+                                    <p class="font-bold text-indigo-600">Rs ${(e.amount||0).toLocaleString()}</p>
+                                    <button onclick="app.deleteBusinessExpense('${e.id}')"
+                                        class="p-1.5 bg-red-100 text-red-500 hover:bg-red-200 rounded-lg transition-colors" title="Delete">
+                                        <i class="fas fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>`).join('')
+                        }
+                    </div>
+                </div>
+            </div>`;
+        },
+
+        async addBusinessExpense() {
+            const category = document.getElementById('be-category').value;
+            const amount = parseFloat(document.getElementById('be-amount').value)||0;
+            const description = document.getElementById('be-desc').value.trim();
+            const date = document.getElementById('be-date').value;
+            if (!amount||amount<=0) { alert('Amount zaroori hai!'); return; }
+            try {
+                const newExp = { category, amount, description, date };
+                const docRef = await window.db.collection('businessExpenses').add({
+                    ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                this.data.businessExpenses.push({id:docRef.id,...newExp});
+                alert('✅ Company expense add ho gaya!');
+                this.renderBusinessExpenses();
+            } catch(e) { alert('Error: '+e.message); }
+        },
+
+        async deleteBusinessExpense(id) {
+            if (!confirm('Delete?')) return;
+            try { await window.db.collection('businessExpenses').doc(id).delete(); this.data.businessExpenses=this.data.businessExpenses.filter(e=>e.id!==id); this.renderBusinessExpenses(); }
+            catch(e) { alert('Error: '+e.message); }
         },
 
         // ========== COMPANY EXPENSES ==========
@@ -3690,7 +3887,7 @@
             const monthlyData = {}; for(let i=0;i<12;i++) monthlyData[i]=0;
             const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             this.data.reports.filter(r=>{const d=new Date(r.date);return r.status==='approved'&&d.getFullYear()===year;}).forEach(r=>{monthlyData[new Date(r.date).getMonth()]+=(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0);});
-            (this.data.companyExpenses||[]).forEach(e=>{const d=new Date(e.date);if(d.getFullYear()===year)monthlyData[d.getMonth()]-=(e.amount||0);});
+            (this.data.businessExpenses||[]).forEach(e=>{const d=new Date(e.date);if(d.getFullYear()===year)monthlyData[d.getMonth()]-=(e.amount||0);});
             return Object.entries(monthlyData).map(([month,profit])=>({month:parseInt(month),monthName:monthNames[month],profit}));
         },
 
