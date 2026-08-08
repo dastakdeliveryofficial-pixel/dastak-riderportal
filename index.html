@@ -380,7 +380,7 @@
     <script>
     const app = {
         data: {
-            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [], businessExpenses: [],
+            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [], businessExpenses: [], schoolSalary: {},
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
             currentShift: null, sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
@@ -388,7 +388,7 @@
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
             riderPaymentFilter: 'all',
-            customersLoaded: false, companyExpensesLoaded: false, businessExpensesLoaded: false,
+            customersLoaded: false, companyExpensesLoaded: false, businessExpensesLoaded: false, schoolSalaryLoaded: false,
             _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
             _editReportId: null, _isSubmitting: false,
@@ -512,6 +512,10 @@
                 const businessExpSnap = await window.db.collection('businessExpenses').get();
                 self.data.businessExpenses = businessExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 self.data.businessExpensesLoaded = true;
+                const salarySnap = await window.db.collection('schoolSalary').get();
+                const salaryMap = {}; salarySnap.docs.forEach(doc => { salaryMap[doc.id] = doc.data().amount || 0; });
+                self.data.schoolSalary = salaryMap;
+                self.data.schoolSalaryLoaded = true;
 
                 // Customers bhi load karo upfront (online payment matching ke liye)
                 setMsg('Loading customers...');
@@ -580,6 +584,15 @@
             const snap = await window.db.collection('businessExpenses').get();
             this.data.businessExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.businessExpensesLoaded = true;
+        },
+
+        async ensureSchoolSalary() {
+            if (this.data.schoolSalaryLoaded) return;
+            const snap = await window.db.collection('schoolSalary').get();
+            const map = {};
+            snap.docs.forEach(doc => { map[doc.id] = doc.data().amount || 0; });
+            this.data.schoolSalary = map;
+            this.data.schoolSalaryLoaded = true;
         },
 
         stopRealtimeListeners() {
@@ -910,9 +923,11 @@
             this.data.customers = [];
             this.data.companyExpenses = [];
             this.data.businessExpenses = [];
+            this.data.schoolSalary = {};
             this.data.customersLoaded = false;
             this.data.companyExpensesLoaded = false;
             this.data.businessExpensesLoaded = false;
+            this.data.schoolSalaryLoaded = false;
             window.auth.signOut().then(() => location.reload());
         },
 
@@ -2868,11 +2883,12 @@
             this.renderAdminExpenses(filter);
         },
 
-        // ========== SCHOOL EXPENSES (Mahboob School — salary deduction) ==========
+        // ========== SCHOOL EXPENSES (Mahboob School — ek dafa salary, phir expenses minus) ==========
         async renderBusinessExpenses(filterDate = null, filterMonth = null) {
             document.getElementById('page-title').textContent = 'Mahboob School Expense';
             const container = document.getElementById('main-container');
             await this.ensureBusinessExpenses();
+            await this.ensureSchoolSalary();
             const allExpenses = this.data.businessExpenses || [];
             const categories = ['Stationery','Fees','Salary','Utilities','Transport','Books','Maintenance','Other'];
 
@@ -2908,7 +2924,42 @@
             const catTotals = {};
             categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
 
+            // Salary month = jo month filter select hai, warna current month
+            const salaryMonthKey = activeMonthFilter || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            const salaryMonthLabel = (() => { const [fy,fm] = salaryMonthKey.split('-').map(Number); return monthNames[fm-1]+' '+fy; })();
+            const salaryAmount = this.data.schoolSalary?.[salaryMonthKey] || 0;
+            // Us mahine ke expenses (date filter ke bawajood, salary balance hamesha poore month ka hota hai)
+            const [smy, smm] = salaryMonthKey.split('-').map(Number);
+            const salaryMonthExpenses = allExpenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===smy&&(d.getMonth()+1)===smm;}).reduce((a,e)=>a+e.amount,0);
+            const remainingBalance = salaryAmount - salaryMonthExpenses;
+
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
+
+                <!-- Salary Balance Card -->
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-bold text-sm">💼 ${salaryMonthLabel} — Salary Balance</h3>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
+                            <p class="text-xs text-indigo-100">Salary</p>
+                            <p class="text-base font-bold">Rs ${salaryAmount.toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
+                            <p class="text-xs text-indigo-100">Kharch</p>
+                            <p class="text-base font-bold text-red-200">-Rs ${salaryMonthExpenses.toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
+                            <p class="text-xs text-indigo-100">Baqi</p>
+                            <p class="text-base font-bold ${remainingBalance>=0?'text-green-200':'text-red-200'}">Rs ${remainingBalance.toLocaleString()}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 bg-white/15 rounded-xl p-2">
+                        <input type="number" id="be-salary-set" placeholder="${salaryMonthLabel} ki salary likhein"
+                            class="flex-1 bg-white/90 text-indigo-900 rounded-lg px-3 py-2 text-sm outline-none font-semibold" value="${salaryAmount || ''}">
+                        <button onclick="app.setSchoolSalary('${salaryMonthKey}')" class="bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold flex-shrink-0">Set</button>
+                    </div>
+                </div>
 
                 <!-- Totals -->
                 <div class="grid grid-cols-2 gap-3">
@@ -2950,26 +3001,14 @@
                     </div>
                     ${isFiltered ? `<div class="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
                         <i class="fas fa-filter text-purple-500 text-xs"></i>
-                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : (() => { const [fy,fm] = activeMonthFilter.split('-').map(Number); return monthNames[fm-1]+' '+fy; })()}</span>
+                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : salaryMonthLabel}</span>
                         <button onclick="app.renderBusinessExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
                     </div>` : ''}
                 </div>
 
                 <!-- Add School Expense -->
                 <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-school text-purple-500 mr-2"></i>Mahboob School — Naya Expense</h3>
-
-                    <!-- Salary Deduction Summary -->
-                    <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4">
-                        <div class="flex justify-between items-center mb-1">
-                            <p class="text-xs font-bold text-indigo-700">💼 Meri Salary se Deduction</p>
-                            <input type="number" id="be-salary-deduct" placeholder="0"
-                                class="w-28 text-right border border-indigo-300 rounded-lg px-2 py-1 text-sm outline-none font-bold text-indigo-700 bg-white"
-                                oninput="app._updateSalaryPreview()">
-                        </div>
-                        <p class="text-xs text-indigo-500" id="salary-deduct-preview">Is month ki salary se kitna school expense deduct karein?</p>
-                    </div>
-
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-school text-purple-500 mr-2"></i>Naya Expense</h3>
                     <div class="space-y-3">
                         <div class="grid grid-cols-2 gap-3">
                             <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
@@ -2987,16 +3026,9 @@
                         <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
                             <input type="date" id="be-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
                         </div>
-                        <!-- Salary deduct toggle -->
-                        <div class="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                            <input type="checkbox" id="be-from-salary" class="w-4 h-4 accent-purple-600">
-                            <label for="be-from-salary" class="text-xs text-yellow-800 font-medium cursor-pointer">
-                                💼 Yeh expense meri salary se deduct hoga
-                            </label>
-                        </div>
                         <div class="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start gap-2">
                             <i class="fas fa-info-circle text-red-400 text-xs mt-0.5"></i>
-                            <p class="text-xs text-red-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete.</p>
+                            <p class="text-xs text-red-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete. Salary se automatically minus ho jayega.</p>
                         </div>
                         <button onclick="app.addBusinessExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add School Expense
@@ -3049,13 +3081,13 @@
             </div>`;
         },
 
-        _updateSalaryPreview() {
-            const amt = parseFloat(document.getElementById('be-salary-deduct')?.value) || 0;
-            const el = document.getElementById('salary-deduct-preview');
-            if (el) {
-                if (amt > 0) el.innerHTML = `💼 Rs <strong>${amt.toLocaleString()}</strong> is month ki salary se school expense ke liye deduct hoga`;
-                else el.textContent = 'Is month ki salary se kitna school expense deduct karein?';
-            }
+        async setSchoolSalary(monthKey) {
+            const amount = parseFloat(document.getElementById('be-salary-set').value) || 0;
+            try {
+                await window.db.collection('schoolSalary').doc(monthKey).set({ amount, month: monthKey });
+                this.data.schoolSalary[monthKey] = amount;
+                this.renderBusinessExpenses();
+            } catch(e) { alert('Error: '+e.message); }
         },
 
         async addBusinessExpense() {
@@ -3063,26 +3095,13 @@
             const amount = parseFloat(document.getElementById('be-amount').value)||0;
             const description = document.getElementById('be-desc').value.trim();
             const date = document.getElementById('be-date').value;
-            const fromSalary = document.getElementById('be-from-salary')?.checked || false;
-            const salaryDeduct = parseFloat(document.getElementById('be-salary-deduct')?.value) || 0;
             if (!amount||amount<=0) { alert('Amount zaroori hai!'); return; }
             try {
-                const newExp = { category, amount, description, date, fromSalary,
-                    salaryDeduction: fromSalary ? amount : 0,
-                    source: 'school' };
+                const newExp = { category, amount, description, date, source: 'school' };
                 const docRef = await window.db.collection('businessExpenses').add({
                     ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 this.data.businessExpenses.push({id:docRef.id,...newExp});
-                if (salaryDeduct > 0 && !fromSalary) {
-                    await window.db.collection('businessExpenses').add({
-                        category:'Salary Deduction', amount:salaryDeduct,
-                        description:'Salary se school expense deduction', date,
-                        fromSalary:true, salaryDeduction:salaryDeduct, source:'school',
-                        createdAt:firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                }
-                alert(`✅ School expense add ho gaya!${fromSalary?' (Salary se deduct hoga)':''}`);
                 this.renderBusinessExpenses();
             } catch(e) { alert('Error: '+e.message); }
         },
