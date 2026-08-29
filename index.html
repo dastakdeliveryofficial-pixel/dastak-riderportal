@@ -459,14 +459,8 @@
                 this.initMonthPicker();
                 const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
                 history.replaceState({ viewId: initView }, '', '#' + initView);
-                // ✅ FIX: Render view IMMEDIATELY so user isn't stuck on loading screen
+                await this.setupRealtimeListeners();
                 this._renderView(initView);
-                // Load data in background; if it fails, view still works
-                this.setupRealtimeListeners().catch(err => {
-                    console.error('Background data load error:', err);
-                    alert('Data load slow ho raha hai. Refresh karein.
-Error: ' + err.message);
-                });
             } catch (error) {
                 console.error('Error loading user data:', error);
                 alert('Error loading user data: ' + error.message);
@@ -480,7 +474,7 @@ Error: ' + err.message);
             const self = this;
             const setMsg = (msg) => { const el = document.getElementById('loading-msg'); if (el) el.textContent = msg; };
             try {
-                setMsg('Loading data...');
+                setMsg('Loading...');
                 const now = new Date();
                 const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
                 const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
@@ -536,13 +530,9 @@ Error: ' + err.message);
                     });
 
                 setMsg('Ready!');
-                // Refresh current view to show loaded data
-                self._debouncedRefresh();
             } catch(e) {
                 console.error('Data load error:', e);
                 setMsg('Error: ' + e.message);
-                // Reset so it can retry on next refresh
-                this.data._listenersSetup = false;
             }
         },
 
@@ -1036,14 +1026,6 @@ Error: ' + err.message);
             return { totalAbsences: absences.length, reliefDays: Math.min(1, absences.length), deductibleAbsences, dailyWage, totalDeduction: deductibleAbsences * dailyWage };
         },
 
-        // ✅ FIX: Safe expense calculator — ensures maintenance & all expenses are always counted
-        getReportTotalExpenses(r) {
-            // Source of truth: expenses array (fuel + food + maintenance + any other)
-            const fromArray = (r.expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0);
-            // Fallback to legacy totalExpenses field if array is empty
-            return fromArray || (r.totalExpenses || 0);
-        },
-
         // ========== RIDER DASHBOARD ==========
         renderRiderDashboard() {
             document.getElementById('page-title').textContent = 'Dashboard';
@@ -1420,7 +1402,7 @@ Error: ' + err.message);
                     <div class="flex justify-between text-sm"><span>Opening:</span><span>Rs ${(report.openingBalance||0).toLocaleString()}</span></div>
                     <div class="flex justify-between text-sm text-green-600"><span>+ Orders:</span><span>Rs ${(report.totalGross||0).toLocaleString()}</span></div>
                     <div class="flex justify-between text-sm text-red-500"><span>- Online:</span><span>-Rs ${(report.onlinePayments||[]).reduce((a,p)=>a+(p.amount||0),0).toLocaleString()}</span></div>
-                    <div class="flex justify-between text-sm text-red-500"><span>- Expenses:</span><span>-Rs ${this.getReportTotalExpenses(report).toLocaleString()}</span></div>
+                    <div class="flex justify-between text-sm text-red-500"><span>- Expenses:</span><span>-Rs ${(report.totalExpenses||0).toLocaleString()}</span></div>
                     <div class="flex justify-between text-sm text-red-500"><span>- Wage:</span><span>-Rs ${(report.dailyWage||0).toLocaleString()}</span></div>
                     <div class="flex justify-between font-bold text-indigo-900 text-lg pt-2 border-t border-indigo-200"><span>Final</span><span>Rs ${(report.finalAmount||0).toLocaleString()}</span></div>
                 </div>
@@ -1522,9 +1504,9 @@ Error: ' + err.message);
             const monthReports = this.getMonthFilteredReports('approved');
             const totalRiders = this.data.users.filter(u => u.role==='rider').length;
             const pendingReports = this.getMonthFilteredReports('pending').length;
-            const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-this.getReportTotalExpenses(r)-(r.dailyWage||0),0) - (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0) - (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             const totalWages = monthReports.reduce((a,r)=>a+(r.dailyWage||0),0);
-            const totalRiderExpenses = monthReports.reduce((a,r)=>a+this.getReportTotalExpenses(r),0);
+            const totalRiderExpenses = monthReports.reduce((a,r)=>a+(r.totalExpenses||0),0);
             const totalRiderFood = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Food').reduce((s,e)=>s+e.amount,0),0);
             const totalRiderFuel = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0),0);
             const totalRiderMaint = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((s,e)=>s+e.amount,0),0);
@@ -1539,8 +1521,8 @@ Error: ' + err.message);
                 const dayReps = monthReports.filter(r=>r.date===dateStr);
                 dailyLabels.push(d);
                 // Daily chart: sirf rider gross - rider expenses - wages (company expense NAHI)
-                dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-this.getReportTotalExpenses(r)-(r.dailyWage||0),0));
-                dailyExp.push(dayReps.reduce((a,r)=>a+this.getReportTotalExpenses(r),0));
+                dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0));
+                dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
             }
             container.innerHTML = `<div class="space-y-4 fade-in pb-20">
                 <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
@@ -1550,7 +1532,7 @@ Error: ' + err.message);
                         const reps = this.data.reports.filter(r=>r.date===today&&r.status==='approved');
                         const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
                         const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
-                        const exp = reps.reduce((a,r)=>a+this.getReportTotalExpenses(r),0);
+                        const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
                         // Day view: company expense NAHI minus hoga — sirf rider expenses
                         const profit = gross-exp-wages;
                         const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
@@ -1682,7 +1664,7 @@ Error: ' + err.message);
             const reps = this.data.reports.filter(r=>r.date===date&&r.status==='approved');
             const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
             const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
-            const exp = reps.reduce((a,r)=>a+this.getReportTotalExpenses(r),0);
+            const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
             const profit = gross - wages - exp;
             const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
             const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
@@ -4099,7 +4081,7 @@ Error: ' + err.message);
         getMonthlyProfits(year = new Date().getFullYear()) {
             const monthlyData = {}; for(let i=0;i<12;i++) monthlyData[i]=0;
             const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            this.data.reports.filter(r=>{const d=new Date(r.date);return r.status==='approved'&&d.getFullYear()===year;}).forEach(r=>{monthlyData[new Date(r.date).getMonth()]+=(r.totalGross||0)-this.getReportTotalExpenses(r)-(r.dailyWage||0);});
+            this.data.reports.filter(r=>{const d=new Date(r.date);return r.status==='approved'&&d.getFullYear()===year;}).forEach(r=>{monthlyData[new Date(r.date).getMonth()]+=(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0);});
             (this.data.companyExpenses||[]).forEach(e=>{const d=new Date(e.date);if(d.getFullYear()===year)monthlyData[d.getMonth()]-=(e.amount||0);});
             return Object.entries(monthlyData).map(([month,profit])=>({month:parseInt(month),monthName:monthNames[month],profit}));
         },
