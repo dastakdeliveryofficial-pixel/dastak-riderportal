@@ -474,76 +474,59 @@
             const self = this;
             const setMsg = (msg) => { const el = document.getElementById('loading-msg'); if (el) el.textContent = msg; };
             try {
-                setMsg('Connecting...');
+                setMsg('Loading...');
                 const now = new Date();
-                // 6 months pehle se data lo — taake month change karne pe zero na dikhe
                 const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
-                const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
                 const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
-                setMsg('Loading users...');
-                const ridersSnap = await window.db.collection('users').where('role', '==', 'rider').get();
-                self.data.users = ridersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // ✅ SPEED FIX 1: Fetch everything in PARALLEL with Promise.all
+                const [ridersSnap, reportsSnap, attSnap, compExpSnap, custSnap] = await Promise.all([
+                    window.db.collection('users').where('role','==','rider').get(),
+                    window.db.collection('reports').where('date','>=',sixMonthsAgo).orderBy('date','desc').limit(500).get(),
+                    window.db.collection('attendance').where('date','>=',monthStart).limit(200).get(),
+                    window.db.collection('companyExpenses').orderBy('date','desc').limit(200).get(),
+                    window.db.collection('customers').limit(500).get(),
+                ]);
 
-                setMsg('Loading reports...');
-                // 6 months ki reports load karo limit 600
-                const reportsSnap = await window.db.collection('reports')
-                    .where('date', '>=', sixMonthsAgo)
-                    .orderBy('date', 'desc')
-                    .limit(600).get();
-                self.data.reports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                setMsg('Loading attendance...');
-                const attSnap = await window.db.collection('attendance').where('date', '>=', monthStart).get();
-                self.data.attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                setMsg('Loading notifications...');
-                const notifSnap = await window.db.collection('notifications').limit(30).get();
-                if (!notifSnap.empty) {
-                    self.data.announcements = notifSnap.docs.map(doc => ({ ...doc.data(), _docId: doc.id }));
-                    const dot = document.getElementById('notif-dot');
-                    if (dot) dot.classList.remove('hidden');
-                }
-
-                setMsg('Loading expenses...');
-                const companyExpSnap = await window.db.collection('companyExpenses').get();
-                self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self.data.users = ridersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                self.data.reports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                self.data.attendance = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                self.data.companyExpenses = compExpSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.companyExpensesLoaded = true;
-                const businessExpSnap = await window.db.collection('businessExpenses').get();
-                self.data.businessExpenses = businessExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                self.data.businessExpensesLoaded = true;
-                const salarySnap = await window.db.collection('schoolSalary').get();
-                const salaryMap = {}; salarySnap.docs.forEach(doc => { salaryMap[doc.id] = doc.data().amount || 0; });
-                self.data.schoolSalary = salaryMap;
-                self.data.schoolSalaryLoaded = true;
-
-                // Customers bhi load karo upfront (online payment matching ke liye)
-                setMsg('Loading customers...');
-                const custSnap = await window.db.collection('customers').get();
-                self.data.customers = custSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                self.data.customers = custSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.customersLoaded = true;
 
-                setMsg('Setting up live sync...');
-                let rf = true, af = true, uf = true;
+                // Notifications (non-blocking — load in background)
+                window.db.collection('notifications').limit(20).get().then(snap => {
+                    if (!snap.empty) {
+                        self.data.announcements = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+                        const dot = document.getElementById('notif-dot');
+                        if (dot) dot.classList.remove('hidden');
+                    }
+                }).catch(() => {});
+
+                // ✅ SPEED FIX 2: Only ONE lightweight listener for new reports
+                // Instead of heavy onSnapshot on 500 docs, just listen for NEW reports today
+                const todayStr = now.toISOString().split('T')[0];
+                let firstSnap = true;
                 self.data._unsubReports = window.db.collection('reports')
-                    .where('date', '>=', sixMonthsAgo)
-                    .orderBy('date', 'desc')
-                    .limit(600)
+                    .where('date', '>=', todayStr)
                     .onSnapshot(snap => {
-                        self.data.reports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        if (rf) { rf = false; return; }
+                        if (firstSnap) { firstSnap = false; return; }
+                        // Merge new/updated today's reports into existing data
+                        snap.docChanges().forEach(change => {
+                            const doc = { id: change.doc.id, ...change.doc.data() };
+                            const idx = self.data.reports.findIndex(r => r.id === doc.id);
+                            if (change.type === 'removed') {
+                                if (idx >= 0) self.data.reports.splice(idx, 1);
+                            } else {
+                                if (idx >= 0) self.data.reports[idx] = doc;
+                                else self.data.reports.unshift(doc);
+                            }
+                        });
                         self._debouncedRefresh();
                     });
-                self.data._unsubAtt = window.db.collection('attendance').where('date', '>=', monthStart).onSnapshot(snap => {
-                    self.data.attendance = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (af) { af = false; return; }
-                    self._debouncedRefresh();
-                });
-                self.data._unsubRiders = window.db.collection('users').where('role', '==', 'rider').onSnapshot(snap => {
-                    self.data.users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (uf) { uf = false; return; }
-                    self._debouncedRefresh();
-                });
+
                 setMsg('Ready!');
             } catch(e) {
                 console.error('Data load error:', e);
@@ -553,7 +536,7 @@
 
         _debouncedRefresh() {
             if (this.data._refreshTimer) clearTimeout(this.data._refreshTimer);
-            this.data._refreshTimer = setTimeout(() => { this._refreshCurrentView(); this.data._refreshTimer = null; }, 300);
+            this.data._refreshTimer = setTimeout(() => { this._refreshCurrentView(); this.data._refreshTimer = null; }, 800);
         },
 
         _refreshCurrentView() {
@@ -705,19 +688,11 @@
 
                 const customer = { id: snap.docs[0].id, ...snap.docs[0].data() };
 
-                // Customer ki payments dhundho - last 6 months ki reports mein
-                const sixMonthsAgo = new Date();
-                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-                const dateStr = sixMonthsAgo.toISOString().split('T')[0];
-                const reportsSnap = await window.db.collection('reports')
-                    .where('date', '>=', dateStr)
-                    .orderBy('date', 'desc')
-                    .limit(500)
-                    .get();
+                // ✅ Use already-loaded reports from cache (no extra Firebase call)
+                const cachedReports = this.data.reports || [];
                 const allPending = [], allReceived = [];
 
-                reportsSnap.docs.forEach(doc => {
-                    const r = doc.data();
+                cachedReports.forEach(r => {
                     (r.onlinePayments || []).forEach(p => {
                         const custPhone = (customer.phone||'').replace(/\D/g,'').slice(-10);
                         const custName = (customer.name||'').toLowerCase();
@@ -729,13 +704,7 @@
                         const docIdMatch = (p.customerDocId||'') === customer.id;
 
                         if (idMatch || phoneMatch || nameMatch || docIdMatch) {
-                            const payment = {
-                                date: r.date,
-                                amount: p.amount || 0,
-                                detail: p.detail || '',
-                                items: p.items || '',
-                                status: p.status || 'pending'
-                            };
+                            const payment = { date: r.date, amount: p.amount||0, detail: p.detail||'', items: p.items||'', status: p.status||'pending' };
                             if (p.status === 'pending') allPending.push(payment);
                             else allReceived.push(payment);
                         }
@@ -2064,10 +2033,12 @@
                         <div class="grid grid-cols-2 gap-3">
                             <div><label class="text-xs text-gray-500 font-medium block mb-1">Opening Balance (Rs)</label>
                                 <input type="number" id="admin-edit-opening" value="${report.openingBalance||0}"
-                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400"></div>
+                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                                    oninput="app._adminEditAutoCalc()"></div>
                             <div><label class="text-xs text-gray-500 font-medium block mb-1">Daily Wage (Rs)</label>
                                 <input type="number" id="admin-edit-wage" value="${report.dailyWage||0}"
-                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400"></div>
+                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                                    oninput="app._adminEditAutoCalc()"></div>
                         </div>
 
                         <!-- Orders -->
@@ -2096,15 +2067,18 @@
                                 <div class="bg-orange-50 rounded-lg p-2">
                                     <label class="text-xs text-orange-600 font-medium block mb-1">⛽ Fuel</label>
                                     <input type="number" id="admin-edit-fuel" value="${fuelExp}" min="0"
-                                        class="w-full border border-orange-200 rounded px-2 py-1.5 text-sm outline-none focus:border-orange-400"></div>
+                                        class="w-full border border-orange-200 rounded px-2 py-1.5 text-sm outline-none focus:border-orange-400"
+                                        oninput="app._adminEditAutoCalc()"></div>
                                 <div class="bg-green-50 rounded-lg p-2">
                                     <label class="text-xs text-green-600 font-medium block mb-1">🍽 Food</label>
                                     <input type="number" id="admin-edit-food" value="${foodExp}" min="0"
-                                        class="w-full border border-green-200 rounded px-2 py-1.5 text-sm outline-none focus:border-green-400"></div>
+                                        class="w-full border border-green-200 rounded px-2 py-1.5 text-sm outline-none focus:border-green-400"
+                                        oninput="app._adminEditAutoCalc()"></div>
                                 <div class="bg-blue-50 rounded-lg p-2">
                                     <label class="text-xs text-blue-600 font-medium block mb-1">🔧 Maint.</label>
                                     <input type="number" id="admin-edit-maint" value="${maintExp}" min="0"
-                                        class="w-full border border-blue-200 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400"></div>
+                                        class="w-full border border-blue-200 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                                        oninput="app._adminEditAutoCalc()"></div>
                             </div>
                         </div>
 
@@ -2205,6 +2179,14 @@
 
                 const totalGross = orders.reduce((a,o)=>a+o.gross,0);
                 const totalExpenses = expenses.reduce((a,e)=>a+e.amount,0);
+                const totalOnline = (report.onlinePayments||[]).map((p,i) => parseFloat(document.getElementById(`admin-pay-amt-${i}`)?.value)||0).reduce((a,v)=>a+v,0);
+
+                // ✅ AUTO CALCULATE finalAmount = opening + gross - online - ALL expenses (fuel+food+maint) - wage
+                const autoFinal = openingBalance + totalGross - totalOnline - totalExpenses - dailyWage;
+                // Use manual override only if admin changed it
+                const manualFinal = parseFloat(document.getElementById('admin-edit-final').value) || 0;
+                // If manual final matches auto (within Rs 1), use auto. Otherwise use manual override.
+                const finalAmount = Math.abs(manualFinal - autoFinal) < 2 ? autoFinal : manualFinal;
 
                 const updates = {
                     date, status, openingBalance, orders,
@@ -2222,6 +2204,28 @@
                 this.renderAdminReports();
 
             } catch(e) { alert('Error: ' + e.message); }
+        },
+
+        // Auto-calculate final amount in admin edit modal
+        _adminEditAutoCalc() {
+            const opening = parseFloat(document.getElementById('admin-edit-opening')?.value) || 0;
+            const wage = parseFloat(document.getElementById('admin-edit-wage')?.value) || 0;
+            const fuel = parseFloat(document.getElementById('admin-edit-fuel')?.value) || 0;
+            const food = parseFloat(document.getElementById('admin-edit-food')?.value) || 0;
+            const maint = parseFloat(document.getElementById('admin-edit-maint')?.value) || 0;
+            // Sum orders gross
+            let gross = 0;
+            let i = 0;
+            while (document.getElementById(`admin-order-qty-${i}`)) {
+                const qty = parseFloat(document.getElementById(`admin-order-qty-${i}`)?.value) || 0;
+                const rate = parseFloat(document.getElementById(`admin-order-rate-${i}`)?.value) || 0;
+                gross += qty * rate;
+                i++;
+            }
+            const totalExp = fuel + food + maint;
+            const autoFinal = opening + gross - totalExp - wage;
+            const finalInput = document.getElementById('admin-edit-final');
+            if (finalInput) finalInput.value = autoFinal;
         },
 
         async updateReportStatus(id, status) {
