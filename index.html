@@ -429,44 +429,77 @@
         },
 
         async loadUserData(uid) {
-            try {
-                const userDoc = await window.db.collection('users').doc(uid).get();
-                if (userDoc.exists) {
-                    this.data.currentUser = { id: uid, ...userDoc.data() };
-                } else {
-                    const user = window.auth.currentUser;
-                    const isAdmin = user.email === "admin@portal.com";
-                    const newUserData = {
-                        email: user.email, name: isAdmin ? "Administrator" : "New User",
-                        phone: "", zone: isAdmin ? "Head Office" : "Unassigned",
-                        vehicle: isAdmin ? "Admin" : "", role: isAdmin ? "admin" : "rider",
-                        joinDate: new Date().toISOString().split('T')[0],
-                        salaryBase: isAdmin ? 50000 : 15000, dailyWage: isAdmin ? 1000 : 500,
-                        disabled: false
-                    };
-                    await window.db.collection('users').doc(uid).set(newUserData);
-                    this.data.currentUser = { id: uid, ...newUserData };
-                }
-                // Check if rider is disabled
-                if (this.data.currentUser.disabled && this.data.currentUser.role !== 'admin') {
-                    alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
-                    this.logout();
-                    return;
-                }
-                document.getElementById('sidebar').setAttribute('data-ready','1');
-                document.getElementById('main-header').classList.remove('hidden');
-                this.renderSidebar();
-                this.initMonthPicker();
-                const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
-                history.replaceState({ viewId: initView }, '', '#' + initView);
-                await this.setupRealtimeListeners();
-                this._renderView(initView);
-            } catch (error) {
-                console.error('Error loading user data:', error);
-                alert('Error loading user data: ' + error.message);
-                this.logout();
-            }
-        },
+    try {
+        const userDoc = await window.db.collection('users').doc(uid).get();
+
+        if (userDoc.exists) {
+            this.data.currentUser = { id: uid, ...userDoc.data() };
+        } else {
+            const user = window.auth.currentUser;
+            const isAdmin = user.email === "admin@portal.com";
+
+            const newUserData = {
+                email: user.email,
+                name: isAdmin ? "Administrator" : "New User",
+                phone: "",
+                zone: isAdmin ? "Head Office" : "Unassigned",
+                vehicle: isAdmin ? "Admin" : "",
+                role: isAdmin ? "admin" : "rider",
+                joinDate: new Date().toISOString().split('T')[0],
+                salaryBase: isAdmin ? 50000 : 15000,
+                dailyWage: isAdmin ? 1000 : 500,
+                disabled: false
+            };
+
+            await window.db.collection('users').doc(uid).set(newUserData);
+            this.data.currentUser = { id: uid, ...newUserData };
+        }
+
+        // Check if rider is disabled
+        if (
+            this.data.currentUser.disabled &&
+            this.data.currentUser.role !== 'admin'
+        ) {
+            alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
+            this.logout();
+            return;
+        }
+
+        document.getElementById('sidebar').setAttribute('data-ready', '1');
+        document.getElementById('main-header').classList.remove('hidden');
+
+        this.renderSidebar();
+        this.initMonthPicker();
+
+        const initView =
+            this.data.currentUser.role === 'admin'
+                ? 'admin-dashboard'
+                : 'rider-dashboard';
+
+        history.replaceState(
+            { viewId: initView },
+            '',
+            '#' + initView
+        );
+
+        // Open dashboard immediately
+        this._renderView(initView);
+
+        // Load Firebase data in background
+        this.setupRealtimeListeners().catch(err => {
+            console.error('Background data load error:', err);
+            alert(
+                'Data load slow ho raha hai. Refresh karein.\nError: ' +
+                err.message
+            );
+        });
+
+    } catch (error) {
+        console.error('Error loading user data:', error);
+        alert('Error loading user data: ' + error.message);
+        this.logout();
+    }
+},
 
         async setupRealtimeListeners() {
             if (this.data._listenersSetup) return;
