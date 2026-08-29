@@ -459,12 +459,16 @@
                 this.initMonthPicker();
                 const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
                 history.replaceState({ viewId: initView }, '', '#' + initView);
+                const loadTimeout = setTimeout(() => {
+                    console.warn('Load timeout — forcing render');
+                    this._renderView(initView);
+                }, 10000);
                 await this.setupRealtimeListeners();
+                clearTimeout(loadTimeout);
                 this._renderView(initView);
             } catch (error) {
                 console.error('Error loading user data:', error);
-                alert('Error loading user data: ' + error.message);
-                this.logout();
+                this._renderView(this.data.currentUser?.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard');
             }
         },
 
@@ -473,23 +477,30 @@
             this.data._listenersSetup = true;
             const self = this;
             const setMsg = (msg) => { const el = document.getElementById('loading-msg'); if (el) el.textContent = msg; };
+
+            // Helper: safe fetch — never throws, returns empty snap on error
+            const safeFetch = async (query) => {
+                try { return await query.get(); }
+                catch(e) { console.warn('Query failed:', e.message); return { docs: [] }; }
+            };
+
             try {
                 setMsg('Loading...');
                 const now = new Date();
                 const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
-                const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
-                // ✅ SPEED FIX 1: Fetch everything in PARALLEL with Promise.all
+                // Fetch all in parallel — each wrapped in safeFetch so one failure won't block others
                 const [ridersSnap, reportsSnap, attSnap, compExpSnap, custSnap] = await Promise.all([
-                    window.db.collection('users').where('role','==','rider').get(),
-                    window.db.collection('reports').orderBy('date','desc').limit(300).get(),
-                    window.db.collection('attendance').limit(500).get(),
-                    window.db.collection('companyExpenses').limit(200).get(),
-                    window.db.collection('customers').limit(500).get(),
+                    safeFetch(window.db.collection('users').where('role','==','rider')),
+                    safeFetch(window.db.collection('reports').limit(300)),
+                    safeFetch(window.db.collection('attendance').limit(500)),
+                    safeFetch(window.db.collection('companyExpenses').limit(200)),
+                    safeFetch(window.db.collection('customers').limit(500)),
                 ]);
 
                 self.data.users = ridersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.reports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .filter(r => r.date >= sixMonthsAgo)
                     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
                 self.data.attendance = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.companyExpenses = compExpSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -497,40 +508,40 @@
                 self.data.customers = custSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.customersLoaded = true;
 
-                // Notifications (non-blocking — load in background)
-                window.db.collection('notifications').limit(20).get().then(snap => {
-                    if (!snap.empty) {
+                // Notifications — background, non-blocking
+                safeFetch(window.db.collection('notifications').limit(20)).then(snap => {
+                    if (snap.docs.length) {
                         self.data.announcements = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
                         const dot = document.getElementById('notif-dot');
                         if (dot) dot.classList.remove('hidden');
                     }
-                }).catch(() => {});
+                });
 
-                // Lightweight listener - only for today's report changes
-                const todayStr = now.toISOString().split('T')[0];
+                // Lightweight realtime listener — no where/orderBy = no index needed
                 let firstSnap = true;
-                self.data._unsubReports = window.db.collection('reports')
-                    .limit(10)
-                    .onSnapshot(snap => {
-                        if (firstSnap) { firstSnap = false; return; }
-                        snap.docChanges().forEach(change => {
-                            const doc = { id: change.doc.id, ...change.doc.data() };
-                            if (doc.date < sixMonthsAgo) return; // ignore old
-                            const idx = self.data.reports.findIndex(r => r.id === doc.id);
-                            if (change.type === 'removed') {
-                                if (idx >= 0) self.data.reports.splice(idx, 1);
-                            } else {
-                                if (idx >= 0) self.data.reports[idx] = doc;
-                                else self.data.reports.unshift(doc);
-                            }
-                        });
-                        self._debouncedRefresh();
-                    });
+                try {
+                    self.data._unsubReports = window.db.collection('reports')
+                        .limit(10)
+                        .onSnapshot(snap => {
+                            if (firstSnap) { firstSnap = false; return; }
+                            snap.docChanges().forEach(change => {
+                                const doc = { id: change.doc.id, ...change.doc.data() };
+                                const idx = self.data.reports.findIndex(r => r.id === doc.id);
+                                if (change.type === 'removed') {
+                                    if (idx >= 0) self.data.reports.splice(idx, 1);
+                                } else {
+                                    if (idx >= 0) self.data.reports[idx] = doc;
+                                    else self.data.reports.unshift(doc);
+                                }
+                            });
+                            self._debouncedRefresh();
+                        }, err => { console.warn('Listener error:', err.message); });
+                } catch(e) { console.warn('Listener setup failed:', e.message); }
 
                 setMsg('Ready!');
             } catch(e) {
-                console.error('Data load error:', e);
-                setMsg('Error: ' + e.message);
+                console.error('Setup error:', e);
+                setMsg('Ready!'); // Still proceed even if something failed
             }
         },
 
