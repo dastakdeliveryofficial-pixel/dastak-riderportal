@@ -428,79 +428,45 @@
             });
         },
 
-async loadUserData(uid) {
-    try {
-        const userDoc = await window.db.collection('users').doc(uid).get();
-
-        if (userDoc.exists) {
-            this.data.currentUser = { id: uid, ...userDoc.data() };
-        } else {
-            const user = window.auth.currentUser;
-            const isAdmin = user.email === "admin@portal.com";
-
-            const newUserData = {
-                email: user.email,
-                name: isAdmin ? "Administrator" : "New User",
-                phone: "",
-                zone: isAdmin ? "Head Office" : "Unassigned",
-                vehicle: isAdmin ? "Admin" : "",
-                role: isAdmin ? "admin" : "rider",
-                joinDate: new Date().toISOString().split('T')[0],
-                salaryBase: isAdmin ? 50000 : 15000,
-                dailyWage: isAdmin ? 1000 : 500,
-                disabled: false
-            };
-
-            await window.db.collection('users').doc(uid).set(newUserData);
-            this.data.currentUser = { id: uid, ...newUserData };
-        }
-
-        // Check if rider is disabled
-        if (
-            this.data.currentUser.disabled &&
-            this.data.currentUser.role !== 'admin'
-        ) {
-            alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
-            this.logout();
-            return;
-        }
-
-        document.getElementById('sidebar').setAttribute('data-ready', '1');
-        document.getElementById('main-header').classList.remove('hidden');
-
-        this.renderSidebar();
-        this.initMonthPicker();
-
-        const initView =
-            this.data.currentUser.role === 'admin'
-                ? 'admin-dashboard'
-                : 'rider-dashboard';
-
-        history.replaceState(
-            { viewId: initView },
-            '',
-            '#' + initView
-        );
-
-        // Open dashboard immediately
-        this._renderView(initView);
-
-        // Load Firebase data in background
-        this.setupRealtimeListeners().catch(err => {
-            console.error('Background data load error:', err);
-
-            alert(
-                'Data load slow ho raha hai. Refresh karein.\nError: ' +
-                err.message
-            );
-        });
-
-    } catch (error) {
-        console.error('Error loading user data:', error);
-        alert('Error loading user data: ' + error.message);
-        this.logout();
-    }
-},
+        async loadUserData(uid) {
+            try {
+                const userDoc = await window.db.collection('users').doc(uid).get();
+                if (userDoc.exists) {
+                    this.data.currentUser = { id: uid, ...userDoc.data() };
+                } else {
+                    const user = window.auth.currentUser;
+                    const isAdmin = user.email === "admin@portal.com";
+                    const newUserData = {
+                        email: user.email, name: isAdmin ? "Administrator" : "New User",
+                        phone: "", zone: isAdmin ? "Head Office" : "Unassigned",
+                        vehicle: isAdmin ? "Admin" : "", role: isAdmin ? "admin" : "rider",
+                        joinDate: new Date().toISOString().split('T')[0],
+                        salaryBase: isAdmin ? 50000 : 15000, dailyWage: isAdmin ? 1000 : 500,
+                        disabled: false
+                    };
+                    await window.db.collection('users').doc(uid).set(newUserData);
+                    this.data.currentUser = { id: uid, ...newUserData };
+                }
+                // Check if rider is disabled
+                if (this.data.currentUser.disabled && this.data.currentUser.role !== 'admin') {
+                    alert('آپ کا account disable ہے۔ Admin سے رابطہ کریں۔');
+                    this.logout();
+                    return;
+                }
+                document.getElementById('sidebar').setAttribute('data-ready','1');
+                document.getElementById('main-header').classList.remove('hidden');
+                this.renderSidebar();
+                this.initMonthPicker();
+                const initView = this.data.currentUser.role === 'admin' ? 'admin-dashboard' : 'rider-dashboard';
+                history.replaceState({ viewId: initView }, '', '#' + initView);
+                await this.setupRealtimeListeners();
+                this._renderView(initView);
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                alert('Error loading user data: ' + error.message);
+                this.logout();
+            }
+        },
 
         async setupRealtimeListeners() {
             if (this.data._listenersSetup) return;
@@ -516,14 +482,13 @@ async loadUserData(uid) {
                 // ✅ SPEED FIX 1: Fetch everything in PARALLEL with Promise.all
                 const [ridersSnap, reportsSnap, attSnap, compExpSnap, custSnap] = await Promise.all([
                     window.db.collection('users').where('role','==','rider').get(),
-                    window.db.collection('reports').where('date','>=',sixMonthsAgo).limit(500).get(),
-                    window.db.collection('attendance').where('date','>=',monthStart).limit(200).get(),
+                    window.db.collection('reports').orderBy('date','desc').limit(300).get(),
+                    window.db.collection('attendance').limit(500).get(),
                     window.db.collection('companyExpenses').limit(200).get(),
                     window.db.collection('customers').limit(500).get(),
                 ]);
 
                 self.data.users = ridersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                // Sort reports by date desc in JS (no index needed)
                 self.data.reports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
                     .sort((a,b) => (b.date||'').localeCompare(a.date||''));
                 self.data.attendance = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -541,17 +506,16 @@ async loadUserData(uid) {
                     }
                 }).catch(() => {});
 
-                // ✅ SPEED FIX 2: Only ONE lightweight listener for new reports
-                // Instead of heavy onSnapshot on 500 docs, just listen for NEW reports today
+                // Lightweight listener - only for today's report changes
                 const todayStr = now.toISOString().split('T')[0];
                 let firstSnap = true;
                 self.data._unsubReports = window.db.collection('reports')
-                    .where('date', '>=', todayStr)
+                    .limit(10)
                     .onSnapshot(snap => {
                         if (firstSnap) { firstSnap = false; return; }
-                        // Merge new/updated today's reports into existing data
                         snap.docChanges().forEach(change => {
                             const doc = { id: change.doc.id, ...change.doc.data() };
+                            if (doc.date < sixMonthsAgo) return; // ignore old
                             const idx = self.data.reports.findIndex(r => r.id === doc.id);
                             if (change.type === 'removed') {
                                 if (idx >= 0) self.data.reports.splice(idx, 1);
@@ -4293,4 +4257,3 @@ async loadUserData(uid) {
     </script>
 </body>
 </html>
-
