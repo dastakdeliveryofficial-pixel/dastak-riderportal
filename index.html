@@ -13,6 +13,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+        /* ===== BASE ===== */
         body {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 40%, #e0f2fe 100%);
@@ -20,6 +21,7 @@
             overscroll-behavior-y: contain;
         }
 
+        /* ===== ANIMATED BG BLOBS ===== */
         .blob {
             position: fixed;
             border-radius: 50%;
@@ -38,6 +40,7 @@
             66% { transform:translate(-15px,15px) scale(0.95); }
         }
 
+        /* ===== GLASS PANEL ===== */
         .glass-panel {
             background: rgba(255,255,255,0.75);
             backdrop-filter: blur(20px);
@@ -52,6 +55,7 @@
             box-shadow: 0 16px 48px rgba(0,0,0,0.11);
         }
 
+        /* ===== STAT CARD ===== */
         .stat-card {
             background: rgba(255,255,255,0.82);
             backdrop-filter: blur(16px);
@@ -69,6 +73,7 @@
             box-shadow: 0 12px 36px rgba(0,0,0,0.1);
         }
 
+        /* ===== SECTION CARD ===== */
         .section-card {
             background: rgba(255,255,255,0.85);
             backdrop-filter: blur(16px);
@@ -85,6 +90,7 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.09);
         }
 
+        /* ===== SIDEBAR ===== */
         #sidebar {
             transition: transform 0.3s ease-in-out;
             background: rgba(255,255,255,0.92);
@@ -92,6 +98,7 @@
             -webkit-backdrop-filter: blur(24px);
             border-right: 1px solid rgba(255,255,255,0.5);
             box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            /* Mobile: always fixed, always starts hidden */
             position: fixed;
             left: 0; top: 0;
             height: 100vh;
@@ -101,6 +108,7 @@
             flex-direction: column;
             display: flex !important;
         }
+        /* Desktop: sidebar visible as part of flex layout */
         @media (min-width: 769px) {
             #sidebar {
                 position: relative;
@@ -109,6 +117,7 @@
                 flex-shrink: 0;
             }
         }
+        /* Mobile open state */
         @media (max-width: 768px) {
             #sidebar.mobile-visible {
                 transform: translateX(0);
@@ -116,6 +125,7 @@
             }
         }
 
+        /* ===== SIDEBAR LINKS ===== */
         .sidebar-link {
             transition: all 0.25s ease;
             border-radius: 12px;
@@ -133,6 +143,7 @@
             transform: translateX(4px);
         }
 
+        /* ===== HEADER ===== */
         #main-header {
             background: rgba(255,255,255,0.82);
             backdrop-filter: blur(16px);
@@ -143,6 +154,7 @@
             z-index: 30;
         }
 
+        /* ===== QUICK ACTION BTN ===== */
         .quick-action-btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -158,9 +170,11 @@
         }
         .quick-action-btn:active { transform: scale(0.97); }
 
+        /* ===== FADE IN ===== */
         .fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
+        /* ===== STATUS BADGES ===== */
         .status-badge { padding:0.3rem 0.8rem; border-radius:50px; font-size:0.75rem; font-weight:600; }
         .status-pending  { background:rgba(254,243,199,0.9); color:#92400e; }
         .status-approved { background:rgba(209,250,229,0.9); color:#065f46; }
@@ -168,6 +182,7 @@
         .status-draft    { background:rgba(254,249,195,0.9); color:#854d0e; }
         .status-deleted  { background:rgba(243,244,246,0.9); color:#6b7280; }
 
+        /* ===== CALENDAR ===== */
         .attendance-calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
         .calendar-day {
             aspect-ratio: 1;
@@ -185,6 +200,7 @@
         .calendar-day.empty   { background:rgba(249,250,251,0.5); border-color:transparent; cursor:default; }
         .calendar-day.empty:hover { transform:none; }
 
+        /* ===== INPUTS — only meaningful states, no global border-radius override ===== */
         input[type="text"], input[type="number"], input[type="email"],
         input[type="password"], input[type="tel"], input[type="date"],
         textarea, select {
@@ -200,18 +216,21 @@
             box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
         }
 
+        /* ===== MODAL ===== */
         #modal-content {
             background: rgba(255,255,255,0.95);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
         }
 
+        /* ===== NOTIFICATION DOT ===== */
         #notif-dot { animation: notifPulse 2s infinite; }
         @keyframes notifPulse {
             0%,100% { transform:scale(1); opacity:1; }
             50% { transform:scale(1.4); opacity:0.6; }
         }
 
+        /* ===== USER AVATAR ===== */
         #user-avatar {
             box-shadow: 0 3px 10px rgba(79,70,229,0.2);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -221,20 +240,25 @@
             box-shadow: 0 6px 18px rgba(79,70,229,0.35);
         }
 
+        /* ===== SCROLLBAR ===== */
         ::-webkit-scrollbar { width:6px; height:6px; }
         ::-webkit-scrollbar-track { background:transparent; }
         ::-webkit-scrollbar-thumb { background:rgba(99,102,241,0.3); border-radius:10px; }
         ::-webkit-scrollbar-thumb:hover { background:rgba(99,102,241,0.5); }
 
+        /* ===== MISC ===== */
         #dynamic-style { display:none; }
         .partial-pay-modal { background: linear-gradient(135deg, #667eea, #764ba2); }
 
+        /* Ensure content is above blobs */
         #main-header, #main-container, #modal-overlay { position: relative; z-index: 1; }
         #modal-overlay { z-index: 100; }
 
+        /* Loading screen glass */
         #app-loading { background: transparent; }
         #main-container { background: transparent; }
 
+        /* Sidebar hidden until logged in */
         #sidebar:not([data-ready]) {
             display: none !important;
         }
@@ -243,26 +267,18 @@
         .stat-card:nth-child(3) { background: linear-gradient(135deg, rgba(255,247,237,0.85), rgba(254,215,170,0.85)); }
         .stat-card:nth-child(4) { background: linear-gradient(135deg, rgba(253,242,248,0.85), rgba(251,207,232,0.85)); }
 
+        /* ===== QUICK ACTION BUTTONS — multicolor ===== */
         .quick-action-btn:nth-child(1) { background: linear-gradient(135deg, #667eea, #764ba2); }
         .quick-action-btn:nth-child(2) { background: linear-gradient(135deg, #11998e, #38ef7d); }
         .quick-action-btn:nth-child(3) { background: linear-gradient(135deg, #f7971e, #ffd200); }
         .quick-action-btn:nth-child(4) { background: linear-gradient(135deg, #2193b0, #6dd5ed); }
 
+        /* ===== DELIVERY ROW ===== */
         .delivery-row {
             background: rgba(238,242,255,0.7);
             border: 1px solid rgba(165,180,252,0.4);
             border-radius: 14px;
             padding: 12px;
-        }
-
-        /* ===== FIX: retry button on stuck loading ===== */
-        .loading-retry-btn {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            color: #fff;
-            padding: 10px 22px;
-            border-radius: 12px;
-            font-weight: 700;
-            box-shadow: 0 6px 18px rgba(79,70,229,0.35);
         }
     </style>
 </head>
@@ -284,10 +300,6 @@
         firebase.initializeApp(firebaseConfig);
         window.auth = firebase.auth();
         window.db = firebase.firestore();
-        // FIX: enable local cache so repeat loads are instant + fewer stuck states on flaky networks
-        try {
-            window.db.enablePersistence({ synchronizeTabs: true }).catch(()=>{});
-        } catch(e) {}
     </script>
 
     <!-- Pull to Refresh -->
@@ -398,24 +410,9 @@
             if (savedReceived) this.data.waReceivedTemplate = savedReceived;
             if (savedStatement) this.data.waStatementTemplate = savedStatement;
 
-            // ===== FIX: safety-net so the app never hangs on the loading screen forever =====
-            this._loadingWatchdog = setTimeout(() => {
-                const sidebar = document.getElementById('sidebar');
-                const loadingEl = document.getElementById('app-loading');
-                if (loadingEl && (!sidebar || !sidebar.hasAttribute('data-ready'))) {
-                    loadingEl.innerHTML = `
-                        <div class="text-center px-6">
-                            <i class="fas fa-exclamation-triangle text-4xl text-orange-400 mb-3"></i>
-                            <p class="font-bold text-gray-700 text-lg">Loading mein time lag raha hai</p>
-                            <p class="text-sm text-gray-400 mt-1 mb-4">Internet connection check karein ya dubara try karein</p>
-                            <button onclick="location.reload()" class="loading-retry-btn"><i class="fas fa-redo mr-2"></i>Reload</button>
-                        </div>`;
-                }
-            }, 9000);
-
             window.auth.onAuthStateChanged((user) => {
                 if (user) this.loadUserData(user.uid);
-                else { this._clearWatchdog(); this.showLogin(); }
+                else this.showLogin();
             });
             window.addEventListener('resize', () => {
                 if (window.innerWidth >= 768) {
@@ -429,10 +426,6 @@
                 const viewId = e.state?.viewId || location.hash.slice(1) || null;
                 if (viewId) this._renderView(viewId);
             });
-        },
-
-        _clearWatchdog() {
-            if (this._loadingWatchdog) { clearTimeout(this._loadingWatchdog); this._loadingWatchdog = null; }
         },
 
         async loadUserData(uid) {
@@ -468,26 +461,10 @@
                 history.replaceState({ viewId: initView }, '', '#' + initView);
                 await this.setupRealtimeListeners();
                 this._renderView(initView);
-                this._clearWatchdog();
             } catch (error) {
                 console.error('Error loading user data:', error);
-                this._clearWatchdog();
-                const loadingEl = document.getElementById('app-loading');
-                if (loadingEl) {
-                    loadingEl.innerHTML = `
-                        <div class="text-center px-6">
-                            <i class="fas fa-exclamation-triangle text-4xl text-red-400 mb-3"></i>
-                            <p class="font-bold text-gray-700 text-lg">Data load nahi hui</p>
-                            <p class="text-sm text-gray-400 mt-1 mb-4">${(error.message||'Error').toString().slice(0,120)}</p>
-                            <div class="flex gap-2 justify-center">
-                                <button onclick="location.reload()" class="loading-retry-btn"><i class="fas fa-redo mr-2"></i>Reload</button>
-                                <button onclick="app.logout()" class="px-5 py-2.5 rounded-xl font-semibold bg-gray-200 text-gray-700">Logout</button>
-                            </div>
-                        </div>`;
-                } else {
-                    alert('Error loading user data: ' + error.message);
-                    this.logout();
-                }
+                alert('Error loading user data: ' + error.message);
+                this.logout();
             }
         },
 
@@ -502,24 +479,19 @@
                 const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
                 const monthStart = new Date(now.getFullYear(), now.getMonth() - 1, 0).toISOString().split('T')[0];
 
-                // ✅ SPEED FIX: fetch everything in PARALLEL with Promise.all
-                // ✅ LOADING FIX: removed .orderBy('date','desc') combined with the where() clause below —
-                // that combo requires a Firestore composite index; if the index doesn't exist the query
-                // fails and the app used to sit on the loading screen. We sort client-side instead, and
-                // trimmed the limit slightly so the initial load is faster too.
+                // ✅ SPEED FIX 1: Fetch everything in PARALLEL with Promise.all
                 const [ridersSnap, reportsSnap, attSnap, compExpSnap, custSnap] = await Promise.all([
                     window.db.collection('users').where('role','==','rider').get(),
-                    window.db.collection('reports').where('date','>=',sixMonthsAgo).limit(300).get(),
+                    window.db.collection('reports').where('date','>=',sixMonthsAgo).limit(500).get(),
                     window.db.collection('attendance').where('date','>=',monthStart).limit(200).get(),
                     window.db.collection('companyExpenses').limit(200).get(),
                     window.db.collection('customers').limit(500).get(),
                 ]);
 
                 self.data.users = ridersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                // client-side sort (desc by date) — no index required
-                self.data.reports = reportsSnap.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+                // Sort reports by date desc in JS (no index needed)
+                self.data.reports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a,b) => (b.date||'').localeCompare(a.date||''));
                 self.data.attendance = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.companyExpenses = compExpSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 self.data.companyExpensesLoaded = true;
@@ -535,7 +507,7 @@
                     }
                 }).catch(() => {});
 
-                // ✅ SPEED FIX: Only ONE lightweight listener for new reports
+                // ✅ SPEED FIX 2: Only ONE lightweight listener for new reports
                 // Instead of heavy onSnapshot on 500 docs, just listen for NEW reports today
                 const todayStr = now.toISOString().split('T')[0];
                 let firstSnap = true;
@@ -555,16 +527,12 @@
                             }
                         });
                         self._debouncedRefresh();
-                    }, err => { console.error('reports listener error:', err); });
+                    });
 
                 setMsg('Ready!');
             } catch(e) {
                 console.error('Data load error:', e);
                 setMsg('Error: ' + e.message);
-                // ✅ FIX: don't leave listeners flagged as "set up" if the initial load failed —
-                // otherwise a retry would skip re-fetching and stay stuck with empty data.
-                this.data._listenersSetup = false;
-                throw e;
             }
         },
 
@@ -856,7 +824,6 @@
                 history.replaceState({ viewId: initView }, '', '#' + initView);
                 await this.setupRealtimeListeners();
                 this._renderView(initView);
-                this._clearWatchdog();
             } catch (error) {
                 if (error.code === 'auth/user-not-found') alert('User not found.');
                 else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') alert('Invalid email or password.');
@@ -1553,6 +1520,7 @@
                 const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                 const dayReps = monthReports.filter(r=>r.date===dateStr);
                 dailyLabels.push(d);
+                // Daily chart: sirf rider gross - rider expenses - wages (company expense NAHI)
                 dailyProfit.push(dayReps.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0));
                 dailyExp.push(dayReps.reduce((a,r)=>a+(r.totalExpenses||0),0));
             }
@@ -1565,6 +1533,7 @@
                         const gross = reps.reduce((a,r)=>a+(r.totalGross||0),0);
                         const wages = reps.reduce((a,r)=>a+(r.dailyWage||0),0);
                         const exp = reps.reduce((a,r)=>a+(r.totalExpenses||0),0);
+                        // Day view: company expense NAHI minus hoga — sirf rider expenses
                         const profit = gross-exp-wages;
                         const orders = reps.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
                         const online = reps.flatMap(r=>r.onlinePayments||[]).filter(p=>p.status==='pending').reduce((a,p)=>a+(p.amount||0),0);
@@ -1681,6 +1650,7 @@
             </div>`;
             setTimeout(() => {
                 this.createChart('profitChart', { type:'bar', data:{ labels:dailyLabels, datasets:[{label:'Profit',data:dailyProfit,backgroundColor:dailyProfit.map(v=>v>=0?'rgba(79,70,229,0.7)':'rgba(239,68,68,0.7)'),borderRadius:4},{label:'Expenses',data:dailyExp,backgroundColor:'rgba(239,68,68,0.3)',borderRadius:4}] }, options:{ responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{legend:{display:true,position:'top'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': Rs '+ctx.parsed.y.toLocaleString()}}}, scales:{y:{beginAtZero:true,ticks:{callback:v=>'Rs '+v.toLocaleString()}},x:{title:{display:true,text:'Day'}}} } });
+                // Init rider delivery filter view
                 if (this.data._riderDelView && this.data._riderDelView !== 'summary') {
                     this._refreshRiderDeliveries();
                 }
@@ -1710,6 +1680,7 @@
             const ydayStr = yday.toISOString().split('T')[0];
             if (view === 'today') this.data._riderDelDate = today;
             else if (view === 'yesterday') this.data._riderDelDate = ydayStr;
+            // Re-render dashboard to update tabs + date input
             this.renderAdminDashboard();
         },
 
@@ -1724,6 +1695,7 @@
             const riders = this.data.users.filter(u => u.role === 'rider');
             if (!riders.length) { container.innerHTML = '<p class="text-gray-400 text-center py-4">No riders</p>'; return; }
 
+            // Filter reports by date or summary (month)
             let filterReports;
             let label;
             if (view === 'summary') {
@@ -1817,10 +1789,12 @@
             </div>`;
         },
 
+        // NEW: Toggle rider disable/enable in Firebase Auth + Firestore
         async toggleRiderDisable(riderId, currentlyDisabled) {
             const action = currentlyDisabled ? 'enable' : 'disable';
             if (!confirm(`Kya aap is rider ko ${action} karna chahte hain?`)) return;
             try {
+                // Update Firestore (app-level disable)
                 await window.db.collection('users').doc(riderId).update({ disabled: !currentlyDisabled });
                 const rider = this.data.users.find(u => u.id === riderId);
                 if (rider) rider.disabled = !currentlyDisabled;
@@ -1962,6 +1936,7 @@
             const mc = document.getElementById('modal-content');
             const ov = document.getElementById('modal-overlay');
 
+            // Orders HTML
             const ordersHTML = (report.orders && report.orders.length > 0 ? report.orders : [
                 {type:'Type 1',qty:0,rate:100,gross:0},
                 {type:'Type 2',qty:0,rate:150,gross:0},
@@ -1984,6 +1959,7 @@
                     <p class="text-xs text-right text-gray-500 mt-1">Gross: <span id="admin-order-gross-${i}" class="font-semibold text-indigo-600">Rs ${((o.qty||0)*(o.rate||0)).toLocaleString()}</span></p>
                 </div>`).join('');
 
+            // Payments HTML
             const paymentsHTML = (report.onlinePayments||[]).map((p, i) => `
                 <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 space-y-2" id="admin-pay-row-${i}">
                     <div class="flex justify-between items-center">
@@ -2025,6 +2001,7 @@
                             class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm outline-none"></div>
                 </div>`).join('');
 
+            // Expenses
             const fuelExp = (report.expenses||[]).find(e=>e.type==='Fuel')?.amount||0;
             const foodExp = (report.expenses||[]).find(e=>e.type==='Food')?.amount||0;
             const maintExp = (report.expenses||[]).find(e=>e.type==='Maintenance')?.amount||0;
@@ -2040,6 +2017,7 @@
                     </div>
                     <form onsubmit="app.adminSaveFullReportEdit(event,'${id}')" class="space-y-4">
 
+                        <!-- Basic Info -->
                         <div class="grid grid-cols-2 gap-3">
                             <div><label class="text-xs text-gray-500 font-medium block mb-1">Report Date</label>
                                 <input type="date" id="admin-edit-date" value="${report.date||''}"
@@ -2065,6 +2043,7 @@
                                     oninput="app._adminEditAutoCalc()"></div>
                         </div>
 
+                        <!-- Orders -->
                         <div class="border-t pt-3">
                             <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
                                 <i class="fas fa-box text-indigo-500"></i> Orders
@@ -2072,6 +2051,7 @@
                             <div class="space-y-2">${ordersHTML}</div>
                         </div>
 
+                        <!-- Online Payments -->
                         <div class="border-t pt-3">
                             <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
                                 <i class="fas fa-credit-card text-indigo-500"></i> Online Payments
@@ -2080,6 +2060,7 @@
                             ${paymentsHTML || '<p class="text-xs text-gray-400 bg-white/60 rounded-lg p-3">Is report mein koi online payment nahi</p>'}
                         </div>
 
+                        <!-- Expenses -->
                         <div class="border-t pt-3">
                             <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
                                 <i class="fas fa-receipt text-indigo-500"></i> Expenses
@@ -2103,6 +2084,7 @@
                             </div>
                         </div>
 
+                        <!-- Final Amount -->
                         <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-200">
                             <div class="flex justify-between items-center">
                                 <span class="text-sm font-bold text-indigo-800">Final Cash Amount</span>
@@ -2125,6 +2107,7 @@
             setTimeout(() => { mc.classList.remove('scale-95','opacity-0'); mc.classList.add('scale-100','opacity-100'); }, 10);
         },
 
+        // Helper: calculate order gross live in admin edit modal
         _adminCalcOrderGross(i) {
             const qty = parseFloat(document.getElementById(`admin-order-qty-${i}`)?.value) || 0;
             const rate = parseFloat(document.getElementById(`admin-order-rate-${i}`)?.value) || 0;
@@ -2132,6 +2115,7 @@
             if (el) el.textContent = `Rs ${(qty * rate).toLocaleString()}`;
         },
 
+        // Helper: lookup customer by ID in admin edit modal
         _adminLookupCust(value, idx) {
             const id = (value||'').trim().toUpperCase();
             const nameEl = document.getElementById(`admin-pay-name-${idx}`);
@@ -2149,17 +2133,21 @@
             }
         },
 
+        // Save full admin report edit
         async adminSaveFullReportEdit(e, id) {
             e.preventDefault();
             const report = this.data.reports.find(r => r.id === id);
             if (!report) return;
 
             try {
+                // Date & status
                 const date = document.getElementById('admin-edit-date').value || report.date;
                 const status = document.getElementById('admin-edit-status').value;
                 const openingBalance = parseFloat(document.getElementById('admin-edit-opening').value) || 0;
                 const dailyWage = parseFloat(document.getElementById('admin-edit-wage').value) || 0;
+                const finalAmount = parseFloat(document.getElementById('admin-edit-final').value) || 0;
 
+                // Orders — support up to 6 rows (original max was 3, but some reports may have more)
                 const originalOrders = report.orders || [
                     {type:'Type 1'},{type:'Type 2'},{type:'Type 3'}
                 ];
@@ -2169,6 +2157,7 @@
                     return { type: o.type||`Type ${i+1}`, qty, rate, gross: qty * rate };
                 }).filter(o => o.qty > 0);
 
+                // Online payments with customer details
                 const onlinePayments = (report.onlinePayments||[]).map((p, i) => {
                     const customerId = document.getElementById(`admin-pay-custid-${i}`)?.value?.trim() || '';
                     const customerName = document.getElementById(`admin-pay-name-${i}`)?.value?.trim() || '';
@@ -2181,6 +2170,7 @@
                     return { ...p, customerId, customerName, customerPhone, customerAddress, amount, status: payStatus, items, detail };
                 });
 
+                // Expenses
                 const fuel = parseFloat(document.getElementById('admin-edit-fuel').value) || 0;
                 const food = parseFloat(document.getElementById('admin-edit-food').value) || 0;
                 const maint = parseFloat(document.getElementById('admin-edit-maint').value) || 0;
@@ -2193,8 +2183,11 @@
                 const totalExpenses = expenses.reduce((a,e)=>a+e.amount,0);
                 const totalOnline = (report.onlinePayments||[]).map((p,i) => parseFloat(document.getElementById(`admin-pay-amt-${i}`)?.value)||0).reduce((a,v)=>a+v,0);
 
+                // ✅ AUTO CALCULATE finalAmount = opening + gross - online - ALL expenses (fuel+food+maint) - wage
                 const autoFinal = openingBalance + totalGross - totalOnline - totalExpenses - dailyWage;
+                // Use manual override only if admin changed it
                 const manualFinal = parseFloat(document.getElementById('admin-edit-final').value) || 0;
+                // If manual final matches auto (within Rs 1), use auto. Otherwise use manual override.
                 const finalAmount = Math.abs(manualFinal - autoFinal) < 2 ? autoFinal : manualFinal;
 
                 const updates = {
@@ -2205,6 +2198,7 @@
                 };
 
                 await window.db.collection('reports').doc(id).update(updates);
+                // Update local cache
                 Object.assign(report, updates);
 
                 this.closeModal();
@@ -2214,12 +2208,14 @@
             } catch(e) { alert('Error: ' + e.message); }
         },
 
+        // Auto-calculate final amount in admin edit modal
         _adminEditAutoCalc() {
             const opening = parseFloat(document.getElementById('admin-edit-opening')?.value) || 0;
             const wage = parseFloat(document.getElementById('admin-edit-wage')?.value) || 0;
             const fuel = parseFloat(document.getElementById('admin-edit-fuel')?.value) || 0;
             const food = parseFloat(document.getElementById('admin-edit-food')?.value) || 0;
             const maint = parseFloat(document.getElementById('admin-edit-maint')?.value) || 0;
+            // Sum orders gross
             let gross = 0;
             let i = 0;
             while (document.getElementById(`admin-order-qty-${i}`)) {
@@ -2251,6 +2247,7 @@
             const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             const fullMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const now = new Date();
+            // Build month options for month selector
             let monthOptions = '<option value="">-- Month --</option>';
             for (let i = 0; i < 18; i++) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -2258,6 +2255,7 @@
                 monthOptions += `<option value="${val}" ${this.data.paymentMonthFilter===val?'selected':''}>${fullMonthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
             }
 
+            // Get all payments based on filter
             let allPendingPayments = [], allReceivedPayments = [];
             this.data.reports.forEach(r => {
                 let include = false;
@@ -2283,7 +2281,9 @@
             const dateLabel = activeFilter === 'all' ? 'All Time' : activeFilter === 'month' ? (this.data.paymentMonthFilter ? (() => { const [fy,fm] = this.data.paymentMonthFilter.split('-').map(Number); return `${fullMonthNames[fm-1]} ${fy}`; })() : 'Month') : new Date(activeFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
+                <!-- Filters -->
                 <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+                    <!-- Date picker row -->
                     <div class="flex items-center gap-2">
                         <div class="relative flex-1">
                             <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
@@ -2293,10 +2293,12 @@
                         </div>
                         <button onclick="app.data.paymentMonthFilter=null;app.renderAdminOnlinePayments('all')" class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${activeFilter==='all'?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">All</button>
                     </div>
+                    <!-- Month selector row -->
                     <div class="flex items-center gap-2">
                         <i class="fas fa-calendar text-indigo-400 text-sm ml-1"></i>
                         <select onchange="app.data.paymentMonthFilter=this.value||null;app.renderAdminOnlinePayments(this.value?'month':'all')" class="flex-1 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">${monthOptions}</select>
                     </div>
+                    <!-- Search bar -->
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                         <input type="text" id="payment-search" placeholder="Customer naam ya ID se search karein..." oninput="app.filterPaymentsBySearch()" class="w-full border border-gray-300 rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:border-indigo-400">
@@ -2304,17 +2306,20 @@
                     <p class="text-xs text-gray-500"><i class="fas fa-calendar-day mr-1"></i>${dateLabel}</p>
                 </div>
 
+                <!-- Stats -->
                 <div class="grid grid-cols-3 gap-2">
                     <div class="stat-card text-center p-3 border-l-4 border-orange-400"><p class="text-xs text-orange-600">Pending (${allPendingPayments.length})</p><p class="text-lg font-bold text-orange-700">Rs ${totalPending.toLocaleString()}</p></div>
                     <div class="stat-card text-center p-3 border-l-4 border-green-400"><p class="text-xs text-green-600">Received</p><p class="text-lg font-bold text-green-700">Rs ${totalReceived.toLocaleString()}</p></div>
                     <div class="stat-card text-center p-3 border-l-4 border-blue-400"><p class="text-xs text-blue-600">Total</p><p class="text-lg font-bold text-blue-700">Rs ${(totalPending+totalReceived).toLocaleString()}</p></div>
                 </div>
 
+                <!-- Payments list -->
                 <div class="section-card" id="payments-list-container">
                     ${this._renderPaymentsList(allPendingPayments, allReceivedPayments)}
                 </div>
             </div>`;
 
+            // Store for search filtering
             this._allPendingPayments = allPendingPayments;
             this._allReceivedPayments = allReceivedPayments;
         },
@@ -2324,6 +2329,7 @@
                 return '<div class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-4xl mb-3"></i><p class="text-sm">Is filter mein koi payment nahi</p></div>';
             }
 
+            // Bulk receive button (shows when checkboxes ticked)
             const bulkBar = pendingPayments.length > 0 ? `
                 <div id="bulk-receive-bar" class="hidden sticky top-0 z-10 bg-indigo-600 text-white rounded-xl px-4 py-3 mb-3 flex items-center justify-between shadow-lg">
                     <span class="text-sm font-semibold"><span id="bulk-selected-count">0</span> payments selected</span>
@@ -2400,6 +2406,7 @@
             </div>`;
         },
 
+        // Bulk select helpers
         _updateBulkBar() {
             const checked = document.querySelectorAll('.pay-checkbox:checked');
             const bar = document.getElementById('bulk-receive-bar');
@@ -2422,6 +2429,7 @@
             if (!confirm(`${checked.length} payments receive karein?\nKul: Rs ${totalAmt.toLocaleString()}`)) return;
 
             const currentFilter = this.data.paymentDateFilter;
+            // Group by reportId
             const groups = {};
             checked.forEach(cb => {
                 const rid = cb.dataset.report;
@@ -2442,6 +2450,7 @@
             } catch(e) { alert('Error: ' + e.message); }
         },
 
+        // NEW: Search filter for payments
         filterPaymentsBySearch() {
             const q = (document.getElementById('payment-search')?.value || '').toLowerCase().trim();
             const container = document.getElementById('payments-list-container');
@@ -2459,6 +2468,7 @@
             container.innerHTML = this._renderPaymentsList(filteredPending, filteredReceived);
         },
 
+        // NEW: Partial receive modal
         showPartialReceiveModal(reportId, idx, totalAmount, customerDetail) {
             const mc = document.getElementById('modal-content'); const ov = document.getElementById('modal-overlay');
             mc.innerHTML = `<div class="p-5">
@@ -2488,6 +2498,7 @@
             </div>`;
             ov.classList.remove('hidden');
             setTimeout(() => { mc.classList.remove('scale-95','opacity-0'); mc.classList.add('scale-100','opacity-100'); }, 10);
+            // Live preview
             document.getElementById('partial-amount').addEventListener('input', function() {
                 const entered = parseFloat(this.value) || 0;
                 const remaining = Math.max(0, totalAmount - entered);
@@ -2499,6 +2510,7 @@
             });
         },
 
+        // NEW: Execute partial payment receive
         async executePartialReceive(reportId, idx, totalAmount) {
             const enteredAmount = parseFloat(document.getElementById('partial-amount')?.value) || 0;
             if (enteredAmount <= 0) { alert('Amount likhna zaroori hai!'); return; }
@@ -2509,13 +2521,16 @@
                 const updatedPayments = [...report.onlinePayments];
                 const originalPayment = { ...updatedPayments[idx] };
                 if (enteredAmount >= totalAmount) {
+                    // Full receive
                     updatedPayments[idx] = { ...originalPayment, status: 'received', amount: totalAmount };
                     await window.db.collection('reports').doc(reportId).update({ onlinePayments: updatedPayments });
                     report.onlinePayments = updatedPayments;
                     alert(`✅ Rs ${totalAmount.toLocaleString()} fully received!`);
                 } else {
+                    // Partial: mark current as received with entered amount, add new pending entry for remainder
                     const remaining = totalAmount - enteredAmount;
                     updatedPayments[idx] = { ...originalPayment, status: 'received', amount: enteredAmount };
+                    // Add new pending payment for remainder
                     updatedPayments.push({
                         ...originalPayment,
                         amount: remaining,
@@ -2527,11 +2542,14 @@
                     report.onlinePayments = updatedPayments;
                     alert(`✅ Rs ${enteredAmount.toLocaleString()} received!\n⏳ Rs ${remaining.toLocaleString()} pending mein raha.`);
                 }
+                // WA message nahi jayega — sirf receive
                 this.closeModal();
                 this.renderAdminOnlinePayments(currentFilter);
             } catch (error) { alert('Error: ' + error.message); }
         },
 
+        // NEW: Open WhatsApp reminder with direct phone number
+        // Helper: get WA number from customer
         _getWaNumber(matched, customerPhone, phoneInDetail) {
             let waNumber = '';
             if (customerPhone) {
@@ -2546,6 +2564,7 @@
             return waNumber;
         },
 
+        // Helper: find customer from detail/phone
         _matchCustomer(customerDetail, customerPhone) {
             const customers = this.data.customers || [];
             const detail = (customerDetail||'').toLowerCase();
@@ -2576,6 +2595,7 @@
             }
         },
 
+        // Statement WA — saari pending payments ek message mein
         sendWhatsAppStatement(customerDetail, customerPhone) {
             const { matched, phoneInDetail } = this._matchCustomer(customerDetail, customerPhone);
             const custName = matched ? matched.name : (customerDetail||'Customer');
@@ -2613,6 +2633,7 @@
             }
         },
 
+        // ✅ NEW: Receive ALL pending payments of a customer at once
         async receiveAllPayments(customerDetail, customerPhone) {
             const { matched, phoneInDetail } = this._matchCustomer(customerDetail, customerPhone);
             const custName = matched ? matched.name : (customerDetail||'Customer');
@@ -2625,6 +2646,7 @@
 
             const currentFilter = this.data.paymentDateFilter;
             try {
+                // Group by reportId for batch updates
                 const reportGroups = {};
                 allPending.forEach(p => {
                     if (!reportGroups[p.reportId]) reportGroups[p.reportId] = { report: p.reportObj, indices: [] };
@@ -2645,6 +2667,7 @@
             } catch(e) { alert('Error: ' + e.message); }
         },
 
+        // Helper: get all pending payments of a customer (for statement)
         _getCustomerPending(customerDetail, customerPhone, matched, phoneInDetail) {
             const allPending = [];
             this.data.reports.forEach(r => {
@@ -2658,6 +2681,7 @@
             return allPending;
         },
 
+        // Helper: get all pending payments WITH report reference (for batch receive)
         _getCustomerPendingWithReport(customerDetail, customerPhone, matched, phoneInDetail) {
             const allPending = [];
             this.data.reports.forEach(r => {
@@ -2671,6 +2695,7 @@
             return allPending;
         },
 
+        // Helper: check if a payment belongs to a customer
         _paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail) {
             const d = (p.detail||'').toLowerCase();
             const dPhone = d.replace(/\D/g,'').slice(-10);
@@ -2705,16 +2730,19 @@
                     <div class="flex items-center gap-3 mb-2"><i class="fab fa-whatsapp text-green-600 text-2xl"></i><h3 class="font-bold text-green-800">WhatsApp Templates</h3></div>
                     <p class="text-xs text-green-700">Variables jo auto fill honge: <code class="bg-green-100 px-1 rounded">{name}</code> <code class="bg-green-100 px-1 rounded">{amount}</code> <code class="bg-green-100 px-1 rounded">{date}</code> <code class="bg-green-100 px-1 rounded">{id}</code> <code class="bg-green-100 px-1 rounded">{lines}</code> <code class="bg-green-100 px-1 rounded">{total}</code> <code class="bg-green-100 px-1 rounded">{days}</code></p>
                 </div>
+                <!-- Reminder -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-clock text-orange-500 mr-2"></i>Reminder Template</h3>
                     <p class="text-xs text-gray-500 mb-2">Pending payment ka reminder</p>
                     <textarea id="wa-reminder-template" rows="10" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReminderTemplate}</textarea>
                 </div>
+                <!-- Received -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-check-circle text-green-500 mr-2"></i>Received Template</h3>
                     <p class="text-xs text-gray-500 mb-2">Payment milne ke baad thank you</p>
                     <textarea id="wa-received-template" rows="10" class="w-full border border-gray-300 rounded-xl px-3 py-3 text-sm outline-none focus:border-green-400 resize-none font-mono">${this.data.waReceivedTemplate}</textarea>
                 </div>
+                <!-- Statement -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-1"><i class="fas fa-file-invoice text-blue-500 mr-2"></i>Statement Template</h3>
                     <p class="text-xs text-gray-500 mb-2">Saari pending payments ka ek message — {lines} mein sab aata hai</p>
@@ -2724,6 +2752,7 @@
                     <button onclick="app.resetWATemplates()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300">Reset</button>
                     <button onclick="app.saveWATemplates()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg"><i class="fab fa-whatsapp mr-2"></i>Save</button>
                 </div>
+                <!-- Test -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3">Test Templates</h3>
                     <input type="tel" id="test-wa-number" placeholder="03001234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none mb-3">
@@ -2784,10 +2813,12 @@
             document.getElementById('page-title').textContent = 'Rider Expenses';
             const container = document.getElementById('main-container');
 
+            // Save/restore filter state
             if (dateFilter !== null) this.data._expDateFilter = dateFilter;
             const activeFilter = this.data._expDateFilter || 'today';
             const searchQuery = this.data._expSearch || '';
 
+            // Calculate date range from filter
             const today = new Date();
             const todayStr = today.toISOString().split('T')[0];
             const yday = new Date(today); yday.setDate(today.getDate()-1);
@@ -2806,16 +2837,19 @@
                 filterLabel = fromDate + ' → ' + toDate;
             }
 
+            // Filter approved reports in date range
             let reports = this.data.reports.filter(r => {
                 if (r.status !== 'approved') return false;
                 return r.date >= fromDate && r.date <= toDate;
             });
 
+            // Search by rider
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
                 reports = reports.filter(r => (r.riderName||'').toLowerCase().includes(q));
             }
 
+            // Build all expenses
             let allExpenses = [];
             reports.forEach(r => {
                 (r.expenses||[]).forEach(e => {
@@ -2824,11 +2858,13 @@
                 });
             });
 
+            // Top totals
             const totalFuel  = allExpenses.filter(e=>e.type==='Fuel').reduce((a,e)=>a+e.amount,0);
             const totalFood  = allExpenses.filter(e=>e.type==='Food').reduce((a,e)=>a+e.amount,0);
             const totalMaint = allExpenses.filter(e=>e.type==='Maintenance').reduce((a,e)=>a+e.amount,0);
             const totalAll   = totalFuel + totalFood + totalMaint;
 
+            // Build date-wise rider metrics
             const dateRiderMap = {};
             reports.forEach(r => {
                 const key = r.date + '||' + r.riderId;
@@ -2849,6 +2885,10 @@
             });
             const tableRows = Object.values(dateRiderMap).sort((a,b) => new Date(b.date)-new Date(a.date) || a.riderName.localeCompare(b.riderName));
 
+            // Calculate days in range for avg
+            const daysDiff = Math.max(1, Math.round((new Date(toDate)-new Date(fromDate))/(1000*60*60*24))+1);
+
+            // Rider avg table (aggregate per rider for avg calc)
             const riderDaysMap = {};
             tableRows.forEach(row => {
                 if (!riderDaysMap[row.riderId]) riderDaysMap[row.riderId] = new Set();
@@ -2857,7 +2897,9 @@
 
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
 
+                <!-- TOP EXPENSE CARDS -->
                 <div class="grid grid-cols-2 gap-3">
+                    <!-- Total -->
                     <div class="stat-card border-l-4 border-red-500">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -2870,6 +2912,7 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Food -->
                     <div class="stat-card border-l-4 border-green-500">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -2882,6 +2925,7 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Fuel -->
                     <div class="stat-card border-l-4 border-orange-500">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -2894,6 +2938,7 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Maintenance -->
                     <div class="stat-card border-l-4 border-blue-500">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -2908,7 +2953,9 @@
                     </div>
                 </div>
 
+                <!-- FILTERS -->
                 <div class="section-card space-y-3">
+                    <!-- Date filter buttons -->
                     <div class="flex gap-2 flex-wrap">
                         ${['today','yesterday','last7','all','custom'].map(f => {
                             const labels = {today:'Today',yesterday:'Yesterday',last7:'Last 7 Days',all:'All Time',custom:'Custom'};
@@ -2921,6 +2968,7 @@
                             </button>`;
                         }).join('')}
                     </div>
+                    <!-- Custom date range -->
                     ${activeFilter === 'custom' ? `
                     <div class="flex gap-2 items-center">
                         <input type="date" id="exp-from" value="${this.data._expCustomFrom||todayStr}"
@@ -2931,6 +2979,7 @@
                             max="${todayStr}" onchange="app.data._expCustomTo=this.value;app.renderAdminExpenses('custom')"
                             class="flex-1 border border-indigo-200 rounded-xl px-3 py-2 text-sm outline-none text-indigo-700 font-semibold">
                     </div>` : ''}
+                    <!-- Rider search -->
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                         <input type="text" placeholder="Rider naam se search karein..."
@@ -2940,6 +2989,7 @@
                     </div>
                 </div>
 
+                <!-- RIDER WISE TABLE -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3">
                         📊 Rider-wise Breakdown
@@ -2973,6 +3023,7 @@
                                         <p class="text-xs text-gray-400">${row.totalOrders} orders</p>
                                     </div>
                                 </div>
+                                <!-- Expense breakdown -->
                                 <div class="grid grid-cols-3 gap-1.5 mb-2">
                                     <div class="bg-green-50 rounded-lg p-2 text-center">
                                         <p class="text-xs text-gray-400">🍽 Food</p>
@@ -2987,6 +3038,7 @@
                                         <p class="text-xs font-bold text-blue-600">Rs ${row.maint.toLocaleString()}</p>
                                     </div>
                                 </div>
+                                <!-- Performance metrics -->
                                 <div class="grid grid-cols-2 gap-1.5">
                                     <div class="bg-indigo-50 rounded-lg p-2 text-center">
                                         <p class="text-xs text-gray-400">📦 Avg/Day</p>
@@ -3054,15 +3106,18 @@
             const catTotals = {};
             categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
 
+            // Salary month = jo month filter select hai, warna current month
             const salaryMonthKey = activeMonthFilter || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
             const salaryMonthLabel = (() => { const [fy,fm] = salaryMonthKey.split('-').map(Number); return monthNames[fm-1]+' '+fy; })();
             const salaryAmount = this.data.schoolSalary?.[salaryMonthKey] || 0;
+            // Us mahine ke expenses (date filter ke bawajood, salary balance hamesha poore month ka hota hai)
             const [smy, smm] = salaryMonthKey.split('-').map(Number);
             const salaryMonthExpenses = allExpenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===smy&&(d.getMonth()+1)===smm;}).reduce((a,e)=>a+e.amount,0);
             const remainingBalance = salaryAmount - salaryMonthExpenses;
 
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
 
+                <!-- Salary Balance Card -->
                 <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="font-bold text-sm">💼 ${salaryMonthLabel} — Salary Balance</h3>
@@ -3088,6 +3143,7 @@
                     </div>
                 </div>
 
+                <!-- Totals -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="stat-card border-l-4 border-purple-500">
                         <p class="text-xs text-gray-500">🏫 Kul School Expenses</p>
@@ -3102,6 +3158,7 @@
                     </div>`}
                 </div>
 
+                <!-- Filters -->
                 <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
                     <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
                     <div class="flex items-center gap-2">
@@ -3131,6 +3188,7 @@
                     </div>` : ''}
                 </div>
 
+                <!-- Add School Expense -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-school text-purple-500 mr-2"></i>Naya Expense</h3>
                     <div class="space-y-3">
@@ -3160,6 +3218,7 @@
                     </div>
                 </div>
 
+                <!-- Category breakdown -->
                 ${filteredExpenses.length > 0 ? `
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3">🏫 School Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
@@ -3172,6 +3231,7 @@
                     </div>
                 </div>` : ''}
 
+                <!-- All Entries -->
                 <div class="section-card">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
@@ -3276,6 +3336,7 @@
 
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
 
+                <!-- Totals -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="stat-card border-l-4 border-indigo-500">
                         <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
@@ -3290,6 +3351,7 @@
                     </div>`}
                 </div>
 
+                <!-- Filters -->
                 <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
                     <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
                     <div class="flex items-center gap-2">
@@ -3319,6 +3381,7 @@
                     </div>` : ''}
                 </div>
 
+                <!-- Add Company Expense -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-building text-indigo-500 mr-2"></i>Naya Company Expense</h3>
                     <div class="space-y-3">
@@ -3344,6 +3407,7 @@
                     </div>
                 </div>
 
+                <!-- Category breakdown -->
                 ${filteredExpenses.length > 0 ? `
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-3">🏢 Company Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
@@ -3356,6 +3420,7 @@
                     </div>
                 </div>` : ''}
 
+                <!-- All Entries -->
                 <div class="section-card">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
@@ -3422,6 +3487,7 @@
             const container = document.getElementById('main-container');
             const customers = this.data.customers || [];
 
+            // Duplicate detection by phone
             const phoneMap = {};
             customers.forEach(c => {
                 const ph = (c.phone||'').replace(/\D/g,'').slice(-10);
@@ -3477,6 +3543,7 @@
             </div>`;
         },
 
+        // ✅ Show duplicates modal with merge/delete/keep options
         showDuplicates() {
             const dupGroups = this._dupGroups || [];
             if (!dupGroups.length) { alert('Koi duplicate nahi mila!'); return; }
@@ -3666,6 +3733,7 @@
             const address = document.getElementById('cust-address').value.trim();
             let customerId = document.getElementById('cust-id')?.value.trim() || '';
             if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+            // ✅ Auto generate ID agar khali ho
             if (!customerId) {
                 const existingIds = new Set((this.data.customers||[]).map(c=>c.customerId).filter(Boolean));
                 customerId = this.generateCustomerId(name, phone, existingIds);
@@ -3702,8 +3770,9 @@
 
         editCustomer(id) {
             const c = this.data.customers.find(x => x.id === id); if (!c) return;
+            // Auto generate preview ID agar nahi hai
             const existingIds = new Set(this.data.customers.map(x=>x.customerId).filter(Boolean));
-            existingIds.delete(c.customerId);
+            existingIds.delete(c.customerId); // apni ID exclude karo taake same rahe
             const previewId = c.customerId || this.generateCustomerId(c.name||'', c.phone||'', existingIds);
             const mc = document.getElementById('modal-content'); const ov = document.getElementById('modal-overlay');
             mc.innerHTML = `<div class="p-5">
@@ -3740,12 +3809,14 @@
             setTimeout(() => { mc.classList.remove('scale-95','opacity-0'); mc.classList.add('scale-100','opacity-100'); }, 10);
         },
 
+        // Live preview of auto ID in edit modal
         _previewEditId(currentId) {
             const name = document.getElementById('ec-name')?.value.trim() || '';
             const phone = document.getElementById('ec-phone')?.value.trim() || '';
             const custIdInp = document.getElementById('ec-custid');
             const preview = document.getElementById('ec-id-preview');
             if (!preview || !custIdInp) return;
+            // Agar user ne manually ID likhi hai to preview mat dikhao
             if (custIdInp.value.trim()) return;
             const existingIds = new Set(this.data.customers.map(x=>x.customerId).filter(Boolean));
             const current = this.data.customers.find(x=>x.id===currentId);
@@ -3762,6 +3833,7 @@
             const address = document.getElementById('ec-address').value.trim();
             let customerId = document.getElementById('ec-custid')?.value.trim() || '';
             if (!name || !phone) { alert('Name aur phone zaroori hai!'); return; }
+            // ✅ Auto generate ID agar khali ho
             if (!customerId) {
                 const existingIds = new Set(this.data.customers.map(x=>x.customerId).filter(Boolean));
                 const current = this.data.customers.find(x=>x.id===id);
@@ -3778,7 +3850,11 @@
             } catch(e) { alert('Error: ' + e.message); }
         },
 
+        // ✅ Auto Customer ID generator: First letter of first name + last 3 digits of phone
+        // e.g. "Mahboob Ali" + "03420385081" → "M081"
+        // Duplicate hone par: "M081a", "M081b" etc.
         generateCustomerId(name, phone, existingIds = new Set()) {
+            // First letter — pehla alphabet character (English ya Urdu)
             const cleanedName = (name || '').trim();
             let firstLetter = '';
             for (const ch of cleanedName) {
@@ -3786,17 +3862,21 @@
             }
             if (!firstLetter) firstLetter = 'X';
 
+            // Last 3 digits of phone
             const digits = (phone || '').replace(/\D/g,'');
             const last3 = digits.slice(-3).padStart(3,'0');
 
-            let baseId = firstLetter + last3;
+            // Base ID
+            let baseId = firstLetter + last3; // e.g. M081
 
+            // Duplicate check — agar already hai to suffix lagao
             if (!existingIds.has(baseId)) return baseId;
             const suffixes = 'abcdefghijklmnopqrstuvwxyz';
             for (const s of suffixes) {
-                const candidate = baseId + s;
+                const candidate = baseId + s; // M081a, M081b...
                 if (!existingIds.has(candidate)) return candidate;
             }
+            // Fallback: random suffix
             return baseId + Math.floor(Math.random()*100);
         },
 
@@ -3839,6 +3919,7 @@
 
                         const dataRows = rows.slice(1).filter(r => r && r.length > 0);
 
+                        // ✅ Build existing IDs set (from already imported customers)
                         const existingIds = new Set(
                             (self.data.customers || []).map(c => c.customerId).filter(Boolean)
                         );
@@ -3846,6 +3927,7 @@
                         let added = 0, skipped = 0, duplicateIds = 0;
                         const newCustomers = [];
 
+                        // Process in batches of 400
                         for (let i = 0; i < dataRows.length; i += 400) {
                             const batch = window.db.batch();
                             const chunk = dataRows.slice(i, i + 400);
@@ -3857,8 +3939,9 @@
 
                                 if (!name || !phone) { skipped++; return; }
 
+                                // ✅ Auto generate Customer ID
                                 const customerId = self.generateCustomerId(name, phone, existingIds);
-                                existingIds.add(customerId);
+                                existingIds.add(customerId); // taake next row duplicate na ho
 
                                 const ref = window.db.collection('customers').doc();
                                 batch.set(ref, {
@@ -4020,6 +4103,7 @@
                     </div>
                 </div>
 
+                <!-- EMAIL CHANGE: Rider + Admin dono ke liye -->
                 <div class="section-card">
                     <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-envelope text-indigo-500 mr-2"></i>Change Email</h3>
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
@@ -4065,19 +4149,26 @@
             } catch(e) { alert(e.code==='auth/wrong-password'?'Current password ghalat hai!':'Error: '+e.message); }
         },
 
+        // NEW: Email change for both riders and admins — Firebase Auth + Firestore
         async changeEmail() {
             const pass = document.getElementById('set-email-pass').value;
             const newEmail = document.getElementById('set-new-email').value.trim();
             if (!pass || !newEmail) { alert('Sab fields bharo!'); return; }
+            // Basic email validation
             if (!newEmail.includes('@') || !newEmail.includes('.')) { alert('Valid email address likho!'); return; }
             try {
                 const user = window.auth.currentUser;
+                // Re-authenticate
                 const cred = firebase.auth.EmailAuthProvider.credential(user.email, pass);
                 await user.reauthenticateWithCredential(cred);
+                // Update email in Firebase Auth
                 await user.updateEmail(newEmail);
+                // Also update in Firestore immediately (will be verified separately)
                 await window.db.collection('users').doc(this.data.currentUser.id).update({ email: newEmail });
+                // Update local data
                 this.data.currentUser.email = newEmail;
                 alert(`✅ Email update ho gaya!\n\nNaya email: ${newEmail}\n\nAb is email se login karein.`);
+                // Update local data
                 this.data.currentUser.email = newEmail;
             } catch(e) {
                 if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') alert('Password ghalat hai!');
