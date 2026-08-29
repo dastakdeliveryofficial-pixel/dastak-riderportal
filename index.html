@@ -428,7 +428,7 @@
             });
         },
 
-        async loadUserData(uid) {
+async loadUserData(uid) {
     try {
         const userDoc = await window.db.collection('users').doc(uid).get();
 
@@ -488,6 +488,7 @@
         // Load Firebase data in background
         this.setupRealtimeListeners().catch(err => {
             console.error('Background data load error:', err);
+
             alert(
                 'Data load slow ho raha hai. Refresh karein.\nError: ' +
                 err.message
