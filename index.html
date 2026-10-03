@@ -380,7 +380,7 @@
     <script>
     const app = {
         data: {
-            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [], businessExpenses: [], schoolSalary: {},
+            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [],
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
             currentShift: null, sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
@@ -388,7 +388,7 @@
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
             riderPaymentFilter: 'all',
-            customersLoaded: false, companyExpensesLoaded: false, businessExpensesLoaded: false, schoolSalaryLoaded: false,
+            customersLoaded: false, companyExpensesLoaded: false,
             _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
             _editReportId: null, _isSubmitting: false,
@@ -509,13 +509,6 @@
                 const companyExpSnap = await window.db.collection('companyExpenses').get();
                 self.data.companyExpenses = companyExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 self.data.companyExpensesLoaded = true;
-                const businessExpSnap = await window.db.collection('businessExpenses').get();
-                self.data.businessExpenses = businessExpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                self.data.businessExpensesLoaded = true;
-                const salarySnap = await window.db.collection('schoolSalary').get();
-                const salaryMap = {}; salarySnap.docs.forEach(doc => { salaryMap[doc.id] = doc.data().amount || 0; });
-                self.data.schoolSalary = salaryMap;
-                self.data.schoolSalaryLoaded = true;
 
                 // Customers bhi load karo upfront (online payment matching ke liye)
                 setMsg('Loading customers...');
@@ -577,22 +570,6 @@
             const snap = await window.db.collection('companyExpenses').get();
             this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.companyExpensesLoaded = true;
-        },
-
-        async ensureBusinessExpenses() {
-            if (this.data.businessExpensesLoaded) return;
-            const snap = await window.db.collection('businessExpenses').get();
-            this.data.businessExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            this.data.businessExpensesLoaded = true;
-        },
-
-        async ensureSchoolSalary() {
-            if (this.data.schoolSalaryLoaded) return;
-            const snap = await window.db.collection('schoolSalary').get();
-            const map = {};
-            snap.docs.forEach(doc => { map[doc.id] = doc.data().amount || 0; });
-            this.data.schoolSalary = map;
-            this.data.schoolSalaryLoaded = true;
         },
 
         stopRealtimeListeners() {
@@ -922,12 +899,8 @@
             this.data.attendance = [];
             this.data.customers = [];
             this.data.companyExpenses = [];
-            this.data.businessExpenses = [];
-            this.data.schoolSalary = {};
             this.data.customersLoaded = false;
             this.data.companyExpensesLoaded = false;
-            this.data.businessExpensesLoaded = false;
-            this.data.schoolSalaryLoaded = false;
             window.auth.signOut().then(() => location.reload());
         },
 
@@ -942,7 +915,6 @@
                 { id:'admin-online-payments', icon:'fa-credit-card', label:'Online Payments' },
                 { id:'admin-expenses', icon:'fa-receipt', label:'Rider Expenses' },
                 { id:'admin-company-expenses', icon:'fa-building', label:'Company Expenses' },
-                { id:'admin-business-expenses', icon:'fa-school', label:'School Expenses' },
                 { id:'admin-customers', icon:'fa-address-book', label:'Customers' },
                 { id:'admin-attendance', icon:'fa-calendar-check', label:'Attendance' },
                 { id:'admin-analytics', icon:'fa-chart-pie', label:'Analytics' },
@@ -1019,7 +991,6 @@
                 'admin-reports': () => this.renderAdminReports(),
                 'admin-online-payments': () => this.renderAdminOnlinePayments(),
                 'admin-expenses': () => this.renderAdminExpenses(),
-                'admin-business-expenses': () => this.renderBusinessExpenses(),
                 'admin-company-expenses': () => this.renderCompanyExpenses(),
                 'admin-customers': () => this.renderAdminCustomers(),
                 'admin-attendance': () => this.renderAdminAttendance(),
@@ -1399,22 +1370,73 @@
 
         editReport(id) { this.data._editReportId = id; this.navigate('rider-report'); },
 
-        renderRiderHistory(activeTab = 'submitted') {
+        renderRiderHistory(activeTab = 'submitted', selMonth = null, selYear = null) {
             document.getElementById('page-title').textContent = 'My History';
             const container = document.getElementById('main-container');
-            const myReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id).sort((a,b) => new Date(b.date)-new Date(a.date));
+            const now = new Date();
+            const activeMonth = selMonth !== null ? selMonth : (this.data._histMonth !== undefined ? this.data._histMonth : now.getMonth());
+            const activeYear = selYear !== null ? selYear : (this.data._histYear || now.getFullYear());
+            this.data._histMonth = activeMonth; this.data._histYear = activeYear;
+            const mn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            let monthOptions = '';
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const mv = d.getMonth(), yv = d.getFullYear();
+                monthOptions += `<option value="${mv}|${yv}" ${mv===activeMonth&&yv===activeYear?'selected':''}>${mn[mv]} ${yv}</option>`;
+            }
+            const myReports = this.data.reports.filter(r => {
+                if (r.riderId !== this.data.currentUser.id) return false;
+                const d = new Date(r.date);
+                return d.getMonth()===activeMonth && d.getFullYear()===activeYear;
+            }).sort((a,b) => new Date(b.date)-new Date(a.date));
             const submittedReports = myReports.filter(r => r.status !== 'draft');
             const draftReports = myReports.filter(r => r.status === 'draft');
             const displayReports = activeTab === 'draft' ? draftReports : submittedReports;
-            container.innerHTML = `<div class="fade-in pb-20">
-                <div class="flex gap-2 mb-4">
-                    <button onclick="app.renderRiderHistory('submitted')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab==='submitted'?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">Submitted (${submittedReports.length})</button>
-                    <button onclick="app.renderRiderHistory('draft')" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab==='draft'?'bg-yellow-500 text-white':'bg-white text-gray-600 border border-gray-300'}">Drafts (${draftReports.length})</button>
+            const totalOrders = submittedReports.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
+            const totalGross = submittedReports.reduce((a,r)=>a+(r.totalGross||0),0);
+            const totalFinal = submittedReports.reduce((a,r)=>a+(r.finalAmount||0),0);
+            container.innerHTML = `<div class="fade-in pb-20 space-y-3">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-calendar-alt text-indigo-400"></i>
+                    <select class="flex-1 border border-indigo-200 bg-white rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-700 outline-none"
+                        onchange="const [m,y]=this.value.split('|').map(Number);app.renderRiderHistory('${activeTab}',m,y)">${monthOptions}</select>
                 </div>
-                ${displayReports.length === 0 ? '<div class="text-center py-12 text-gray-400"><i class="fas fa-history text-5xl mb-4"></i><p>No reports found</p></div>' : `<div class="space-y-3">${displayReports.map(r => {
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4">
+                    <p class="text-indigo-100 text-xs mb-2">${mn[activeMonth]} ${activeYear} — Summary</p>
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="bg-white/15 rounded-xl p-2"><p class="text-xs text-indigo-100">Orders</p><p class="text-xl font-bold">${totalOrders}</p></div>
+                        <div class="bg-white/15 rounded-xl p-2"><p class="text-xs text-indigo-100">Gross</p><p class="text-lg font-bold">Rs ${totalGross.toLocaleString()}</p></div>
+                        <div class="bg-white/15 rounded-xl p-2"><p class="text-xs text-indigo-100">Final</p><p class="text-lg font-bold text-green-300">Rs ${totalFinal.toLocaleString()}</p></div>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="app.renderRiderHistory('submitted',${activeMonth},${activeYear})"
+                        class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab==='submitted'?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">Submitted (${submittedReports.length})</button>
+                    <button onclick="app.renderRiderHistory('draft',${activeMonth},${activeYear})"
+                        class="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab==='draft'?'bg-yellow-500 text-white':'bg-white text-gray-600 border border-gray-300'}">Drafts (${draftReports.length})</button>
+                </div>
+                ${displayReports.length === 0 ? '<div class="text-center py-12 text-gray-400"><i class="fas fa-history text-5xl mb-4"></i><p>Is month mein koi report nahi</p></div>' :
+                `<div class="space-y-3">${displayReports.map(r => {
                     const totalQty = (r.orders||[]).reduce((a,o)=>a+(o.qty||0),0);
-                    return `<div class="section-card"><div class="flex justify-between items-start mb-2"><div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1"><p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString()}</p><p class="text-xs text-gray-500">${totalQty} orders</p></div><div class="flex items-center gap-2"><span class="status-badge status-${r.status==='draft'?'pending':r.status}" style="${r.status==='draft'?'background:#fef9c3;color:#854d0e;':''}">${r.status==='draft'?'Draft':r.status}</span>${r.status!=='deleted'&&r.status!=='approved'?`<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg"><i class="fas fa-edit text-xs"></i></button>`:''}</div></div><div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center"><div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross||0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Expenses</p><p class="font-semibold text-sm text-red-600">Rs ${(r.totalExpenses||0).toLocaleString()}</p></div><div><p class="text-xs text-gray-500">Final</p><p class="font-bold text-sm text-green-600">Rs ${(r.finalAmount||0).toLocaleString()}</p></div></div></div>`;
-                }).join('')}</div>`}</div>`;
+                    return `<div class="section-card">
+                        <div class="flex justify-between items-start mb-2">
+                            <div onclick="app.viewReportDetails('${r.id}')" class="cursor-pointer flex-1">
+                                <p class="font-bold text-gray-800">${new Date(r.date).toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short'})}</p>
+                                <p class="text-xs text-gray-500">${totalQty} orders</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="status-badge status-${r.status==='draft'?'pending':r.status}" style="${r.status==='draft'?'background:#fef9c3;color:#854d0e;':''}">${r.status==='draft'?'Draft':r.status}</span>
+                                ${r.status!=='deleted'&&r.status!=='approved'?`<button onclick="app.editReport('${r.id}')" class="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg"><i class="fas fa-edit text-xs"></i></button>`:''}
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 text-center">
+                            <div><p class="text-xs text-gray-500">Gross</p><p class="font-semibold text-sm">Rs ${(r.totalGross||0).toLocaleString()}</p></div>
+                            <div><p class="text-xs text-gray-500">Expenses</p><p class="font-semibold text-sm text-red-600">Rs ${(r.totalExpenses||0).toLocaleString()}</p></div>
+                            <div><p class="text-xs text-gray-500">Final</p><p class="font-bold text-sm text-green-600">Rs ${(r.finalAmount||0).toLocaleString()}</p></div>
+                        </div>
+                    </div>`;
+                }).join('')}</div>`}
+            </div>`;
         },
 
         viewReportDetails(id) {
@@ -1480,46 +1502,102 @@
             </div>`;
         },
 
-        renderRiderSalary() {
+        renderRiderSalary(selMonth = null, selYear = null) {
             document.getElementById('page-title').textContent = 'Salary & Payslip';
             const container = document.getElementById('main-container');
-            const cm = new Date().getMonth(), cy = new Date().getFullYear();
-            const monthlyReports = this.data.reports.filter(r => r.riderId === this.data.currentUser.id && new Date(r.date).getMonth() === cm && new Date(r.date).getFullYear() === cy);
-            const totalOrders = monthlyReports.reduce((a,r)=>a+(r.orders||[]).reduce((o,x)=>o+(x.qty||0),0),0);
+            const now = new Date();
+            const cm = selMonth !== null ? selMonth : (this.data._salMonth !== undefined ? this.data._salMonth : now.getMonth());
+            const cy = selYear !== null ? selYear : (this.data._salYear || now.getFullYear());
+            this.data._salMonth = cm; this.data._salYear = cy;
+            const mn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            let monthOptions = '';
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const mv = d.getMonth(), yv = d.getFullYear();
+                monthOptions += `<option value="${mv}|${yv}" ${mv===cm&&yv===cy?'selected':''}>${mn[mv]} ${yv}</option>`;
+            }
+            const mr = this.data.reports.filter(r => r.riderId===this.data.currentUser.id && r.status==='approved' && new Date(r.date).getMonth()===cm && new Date(r.date).getFullYear()===cy);
+            const totalOrders = mr.reduce((a,r)=>a+(r.orders||[]).reduce((o,x)=>o+(x.qty||0),0),0);
+            const totalGross = mr.reduce((a,r)=>a+(r.totalGross||0),0);
+            const totalFinal = mr.reduce((a,r)=>a+(r.finalAmount||0),0);
             const baseSalary = this.data.currentUser.salaryBase || 15000;
             const attInfo = this.calculateAttendanceDeductions(this.data.currentUser.id, cm, cy);
             const netSalary = baseSalary - attInfo.totalDeduction;
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-calendar-alt text-indigo-400"></i>
+                    <select class="flex-1 border border-indigo-200 bg-white rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-700 outline-none"
+                        onchange="const [m,y]=this.value.split('|').map(Number);app.renderRiderSalary(m,y)">${monthOptions}</select>
+                </div>
                 <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-2xl shadow-lg text-center">
-                    <p class="text-indigo-100 text-sm mb-1">Net Salary (This Month)</p>
+                    <p class="text-indigo-100 text-sm mb-1">Net Salary — ${mn[cm]} ${cy}</p>
                     <h2 class="text-4xl font-bold mb-4">Rs ${netSalary.toLocaleString()}</h2>
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div class="bg-white/20 rounded-lg p-2"><p class="text-indigo-100">Base Salary</p><p class="font-semibold">Rs ${baseSalary.toLocaleString()}</p></div>
                         <div class="bg-white/20 rounded-lg p-2"><p class="text-indigo-100">Deductions</p><p class="font-semibold ${attInfo.totalDeduction>0?'text-red-300':'text-green-300'}">-Rs ${attInfo.totalDeduction.toLocaleString()}</p></div>
                     </div>
                 </div>
-                <div class="section-card"><h3 class="font-bold text-gray-800 mb-4">This Month Summary</h3>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-box"></i></div><span class="font-medium">Total Deliveries</span></div><span class="font-bold text-lg">${totalOrders}</span></div>
-                        <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-times"></i></div><span class="font-medium">Total Absences</span></div><span class="font-bold text-lg">${attInfo.totalAbsences} days</span></div>
+                <div class="section-card">
+                    <h3 class="font-bold text-gray-800 mb-3">${mn[cm]} ${cy} — Summary</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-box text-sm"></i></div><span class="font-medium text-sm">Total Deliveries</span></div><span class="font-bold text-lg">${totalOrders}</span></div>
+                        <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-rupee-sign text-sm"></i></div><span class="font-medium text-sm">Total Gross</span></div><span class="font-bold text-lg text-green-600">Rs ${totalGross.toLocaleString()}</span></div>
+                        <div class="flex justify-between items-center p-3 bg-indigo-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center"><i class="fas fa-wallet text-sm"></i></div><span class="font-medium text-sm">Total Final Cash</span></div><span class="font-bold text-lg text-indigo-600">Rs ${totalFinal.toLocaleString()}</span></div>
+                        <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg"><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-times text-sm"></i></div><span class="font-medium text-sm">Absences</span></div><span class="font-bold text-lg text-red-600">${attInfo.totalAbsences} days</span></div>
                     </div>
-                    <button onclick="app.downloadPayslip()" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg"><i class="fas fa-download mr-2"></i>Download Payslip</button>
+                    <button onclick="app.downloadPayslip(${cm},${cy})" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-lg">
+                        <i class="fas fa-download mr-2"></i>Download Payslip — ${mn[cm]} ${cy}
+                    </button>
                 </div>
             </div>`;
         },
 
-        downloadPayslip() {
+        downloadPayslip(selMonth, selYear) {
             const user = this.data.currentUser;
-            const cm = new Date().getMonth(), cy = new Date().getFullYear();
+            const now = new Date();
+            const cm = selMonth !== undefined ? selMonth : now.getMonth();
+            const cy = selYear !== undefined ? selYear : now.getFullYear();
             const mn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const ml = `${mn[cm]} ${cy}`;
             const mr = this.data.reports.filter(r => r.riderId===user.id && r.status==='approved' && new Date(r.date).getMonth()===cm && new Date(r.date).getFullYear()===cy);
             const to = mr.reduce((a,r)=>a+(r.orders||[]).reduce((o,x)=>o+(x.qty||0),0),0);
             const tg = mr.reduce((a,r)=>a+(r.totalGross||0),0);
+            const tf = mr.reduce((a,r)=>a+(r.finalAmount||0),0);
             const bs = user.salaryBase||15000;
             const ai = this.calculateAttendanceDeductions(user.id, cm, cy);
             const ns = bs - ai.totalDeduction;
-            const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payslip</title></head><body style="font-family:Arial;padding:20px"><h2>Dastak — ${user.name} — ${ml}</h2><p>Base: Rs ${bs.toLocaleString()} | Deductions: Rs ${ai.totalDeduction.toLocaleString()} | Net: <b>Rs ${ns.toLocaleString()}</b></p><p>Total Orders: ${to} | Total Gross: Rs ${tg.toLocaleString()}</p><button onclick="window.print()">Print</button></body></html>`;
+            const dailyRows = mr.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(r =>
+                `<tr><td style="padding:8px;border:1px solid #ddd">${new Date(r.date).toLocaleDateString('en-PK',{weekday:'short',day:'numeric',month:'short'})}</td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:center">${(r.orders||[]).reduce((a,o)=>a+(o.qty||0),0)}</td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:right">Rs ${(r.totalGross||0).toLocaleString()}</td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:right">Rs ${(r.totalExpenses||0).toLocaleString()}</td>
+                <td style="padding:8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:#4f46e5">Rs ${(r.finalAmount||0).toLocaleString()}</td></tr>`
+            ).join('');
+            const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payslip - ${user.name} - ${ml}</title>
+            <style>body{font-family:Arial,sans-serif;padding:30px;color:#333}h1{color:#4f46e5}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
+            </head><body>
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4f46e5;padding-bottom:15px;margin-bottom:20px">
+                <div><h1 style="margin:0;font-size:22px">Dastak Delivery Service</h1><p style="margin:5px 0;color:#666">Payslip — ${ml}</p></div>
+                <div style="text-align:right"><p style="font-size:18px;font-weight:bold;color:#4f46e5;margin:0">${user.name}</p><p style="color:#666;font-size:13px;margin:0">Rider</p></div>
+            </div>
+            <div style="background:#f0f4ff;padding:20px;border-radius:10px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;text-align:center">
+                <div><p style="color:#666;font-size:13px;margin:0 0 4px">Base Salary</p><p style="font-size:20px;font-weight:bold;margin:0">Rs ${bs.toLocaleString()}</p></div>
+                <div><p style="color:#666;font-size:13px;margin:0 0 4px">Deductions</p><p style="font-size:20px;font-weight:bold;color:red;margin:0">-Rs ${ai.totalDeduction.toLocaleString()}</p></div>
+                <div><p style="color:#666;font-size:13px;margin:0 0 4px">Net Salary</p><p style="font-size:20px;font-weight:bold;color:#4f46e5;margin:0">Rs ${ns.toLocaleString()}</p></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:25px;text-align:center">
+                <div style="background:#f0fdf4;padding:12px;border-radius:8px"><p style="color:#666;font-size:13px;margin:0 0 4px">Deliveries</p><p style="font-size:18px;font-weight:bold;color:green;margin:0">${to}</p></div>
+                <div style="background:#f0fdf4;padding:12px;border-radius:8px"><p style="color:#666;font-size:13px;margin:0 0 4px">Total Gross</p><p style="font-size:18px;font-weight:bold;color:green;margin:0">Rs ${tg.toLocaleString()}</p></div>
+                <div style="background:#f0fdf4;padding:12px;border-radius:8px"><p style="color:#666;font-size:13px;margin:0 0 4px">Final Cash</p><p style="font-size:18px;font-weight:bold;color:#4f46e5;margin:0">Rs ${tf.toLocaleString()}</p></div>
+            </div>
+            <h3 style="color:#4f46e5;margin-bottom:10px">Daily Breakdown</h3>
+            <table><thead style="background:#4f46e5;color:white"><tr>
+                <th style="padding:10px;text-align:left">Date</th><th style="padding:10px;text-align:center">Orders</th>
+                <th style="padding:10px;text-align:right">Gross</th><th style="padding:10px;text-align:right">Expenses</th>
+                <th style="padding:10px;text-align:right">Final Cash</th>
+            </tr></thead><tbody>${dailyRows||'<tr><td colspan="5" style="text-align:center;padding:15px;color:#999">No approved reports</td></tr>'}</tbody></table>
+            <div style="margin-top:25px;text-align:center"><button onclick="window.print()" style="background:#4f46e5;color:white;border:none;padding:12px 30px;border-radius:8px;font-size:16px;cursor:pointer">🖨️ Print Payslip</button></div>
+            </body></html>`;
             const win = window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),500);
         },
 
@@ -1536,11 +1614,7 @@
             const totalProfit = monthReports.reduce((a,r)=>a+(r.totalGross||0)-(r.totalExpenses||0)-(r.dailyWage||0),0) - (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             const totalWages = monthReports.reduce((a,r)=>a+(r.dailyWage||0),0);
             const totalRiderExpenses = monthReports.reduce((a,r)=>a+(r.totalExpenses||0),0);
-            const totalRiderFood = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Food').reduce((s,e)=>s+e.amount,0),0);
-            const totalRiderFuel = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Fuel').reduce((s,e)=>s+e.amount,0),0);
-            const totalRiderMaint = monthReports.reduce((a,r)=>a+(r.expenses||[]).filter(e=>e.type==='Maintenance').reduce((s,e)=>s+e.amount,0),0);
-            const totalBusinessExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
-            const totalSchoolExp = (this.data.businessExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
+            const totalCompanyExp = (this.data.companyExpenses||[]).filter(e=>{const d=new Date(e.date);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,e)=>a+e.amount,0);
             // Total deliveries for selected month
             const totalDeliveries = monthReports.reduce((a,r)=>a+(r.orders||[]).reduce((s,o)=>s+(o.qty||0),0),0);
             const daysInMonth = new Date(y,m+1,0).getDate();
@@ -1574,14 +1648,10 @@
                     <div class="flex justify-between items-center mb-1"><h3 class="font-bold text-gray-800">Overview</h3><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span></div>
                     <p class="text-xs text-gray-400 mb-3">Net Profit = Gross − Wages − Rider Exp − Company Exp</p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                        <div class="stat-card border-l-4 border-green-500"><p class="text-xs text-gray-500">🏆 Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400">After all expenses</p></div>
+                        <div class="stat-card border-l-4 border-green-500 col-span-2 md:col-span-1"><p class="text-xs text-gray-500">🏆 Net Profit</p><h3 class="text-lg font-bold ${totalProfit>=0?'text-green-600':'text-red-600'}">Rs ${totalProfit.toLocaleString()}</h3><p class="text-xs text-gray-400">After all expenses</p></div>
                         <div class="stat-card border-l-4 border-yellow-500"><p class="text-xs text-gray-500">Total Wages</p><h3 class="text-lg font-bold text-yellow-600">Rs ${totalWages.toLocaleString()}</h3></div>
                         <div class="stat-card border-l-4 border-red-400"><p class="text-xs text-gray-500">Rider Expenses</p><h3 class="text-lg font-bold text-red-500">Rs ${totalRiderExpenses.toLocaleString()}</h3></div>
-                        <div class="stat-card border-l-4 border-green-400"><p class="text-xs text-gray-500">🍽 Food</p><h3 class="text-lg font-bold text-green-500">Rs ${totalRiderFood.toLocaleString()}</h3></div>
-                        <div class="stat-card border-l-4 border-orange-400"><p class="text-xs text-gray-500">⛽ Fuel</p><h3 class="text-lg font-bold text-orange-500">Rs ${totalRiderFuel.toLocaleString()}</h3></div>
-                        <div class="stat-card border-l-4 border-blue-400"><p class="text-xs text-gray-500">🔧 Maintenance</p><h3 class="text-lg font-bold text-blue-500">Rs ${totalRiderMaint.toLocaleString()}</h3></div>
-                        <div class="stat-card border-l-4 border-indigo-500 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">🏢 Company Exp.</p><h3 class="text-lg font-bold text-indigo-600">Rs ${totalBusinessExp.toLocaleString()}</h3><p class="text-xs text-indigo-400">Minus from Net Profit ↑</p></div>
-                        <div class="stat-card border-l-4 border-purple-500 cursor-pointer" onclick="app.navigate('admin-business-expenses')"><p class="text-xs text-gray-500">🏫 School Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalSchoolExp.toLocaleString()}</h3><p class="text-xs text-purple-400">Salary se deduct (Net Profit se nahi)</p></div>
+                        <div class="stat-card border-l-4 border-purple-500 cursor-pointer" onclick="app.navigate('admin-company-expenses')"><p class="text-xs text-gray-500">🏢 Company Exp.</p><h3 class="text-lg font-bold text-purple-600">Rs ${totalCompanyExp.toLocaleString()}</h3><p class="text-xs text-purple-400">Minus from Net Profit ↑</p></div>
                         <div class="stat-card border-l-4 border-blue-500"><p class="text-xs text-gray-500">Total Riders</p><h3 class="text-xl font-bold">${totalRiders}</h3></div>
                         <div class="stat-card border-l-4 border-orange-500"><p class="text-xs text-gray-500">Pending Reports</p><h3 class="text-xl font-bold text-orange-600">${pendingReports}</h3></div>
                     </div>
@@ -1795,20 +1865,72 @@
             document.getElementById('page-title').textContent = 'Review Reports';
             const container = document.getElementById('main-container');
             const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const monthLabel = `${monthNames[this.data.selectedMonth]} ${this.data.selectedYear}`;
-            container.innerHTML = `<div class="fade-in pb-20">
-                <div class="flex justify-between items-center mb-3"><span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span><button onclick="app.exportMonthlyExcel()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fas fa-file-excel mr-1"></i>Export</button></div>
-                <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
-                    <select id="filter-status" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option></select>
-                    <select id="filter-rider" onchange="app.renderAdminReports()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-white"><option value="">All Riders</option>${this.data.users.filter(u=>u.role==='rider').map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}</select>
+            const m = this.data.selectedMonth, y = this.data.selectedYear;
+            const monthLabel = `${monthNames[m]} ${y}`;
+            const activeDateFilter = this.data._adminReportDate || '';
+            const daysInMonth = new Date(y, m+1, 0).getDate();
+            const firstDay = new Date(y, m, 1).getDay();
+            const reportDates = new Set(this.data.reports
+                .filter(r=>{ const d=new Date(r.date); return d.getMonth()===m&&d.getFullYear()===y&&r.status!=='deleted'; })
+                .map(r=>r.date));
+            const dayLabels = ['S','M','T','W','T','F','S'];
+            let calCells = dayLabels.map(d=>`<div class="text-center text-xs text-gray-400 font-semibold py-1">${d}</div>`).join('');
+            for (let i=0;i<firstDay;i++) calCells+=`<div></div>`;
+            for (let d=1;d<=daysInMonth;d++) {
+                const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const has=reportDates.has(ds), active=activeDateFilter===ds;
+                calCells+=`<button onclick="app._setAdminReportDate('${ds}')"
+                    class="aspect-square flex flex-col items-center justify-center rounded-lg text-xs font-semibold
+                    ${active?'bg-indigo-600 text-white shadow':has?'bg-indigo-100 text-indigo-700 hover:bg-indigo-200':'text-gray-400 hover:bg-gray-100'}"
+                    ${!has&&!active?'style="opacity:0.4"':''}>
+                    ${d}${has?`<span class="w-1 h-1 rounded-full mt-0.5 ${active?'bg-white':'bg-indigo-500'}"></span>`:''}
+                </button>`;
+            }
+            const filtered = this.getFilteredAdminReports();
+            container.innerHTML = `<div class="fade-in pb-20 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold">${monthLabel}</span>
+                    <button onclick="app.exportMonthlyExcel()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold"><i class="fas fa-file-excel mr-1"></i>Export</button>
                 </div>
-                <div class="space-y-3" id="admin-reports-list">${this.getFilteredAdminReports().map(r => this.renderAdminReportCard(r)).join('')}${this.getFilteredAdminReports().length===0?'<p class="text-center text-gray-400 py-8">No reports found</p>':''}</div>
+                <div class="section-card !py-3 !px-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-bold text-gray-700 text-sm">📅 Date Filter</h3>
+                        ${activeDateFilter?`<button onclick="app._setAdminReportDate('')" class="text-xs text-red-500 font-semibold">✕ Clear</button>`:''}
+                    </div>
+                    <div class="grid grid-cols-7 gap-0.5">${calCells}</div>
+                    ${activeDateFilter?`<div class="mt-2 bg-indigo-50 rounded-lg px-3 py-1.5 text-xs text-indigo-700 font-semibold text-center">
+                        ${new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long'})}
+                    </div>`:''}
+                </div>
+                <div class="flex gap-2">
+                    <select id="filter-status" onchange="app.renderAdminReports()" class="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm outline-none bg-white">
+                        <option value="">All Status</option><option value="pending">Pending</option><option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option><option value="draft">Draft</option><option value="deleted">Deleted</option>
+                    </select>
+                    <select id="filter-rider" onchange="app.renderAdminReports()" class="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm outline-none bg-white">
+                        <option value="">All Riders</option>${this.data.users.filter(u=>u.role==='rider').map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="space-y-3" id="admin-reports-list">
+                    ${filtered.map(r=>this.renderAdminReportCard(r)).join('')}
+                    ${filtered.length===0?'<p class="text-center text-gray-400 py-8">No reports found</p>':''}
+                </div>
             </div>`;
+        },
+
+        _setAdminReportDate(date) {
+            this.data._adminReportDate = this.data._adminReportDate === date ? '' : date;
+            this.renderAdminReports();
         },
 
         getFilteredAdminReports() {
             const m = this.data.selectedMonth, y = this.data.selectedYear;
-            let reports = this.data.reports.filter(r => { const d = new Date(r.date); return d.getMonth()===m && d.getFullYear()===y; });
+            const dateFilter = this.data._adminReportDate || '';
+            let reports = this.data.reports.filter(r => {
+                const d = new Date(r.date);
+                if (dateFilter) return r.date === dateFilter;
+                return d.getMonth()===m && d.getFullYear()===y;
+            });
             const riderFilter = document.getElementById('filter-rider')?.value;
             if (riderFilter) reports = reports.filter(r => r.riderId === riderFilter);
             const statusFilter = document.getElementById('filter-status')?.value;
@@ -2214,24 +2336,9 @@
             return `<div>
                 ${pendingPayments.length > 0 ? `
                 <div class="mb-4">
-                    <!-- Bulk bar -->
-                    <div id="bulk-bar" class="hidden mb-2 bg-indigo-600 text-white rounded-xl px-3 py-2.5 flex items-center justify-between">
-                        <span class="text-sm font-semibold"><span id="bulk-count">0</span> selected</span>
-                        <button onclick="app._bulkReceive()" class="text-xs bg-white text-indigo-700 px-3 py-1.5 rounded-lg font-bold">✓ Receive Selected</button>
-                    </div>
-                    <!-- Header with select all -->
-                    <div class="flex items-center justify-between mb-2">
-                        <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider">⏳ Pending (${pendingPayments.length})</h4>
-                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-gray-500 hover:text-indigo-600">
-                            <input type="checkbox" id="select-all-pay" class="w-3.5 h-3.5 accent-indigo-600" onchange="app._toggleAllPay(this.checked)">
-                            Select All
-                        </label>
-                    </div>
-                    <div class="space-y-2">${pendingPayments.map((p, pi) => `
-                        <div class="flex items-start gap-2 p-3 rounded-xl border bg-orange-50 border-orange-200">
-                            <input type="checkbox" class="pay-cb mt-1 w-4 h-4 accent-indigo-600 flex-shrink-0 cursor-pointer"
-                                data-report="${p.reportId}" data-idx="${p.idx}" data-amount="${p.amount||0}"
-                                onchange="app._updateBulkBar()">
+                    <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2">⏳ Pending (${pendingPayments.length})</h4>
+                    <div class="space-y-2">${pendingPayments.map(p => `
+                        <div class="flex justify-between items-start p-3 rounded-xl border bg-orange-50 border-orange-200">
                             <div class="min-w-0 flex-1">
                                 <p class="font-semibold text-sm">${p.riderName}</p>
                                 <p class="text-xs text-gray-600 truncate">${p.detail||'—'}</p>
@@ -2239,7 +2346,7 @@
                                 <p class="text-xs text-gray-400">${new Date(p.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</p>
                                 <p class="text-sm font-bold text-orange-700 mt-1">Rs ${(p.amount||0).toLocaleString()}</p>
                             </div>
-                            <div class="flex flex-col gap-1.5 ml-1 flex-shrink-0">
+                            <div class="flex flex-col gap-1.5 ml-2 flex-shrink-0">
                                 <button onclick="app.showPartialReceiveModal('${p.reportId}',${p.idx},${p.amount},'${(p.detail||'').replace(/'/g,"\\'")}')"
                                     class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-semibold">
                                     ✓ Receive
@@ -2278,44 +2385,6 @@
                     </div>
                 </div>` : ''}
             </div>`;
-        },
-
-        // Bulk select helpers
-        _updateBulkBar() {
-            const checked = document.querySelectorAll('.pay-cb:checked');
-            const bar = document.getElementById('bulk-bar');
-            const cnt = document.getElementById('bulk-count');
-            if (bar) bar.classList.toggle('hidden', checked.length === 0);
-            if (cnt) cnt.textContent = checked.length;
-        },
-        _toggleAllPay(check) {
-            document.querySelectorAll('.pay-cb').forEach(cb => cb.checked = check);
-            this._updateBulkBar();
-        },
-        async _bulkReceive() {
-            const checked = [...document.querySelectorAll('.pay-cb:checked')];
-            if (!checked.length) return;
-            const total = checked.reduce((a,cb) => a + parseFloat(cb.dataset.amount||0), 0);
-            if (!confirm(`${checked.length} payments receive karein?\nKul: Rs ${total.toLocaleString()}`)) return;
-            const currentFilter = this.data.paymentDateFilter;
-            const groups = {};
-            checked.forEach(cb => {
-                const rid = cb.dataset.report;
-                if (!groups[rid]) groups[rid] = [];
-                groups[rid].push(parseInt(cb.dataset.idx));
-            });
-            try {
-                for (const [reportId, idxs] of Object.entries(groups)) {
-                    const report = this.data.reports.find(r => r.id === reportId);
-                    if (!report) continue;
-                    const updated = [...(report.onlinePayments||[])];
-                    idxs.forEach(i => { if (updated[i]) updated[i] = {...updated[i], status:'received'}; });
-                    await window.db.collection('reports').doc(reportId).update({onlinePayments: updated});
-                    report.onlinePayments = updated;
-                }
-                alert(`✅ ${checked.length} payments receive ho gayi!\nKul: Rs ${total.toLocaleString()}`);
-                this.renderAdminOnlinePayments(currentFilter);
-            } catch(e) { alert('Error: ' + e.message); }
         },
 
         // NEW: Search filter for payments
@@ -2770,16 +2839,16 @@
 
                 <!-- TOP EXPENSE CARDS -->
                 <div class="grid grid-cols-2 gap-3">
-                    <!-- Total -->
-                    <div class="stat-card border-l-4 border-red-500">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-wallet text-red-500"></i>
-                            </div>
+                    <!-- Total - full width -->
+                    <div class="stat-card border-l-4 border-red-500 col-span-2">
+                        <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-xs text-gray-500">💸 Total Expenses</p>
-                                <h3 class="text-lg font-bold text-red-600">Rs ${totalAll.toLocaleString()}</h3>
-                                <p class="text-xs text-gray-400">${filterLabel}</p>
+                                <p class="text-xs text-gray-500 font-medium">💸 Total Rider Expenses</p>
+                                <h3 class="text-2xl font-bold text-red-600">Rs ${totalAll.toLocaleString()}</h3>
+                                <p class="text-xs text-gray-400 mt-0.5">${filterLabel}</p>
+                            </div>
+                            <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-wallet text-red-500 text-xl"></i>
                             </div>
                         </div>
                     </div>
@@ -2803,20 +2872,20 @@
                                 <i class="fas fa-gas-pump text-orange-600"></i>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500">⛽ Petrol Expense</p>
+                                <p class="text-xs text-gray-500">⛽ Fuel Expense</p>
                                 <h3 class="text-lg font-bold text-orange-600">Rs ${totalFuel.toLocaleString()}</h3>
                                 <p class="text-xs text-gray-400">Petrol kharch</p>
                             </div>
                         </div>
                     </div>
                     <!-- Maintenance -->
-                    <div class="stat-card border-l-4 border-blue-500">
+                    <div class="stat-card border-l-4 border-blue-500 col-span-2">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
                                 <i class="fas fa-wrench text-blue-600"></i>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500">🔧 Maintenance</p>
+                                <p class="text-xs text-gray-500">🔧 Maintenance Expense</p>
                                 <h3 class="text-lg font-bold text-blue-600">Rs ${totalMaint.toLocaleString()}</h3>
                                 <p class="text-xs text-gray-400">Repair / tuning kharch</p>
                             </div>
@@ -2936,20 +3005,21 @@
             this.renderAdminExpenses(filter);
         },
 
-        // ========== SCHOOL EXPENSES (Mahboob School — ek dafa salary, phir expenses minus) ==========
-        async renderBusinessExpenses(filterDate = null, filterMonth = null) {
-            document.getElementById('page-title').textContent = 'Mahboob School Expense';
+        // ========== COMPANY EXPENSES ==========
+        async renderCompanyExpenses(filterDate = null, filterMonth = null) {
+            document.getElementById('page-title').textContent = 'Company Expenses';
             const container = document.getElementById('main-container');
-            await this.ensureBusinessExpenses();
-            await this.ensureSchoolSalary();
-            const allExpenses = this.data.businessExpenses || [];
-            const categories = ['Stationery','Fees','Salary','Utilities','Transport','Books','Maintenance','Other'];
+            await this.ensureCompanyExpenses();
+            const allExpenses = this.data.companyExpenses || [];
+            const categories = ['Rent','Salaries','Utilities','Fuel','Maintenance','Marketing','Other'];
 
-            const activeDateFilter = filterDate !== null ? filterDate : (this.data.beFilterDate || '');
-            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.beFilterMonth || '');
-            this.data.beFilterDate = activeDateFilter;
-            this.data.beFilterMonth = activeMonthFilter;
+            // Saved filters
+            const activeDateFilter = filterDate !== null ? filterDate : (this.data.ceFilterDate || '');
+            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.ceFilterMonth || '');
+            this.data.ceFilterDate = activeDateFilter;
+            this.data.ceFilterMonth = activeMonthFilter;
 
+            // Filter expenses
             let filteredExpenses = [...allExpenses];
             if (activeDateFilter) {
                 filteredExpenses = filteredExpenses.filter(e => e.date === activeDateFilter);
@@ -2961,10 +3031,12 @@
                 });
             }
 
+            // Totals
             const totalAll = allExpenses.reduce((a,e)=>a+e.amount,0);
             const totalFiltered = filteredExpenses.reduce((a,e)=>a+e.amount,0);
             const isFiltered = activeDateFilter || activeMonthFilter;
 
+            // Month options for selector
             const now = new Date();
             const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             let monthOptions = '<option value="">-- Sab Months --</option>';
@@ -2974,50 +3046,16 @@
                 monthOptions += `<option value="${val}" ${activeMonthFilter===val?'selected':''}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
             }
 
+            // Category breakdown for filtered
             const catTotals = {};
             categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
 
-            // Salary month = jo month filter select hai, warna current month
-            const salaryMonthKey = activeMonthFilter || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-            const salaryMonthLabel = (() => { const [fy,fm] = salaryMonthKey.split('-').map(Number); return monthNames[fm-1]+' '+fy; })();
-            const salaryAmount = this.data.schoolSalary?.[salaryMonthKey] || 0;
-            // Us mahine ke expenses (date filter ke bawajood, salary balance hamesha poore month ka hota hai)
-            const [smy, smm] = salaryMonthKey.split('-').map(Number);
-            const salaryMonthExpenses = allExpenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===smy&&(d.getMonth()+1)===smm;}).reduce((a,e)=>a+e.amount,0);
-            const remainingBalance = salaryAmount - salaryMonthExpenses;
-
             container.innerHTML = `<div class="fade-in pb-20 space-y-4">
-
-                <!-- Salary Balance Card -->
-                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-bold text-sm">💼 ${salaryMonthLabel} — Salary Balance</h3>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2 mb-3">
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Salary</p>
-                            <p class="text-base font-bold">Rs ${salaryAmount.toLocaleString()}</p>
-                        </div>
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Kharch</p>
-                            <p class="text-base font-bold text-red-200">-Rs ${salaryMonthExpenses.toLocaleString()}</p>
-                        </div>
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Baqi</p>
-                            <p class="text-base font-bold ${remainingBalance>=0?'text-green-200':'text-red-200'}">Rs ${remainingBalance.toLocaleString()}</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 bg-white/15 rounded-xl p-2">
-                        <input type="number" id="be-salary-set" placeholder="${salaryMonthLabel} ki salary likhein"
-                            class="flex-1 bg-white/90 text-indigo-900 rounded-lg px-3 py-2 text-sm outline-none font-semibold" value="${salaryAmount || ''}">
-                        <button onclick="app.setSchoolSalary('${salaryMonthKey}')" class="bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold flex-shrink-0">Set</button>
-                    </div>
-                </div>
 
                 <!-- Totals -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="stat-card border-l-4 border-purple-500">
-                        <p class="text-xs text-gray-500">🏫 Kul School Expenses</p>
+                        <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
                         <h3 class="text-2xl font-bold text-purple-600">Rs ${totalAll.toLocaleString()}</h3>
                     </div>
                     ${isFiltered ? `<div class="stat-card border-l-4 border-indigo-400">
@@ -3037,54 +3075,54 @@
                             <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 text-sm"></i>
                             <input type="date" value="${activeDateFilter}"
                                 max="${now.toISOString().split('T')[0]}"
-                                onchange="app.data.beFilterMonth='';app.renderBusinessExpenses(this.value,'')"
+                                onchange="app.data.ceFilterMonth='';app.renderCompanyExpenses(this.value,'')"
                                 class="w-full border border-purple-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-purple-700 outline-none cursor-pointer">
                         </div>
-                        <button onclick="app.renderBusinessExpenses('','')"
+                        <button onclick="app.renderCompanyExpenses('','')"
                             class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!activeDateFilter&&!activeMonthFilter?'bg-purple-600 text-white':'bg-white text-gray-600 border border-gray-300'}">
                             Sab
                         </button>
                     </div>
                     <div class="flex items-center gap-2">
                         <i class="fas fa-calendar text-purple-400 text-sm ml-1"></i>
-                        <select onchange="app.data.beFilterDate='';app.renderBusinessExpenses('',this.value)"
+                        <select onchange="app.data.ceFilterDate='';app.renderCompanyExpenses('',this.value)"
                             class="flex-1 border border-purple-200 bg-purple-50 text-purple-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
                             ${monthOptions}
                         </select>
                     </div>
                     ${isFiltered ? `<div class="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
                         <i class="fas fa-filter text-purple-500 text-xs"></i>
-                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : salaryMonthLabel}</span>
-                        <button onclick="app.renderBusinessExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
+                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : (() => { const [fy,fm] = activeMonthFilter.split('-').map(Number); return monthNames[fm-1]+' '+fy; })()}</span>
+                        <button onclick="app.renderCompanyExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
                     </div>` : ''}
                 </div>
 
-                <!-- Add School Expense -->
+                <!-- Add Expense -->
                 <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-school text-purple-500 mr-2"></i>Naya Expense</h3>
+                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-plus-circle text-purple-500 mr-2"></i>Naya Expense Add Karo</h3>
                     <div class="space-y-3">
                         <div class="grid grid-cols-2 gap-3">
                             <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
-                                <select id="be-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                                <select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
                                     ${categories.map(c=>`<option>${c}</option>`).join('')}
                                 </select>
                             </div>
                             <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
-                                <input type="number" id="be-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
+                                <input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
                             </div>
                         </div>
                         <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
-                            <input type="text" id="be-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Stationery khareed, Teacher salary...">
+                            <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent June 2026">
                         </div>
                         <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
-                            <input type="date" id="be-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
+                            <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
                         </div>
-                        <div class="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start gap-2">
-                            <i class="fas fa-info-circle text-red-400 text-xs mt-0.5"></i>
-                            <p class="text-xs text-red-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete. Salary se automatically minus ho jayega.</p>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-start gap-2">
+                            <i class="fas fa-info-circle text-yellow-600 text-xs mt-0.5"></i>
+                            <p class="text-xs text-yellow-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete. Dhyan se bharein!</p>
                         </div>
-                        <button onclick="app.addBusinessExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors">
-                            <i class="fas fa-plus mr-2"></i>Add School Expense
+                        <button onclick="app.addCompanyExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Add Expense
                         </button>
                     </div>
                 </div>
@@ -3092,7 +3130,7 @@
                 <!-- Category breakdown -->
                 ${filteredExpenses.length > 0 ? `
                 <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-3">🏫 School Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
+                    <h3 class="font-bold text-gray-800 mb-3">Category Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
                     <div class="grid grid-cols-2 gap-2">
                         ${categories.filter(c=>catTotals[c]>0).map(c=>`
                         <div class="bg-purple-50 rounded-lg p-3 border border-purple-100">
@@ -3110,7 +3148,7 @@
                     </div>
                     <div class="space-y-2">
                         ${filteredExpenses.length === 0 ?
-                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-school text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
+                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-building text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
                             [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
                             <div class="flex justify-between items-center p-3 bg-white/60 rounded-xl border border-gray-100">
                                 <div class="flex-1 min-w-0">
@@ -3122,195 +3160,6 @@
                                 </div>
                                 <div class="flex items-center gap-2 ml-2 flex-shrink-0">
                                     <p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p>
-                                    <button onclick="app.deleteBusinessExpense('${e.id}')"
-                                        class="p-1.5 bg-red-100 text-red-500 hover:bg-red-200 rounded-lg transition-colors" title="Delete">
-                                        <i class="fas fa-trash text-xs"></i>
-                                    </button>
-                                </div>
-                            </div>`).join('')
-                        }
-                    </div>
-                </div>
-            </div>`;
-        },
-
-        async setSchoolSalary(monthKey) {
-            const amount = parseFloat(document.getElementById('be-salary-set').value) || 0;
-            try {
-                await window.db.collection('schoolSalary').doc(monthKey).set({ amount, month: monthKey });
-                this.data.schoolSalary[monthKey] = amount;
-                this.renderBusinessExpenses();
-            } catch(e) { alert('Error: '+e.message); }
-        },
-
-        async addBusinessExpense() {
-            const category = document.getElementById('be-category').value;
-            const amount = parseFloat(document.getElementById('be-amount').value)||0;
-            const description = document.getElementById('be-desc').value.trim();
-            const date = document.getElementById('be-date').value;
-            if (!amount||amount<=0) { alert('Amount zaroori hai!'); return; }
-            try {
-                const newExp = { category, amount, description, date, source: 'school' };
-                const docRef = await window.db.collection('businessExpenses').add({
-                    ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                this.data.businessExpenses.push({id:docRef.id,...newExp});
-                this.renderBusinessExpenses();
-            } catch(e) { alert('Error: '+e.message); }
-        },
-
-        async deleteBusinessExpense(id) {
-            if (!confirm('Delete?')) return;
-            try { await window.db.collection('businessExpenses').doc(id).delete(); this.data.businessExpenses=this.data.businessExpenses.filter(e=>e.id!==id); this.renderBusinessExpenses(); }
-            catch(e) { alert('Error: '+e.message); }
-        },
-
-        // ========== COMPANY EXPENSES (generic — Dastak business kharch, purana data) ==========
-        async renderCompanyExpenses(filterDate = null, filterMonth = null) {
-            document.getElementById('page-title').textContent = 'Company Expenses';
-            const container = document.getElementById('main-container');
-            await this.ensureCompanyExpenses();
-            const allExpenses = this.data.companyExpenses || [];
-            const categories = ['Rent','Salary','Utilities','Marketing','Transport','Stationery','Maintenance','Other'];
-
-            const activeDateFilter = filterDate !== null ? filterDate : (this.data.ceFilterDate || '');
-            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.ceFilterMonth || '');
-            this.data.ceFilterDate = activeDateFilter;
-            this.data.ceFilterMonth = activeMonthFilter;
-
-            let filteredExpenses = [...allExpenses];
-            if (activeDateFilter) {
-                filteredExpenses = filteredExpenses.filter(e => e.date === activeDateFilter);
-            } else if (activeMonthFilter) {
-                const [fy, fm] = activeMonthFilter.split('-').map(Number);
-                filteredExpenses = filteredExpenses.filter(e => {
-                    const d = new Date(e.date);
-                    return d.getFullYear() === fy && d.getMonth() === fm - 1;
-                });
-            }
-
-            const totalAll = allExpenses.reduce((a,e)=>a+e.amount,0);
-            const totalFiltered = filteredExpenses.reduce((a,e)=>a+e.amount,0);
-            const isFiltered = activeDateFilter || activeMonthFilter;
-
-            const now = new Date();
-            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            let monthOptions = '<option value="">-- Sab Months --</option>';
-            for (let i = 0; i < 24; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-                monthOptions += `<option value="${val}" ${activeMonthFilter===val?'selected':''}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
-            }
-
-            const catTotals = {};
-            categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
-
-            container.innerHTML = `<div class="fade-in pb-20 space-y-4">
-
-                <!-- Totals -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="stat-card border-l-4 border-indigo-500">
-                        <p class="text-xs text-gray-500">🏢 Kul Company Expenses</p>
-                        <h3 class="text-2xl font-bold text-indigo-600">Rs ${totalAll.toLocaleString()}</h3>
-                    </div>
-                    ${isFiltered ? `<div class="stat-card border-l-4 border-blue-400">
-                        <p class="text-xs text-gray-500">Filter ka Total</p>
-                        <h3 class="text-2xl font-bold text-blue-600">Rs ${totalFiltered.toLocaleString()}</h3>
-                    </div>` : `<div class="stat-card border-l-4 border-gray-300">
-                        <p class="text-xs text-gray-400">Entries</p>
-                        <h3 class="text-2xl font-bold text-gray-600">${allExpenses.length}</h3>
-                    </div>`}
-                </div>
-
-                <!-- Filters -->
-                <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-                    <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
-                    <div class="flex items-center gap-2">
-                        <div class="relative flex-1">
-                            <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 text-sm"></i>
-                            <input type="date" value="${activeDateFilter}"
-                                max="${now.toISOString().split('T')[0]}"
-                                onchange="app.data.ceFilterMonth='';app.renderCompanyExpenses(this.value,'')"
-                                class="w-full border border-indigo-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-indigo-700 outline-none cursor-pointer">
-                        </div>
-                        <button onclick="app.renderCompanyExpenses('','')"
-                            class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!activeDateFilter&&!activeMonthFilter?'bg-indigo-600 text-white':'bg-white text-gray-600 border border-gray-300'}">
-                            Sab
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-calendar text-indigo-400 text-sm ml-1"></i>
-                        <select onchange="app.data.ceFilterDate='';app.renderCompanyExpenses('',this.value)"
-                            class="flex-1 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
-                            ${monthOptions}
-                        </select>
-                    </div>
-                    ${isFiltered ? `<div class="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-                        <i class="fas fa-filter text-indigo-500 text-xs"></i>
-                        <span class="text-xs text-indigo-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : (() => { const [fy,fm] = activeMonthFilter.split('-').map(Number); return monthNames[fm-1]+' '+fy; })()}</span>
-                        <button onclick="app.renderCompanyExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
-                    </div>` : ''}
-                </div>
-
-                <!-- Add Company Expense -->
-                <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-building text-indigo-500 mr-2"></i>Naya Company Expense</h3>
-                    <div class="space-y-3">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
-                                <select id="ce-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                                    ${categories.map(c=>`<option>${c}</option>`).join('')}
-                                </select>
-                            </div>
-                            <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
-                                <input type="number" id="ce-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
-                            </div>
-                        </div>
-                        <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
-                            <input type="text" id="ce-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Office rent, Marketing kharch...">
-                        </div>
-                        <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
-                            <input type="date" id="ce-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
-                        </div>
-                        <button onclick="app.addCompanyExpense()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
-                            <i class="fas fa-plus mr-2"></i>Add Company Expense
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Category breakdown -->
-                ${filteredExpenses.length > 0 ? `
-                <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-3">🏢 Company Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
-                    <div class="grid grid-cols-2 gap-2">
-                        ${categories.filter(c=>catTotals[c]>0).map(c=>`
-                        <div class="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
-                            <p class="text-xs text-gray-500">${c}</p>
-                            <p class="font-bold text-indigo-700">Rs ${catTotals[c].toLocaleString()}</p>
-                        </div>`).join('')}
-                    </div>
-                </div>` : ''}
-
-                <!-- All Entries -->
-                <div class="section-card">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
-                        ${isFiltered ? `<span class="text-xs text-indigo-600 font-semibold">Total: Rs ${totalFiltered.toLocaleString()}</span>` : ''}
-                    </div>
-                    <div class="space-y-2">
-                        ${filteredExpenses.length === 0 ?
-                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-building text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
-                            [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
-                            <div class="flex justify-between items-center p-3 bg-white/60 rounded-xl border border-gray-100">
-                                <div class="flex-1 min-w-0">
-                                    <p class="font-semibold text-sm text-gray-800">${e.description || e.category}</p>
-                                    <div class="flex items-center gap-2 mt-0.5">
-                                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">${e.category}</span>
-                                        <span class="text-xs text-gray-400">${new Date(e.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</span>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-2 ml-2 flex-shrink-0">
-                                    <p class="font-bold text-indigo-600">Rs ${(e.amount||0).toLocaleString()}</p>
                                     <button onclick="app.deleteCompanyExpense('${e.id}')"
                                         class="p-1.5 bg-red-100 text-red-500 hover:bg-red-200 rounded-lg transition-colors" title="Delete">
                                         <i class="fas fa-trash text-xs"></i>
@@ -3330,12 +3179,9 @@
             const date = document.getElementById('ce-date').value;
             if (!amount||amount<=0) { alert('Amount zaroori hai!'); return; }
             try {
-                const newExp = { category, amount, description, date };
-                const docRef = await window.db.collection('companyExpenses').add({
-                    ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                const newExp = {category,amount,description,date};
+                const docRef = await window.db.collection('companyExpenses').add({...newExp,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
                 this.data.companyExpenses.push({id:docRef.id,...newExp});
-                alert('✅ Company expense add ho gaya!');
                 this.renderCompanyExpenses();
             } catch(e) { alert('Error: '+e.message); }
         },
