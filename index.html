@@ -380,7 +380,7 @@
     <script>
     const app = {
         data: {
-            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [], businessExpenses: [], schoolSalary: {},
+            currentUser: null, users: [], reports: [], attendance: [], customers: [], companyExpenses: [],
             announcements: [{ id:1, title:'Eid Bonus Policy', content:'50+ orders this week get Rs 2000 bonus.', date:'2023-10-25', priority:'high' }],
             currentShift: null, sidebarOpen: false, chartRegistry: {},
             selectedMonth: new Date().getMonth(), selectedYear: new Date().getFullYear(),
@@ -388,7 +388,7 @@
             paymentDateFilter: new Date().toISOString().split('T')[0],
             paymentMonthFilter: null,
             riderPaymentFilter: 'all',
-            customersLoaded: false, companyExpensesLoaded: false, businessExpensesLoaded: false, schoolSalaryLoaded: false,
+            customersLoaded: false, companyExpensesLoaded: false,
             _unsubReports: null, _unsubAtt: null, _unsubRiders: null,
             _refreshTimer: null, _listenersSetup: false, _currentViewId: null,
             _editReportId: null, _isSubmitting: false,
@@ -570,22 +570,6 @@
             const snap = await window.db.collection('companyExpenses').get();
             this.data.companyExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.data.companyExpensesLoaded = true;
-        },
-
-        async ensureBusinessExpenses() {
-            if (this.data.businessExpensesLoaded) return;
-            const snap = await window.db.collection('businessExpenses').get();
-            this.data.businessExpenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            this.data.businessExpensesLoaded = true;
-        },
-
-        async ensureSchoolSalary() {
-            if (this.data.schoolSalaryLoaded) return;
-            const snap = await window.db.collection('schoolSalary').get();
-            const map = {};
-            snap.docs.forEach(doc => { map[doc.id] = doc.data().amount || 0; });
-            this.data.schoolSalary = map;
-            this.data.schoolSalaryLoaded = true;
         },
 
         stopRealtimeListeners() {
@@ -935,7 +919,6 @@
                 { id:'admin-attendance', icon:'fa-calendar-check', label:'Attendance' },
                 { id:'admin-analytics', icon:'fa-chart-pie', label:'Analytics' },
                 { id:'admin-wa-settings', icon:'fa-whatsapp fab', label:'WhatsApp Templates' },
-                { id:'admin-business-expenses', icon:'fa-school', label:'School Expenses' },
                 { id:'admin-settings', icon:'fa-cog', label:'Settings' }
             ] : [
                 { id:'rider-dashboard', icon:'fa-home', label:'Dashboard' },
@@ -1013,7 +996,6 @@
                 'admin-attendance': () => this.renderAdminAttendance(),
                 'admin-analytics': () => this.renderAdminAnalytics(),
                 'admin-wa-settings': () => this.renderWASettings(),
-                'admin-business-expenses': () => this.renderBusinessExpenses(),
                 'admin-settings': () => this.renderSettings(),
             };
             if (views[viewId]) views[viewId]();
@@ -3207,221 +3189,6 @@
         async deleteCompanyExpense(id) {
             if (!confirm('Delete?')) return;
             try { await window.db.collection('companyExpenses').doc(id).delete(); this.data.companyExpenses=this.data.companyExpenses.filter(e=>e.id!==id); this.renderCompanyExpenses(); }
-            catch(e) { alert('Error: '+e.message); }
-        },
-
-        // ========== SCHOOL EXPENSES (Mahboob School — ek dafa salary, phir expenses minus) ==========
-        async renderBusinessExpenses(filterDate = null, filterMonth = null) {
-            document.getElementById('page-title').textContent = 'Mahboob School Expense';
-            const container = document.getElementById('main-container');
-            await this.ensureBusinessExpenses();
-            await this.ensureSchoolSalary();
-            const allExpenses = this.data.businessExpenses || [];
-            const categories = ['Stationery','Fees','Salary','Utilities','Transport','Books','Maintenance','Other'];
-
-            const activeDateFilter = filterDate !== null ? filterDate : (this.data.beFilterDate || '');
-            const activeMonthFilter = filterMonth !== null ? filterMonth : (this.data.beFilterMonth || '');
-            this.data.beFilterDate = activeDateFilter;
-            this.data.beFilterMonth = activeMonthFilter;
-
-            let filteredExpenses = [...allExpenses];
-            if (activeDateFilter) {
-                filteredExpenses = filteredExpenses.filter(e => e.date === activeDateFilter);
-            } else if (activeMonthFilter) {
-                const [fy, fm] = activeMonthFilter.split('-').map(Number);
-                filteredExpenses = filteredExpenses.filter(e => {
-                    const d = new Date(e.date);
-                    return d.getFullYear() === fy && d.getMonth() === fm - 1;
-                });
-            }
-
-            const totalAll = allExpenses.reduce((a,e)=>a+e.amount,0);
-            const totalFiltered = filteredExpenses.reduce((a,e)=>a+e.amount,0);
-            const isFiltered = activeDateFilter || activeMonthFilter;
-
-            const now = new Date();
-            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            let monthOptions = '<option value="">-- Sab Months --</option>';
-            for (let i = 0; i < 24; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-                monthOptions += `<option value="${val}" ${activeMonthFilter===val?'selected':''}>${monthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
-            }
-
-            const catTotals = {};
-            categories.forEach(c => { catTotals[c] = filteredExpenses.filter(e=>e.category===c).reduce((a,e)=>a+e.amount,0); });
-
-            const salaryMonthKey = activeMonthFilter || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-            const salaryMonthLabel = (() => { const [fy,fm] = salaryMonthKey.split('-').map(Number); return monthNames[fm-1]+' '+fy; })();
-            const salaryAmount = this.data.schoolSalary?.[salaryMonthKey] || 0;
-            const [smy, smm] = salaryMonthKey.split('-').map(Number);
-            const salaryMonthExpenses = allExpenses.filter(e=>{const d=new Date(e.date);return d.getFullYear()===smy&&(d.getMonth()+1)===smm;}).reduce((a,e)=>a+e.amount,0);
-            const remainingBalance = salaryAmount - salaryMonthExpenses;
-
-            container.innerHTML = `<div class="fade-in pb-20 space-y-4">
-                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 shadow-lg">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-bold text-sm">💼 ${salaryMonthLabel} — Salary Balance</h3>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2 mb-3">
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Salary</p>
-                            <p class="text-base font-bold">Rs ${salaryAmount.toLocaleString()}</p>
-                        </div>
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Kharch</p>
-                            <p class="text-base font-bold text-red-200">-Rs ${salaryMonthExpenses.toLocaleString()}</p>
-                        </div>
-                        <div class="bg-white/15 rounded-xl p-2.5 text-center">
-                            <p class="text-xs text-indigo-100">Baqi</p>
-                            <p class="text-base font-bold ${remainingBalance>=0?'text-green-200':'text-red-200'}">Rs ${remainingBalance.toLocaleString()}</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 bg-white/15 rounded-xl p-2">
-                        <input type="number" id="be-salary-set" placeholder="${salaryMonthLabel} ki salary likhein"
-                            class="flex-1 bg-white/90 text-indigo-900 rounded-lg px-3 py-2 text-sm outline-none font-semibold" value="${salaryAmount || ''}">
-                        <button onclick="app.setSchoolSalary('${salaryMonthKey}')" class="bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold flex-shrink-0">Set</button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="stat-card border-l-4 border-purple-500">
-                        <p class="text-xs text-gray-500">🏫 Kul School Expenses</p>
-                        <h3 class="text-2xl font-bold text-purple-600">Rs ${totalAll.toLocaleString()}</h3>
-                    </div>
-                    ${isFiltered ? `<div class="stat-card border-l-4 border-indigo-400">
-                        <p class="text-xs text-gray-500">Filter ka Total</p>
-                        <h3 class="text-2xl font-bold text-indigo-600">Rs ${totalFiltered.toLocaleString()}</h3>
-                    </div>` : `<div class="stat-card border-l-4 border-gray-300">
-                        <p class="text-xs text-gray-400">Entries</p>
-                        <h3 class="text-2xl font-bold text-gray-600">${allExpenses.length}</h3>
-                    </div>`}
-                </div>
-                <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-                    <h3 class="font-bold text-gray-700 text-sm">🔍 Filter karo</h3>
-                    <div class="flex items-center gap-2">
-                        <div class="relative flex-1">
-                            <i class="fas fa-calendar-alt absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 text-sm"></i>
-                            <input type="date" value="${activeDateFilter}"
-                                max="${now.toISOString().split('T')[0]}"
-                                onchange="app.data.beFilterMonth='';app.renderBusinessExpenses(this.value,'')"
-                                class="w-full border border-purple-200 bg-white rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-purple-700 outline-none cursor-pointer">
-                        </div>
-                        <button onclick="app.renderBusinessExpenses('','')"
-                            class="flex-shrink-0 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!activeDateFilter&&!activeMonthFilter?'bg-purple-600 text-white':'bg-white text-gray-600 border border-gray-300'}">
-                            Sab
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-calendar text-purple-400 text-sm ml-1"></i>
-                        <select onchange="app.data.beFilterDate='';app.renderBusinessExpenses('',this.value)"
-                            class="flex-1 border border-purple-200 bg-purple-50 text-purple-700 rounded-xl px-3 py-2 text-sm font-semibold outline-none cursor-pointer">
-                            ${monthOptions}
-                        </select>
-                    </div>
-                    ${isFiltered ? `<div class="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-                        <i class="fas fa-filter text-purple-500 text-xs"></i>
-                        <span class="text-xs text-purple-700 font-medium">${activeDateFilter ? new Date(activeDateFilter+'T12:00:00').toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : salaryMonthLabel}</span>
-                        <button onclick="app.renderBusinessExpenses('','')" class="ml-auto text-xs text-red-500 font-medium">✕ Clear</button>
-                    </div>` : ''}
-                </div>
-                <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-school text-purple-500 mr-2"></i>Naya Expense</h3>
-                    <div class="space-y-3">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div><label class="text-xs text-gray-500 mb-1 block">Category</label>
-                                <select id="be-category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                                    ${categories.map(c=>`<option>${c}</option>`).join('')}
-                                </select>
-                            </div>
-                            <div><label class="text-xs text-gray-500 mb-1 block">Amount (Rs)</label>
-                                <input type="number" id="be-amount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="0">
-                            </div>
-                        </div>
-                        <div><label class="text-xs text-gray-500 mb-1 block">Description</label>
-                            <input type="text" id="be-desc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" placeholder="e.g. Stationery khareed, Teacher salary...">
-                        </div>
-                        <div><label class="text-xs text-gray-500 mb-1 block">Date</label>
-                            <input type="date" id="be-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none" value="${now.toISOString().split('T')[0]}">
-                        </div>
-                        <div class="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start gap-2">
-                            <i class="fas fa-info-circle text-red-400 text-xs mt-0.5"></i>
-                            <p class="text-xs text-red-700">Expense add hone ke baad <strong>edit nahi</strong> ho sakta — sirf delete. Salary se automatically minus ho jayega.</p>
-                        </div>
-                        <button onclick="app.addBusinessExpense()" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors">
-                            <i class="fas fa-plus mr-2"></i>Add School Expense
-                        </button>
-                    </div>
-                </div>
-                ${filteredExpenses.length > 0 ? `
-                <div class="section-card">
-                    <h3 class="font-bold text-gray-800 mb-3">🏫 School Expense Breakdown ${isFiltered?'(Filtered)':'(All Time)'}</h3>
-                    <div class="grid grid-cols-2 gap-2">
-                        ${categories.filter(c=>catTotals[c]>0).map(c=>`
-                        <div class="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                            <p class="text-xs text-gray-500">${c}</p>
-                            <p class="font-bold text-purple-700">Rs ${catTotals[c].toLocaleString()}</p>
-                        </div>`).join('')}
-                    </div>
-                </div>` : ''}
-                <div class="section-card">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="font-bold text-gray-800">Entries (${filteredExpenses.length})</h3>
-                        ${isFiltered ? `<span class="text-xs text-purple-600 font-semibold">Total: Rs ${totalFiltered.toLocaleString()}</span>` : ''}
-                    </div>
-                    <div class="space-y-2">
-                        ${filteredExpenses.length === 0 ?
-                            `<div class="text-center py-10 text-gray-400"><i class="fas fa-school text-4xl mb-3"></i><p class="text-sm">${isFiltered?'Is filter mein koi expense nahi':'Koi expense nahi — upar se add karein'}</p></div>` :
-                            [...filteredExpenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e => `
-                            <div class="flex justify-between items-center p-3 bg-white/60 rounded-xl border border-gray-100">
-                                <div class="flex-1 min-w-0">
-                                    <p class="font-semibold text-sm text-gray-800">${e.description || e.category}</p>
-                                    <div class="flex items-center gap-2 mt-0.5">
-                                        <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">${e.category}</span>
-                                        <span class="text-xs text-gray-400">${new Date(e.date).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</span>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-2 ml-2 flex-shrink-0">
-                                    <p class="font-bold text-purple-600">Rs ${(e.amount||0).toLocaleString()}</p>
-                                    <button onclick="app.deleteBusinessExpense('${e.id}')"
-                                        class="p-1.5 bg-red-100 text-red-500 hover:bg-red-200 rounded-lg transition-colors" title="Delete">
-                                        <i class="fas fa-trash text-xs"></i>
-                                    </button>
-                                </div>
-                            </div>`).join('')
-                        }
-                    </div>
-                </div>
-            </div>`;
-        },
-
-        async setSchoolSalary(monthKey) {
-            const amount = parseFloat(document.getElementById('be-salary-set').value) || 0;
-            try {
-                await window.db.collection('schoolSalary').doc(monthKey).set({ amount, month: monthKey });
-                this.data.schoolSalary[monthKey] = amount;
-                this.renderBusinessExpenses();
-            } catch(e) { alert('Error: '+e.message); }
-        },
-
-        async addBusinessExpense() {
-            const category = document.getElementById('be-category').value;
-            const amount = parseFloat(document.getElementById('be-amount').value)||0;
-            const description = document.getElementById('be-desc').value.trim();
-            const date = document.getElementById('be-date').value;
-            if (!amount||amount<=0) { alert('Amount zaroori hai!'); return; }
-            try {
-                const newExp = { category, amount, description, date, source: 'school' };
-                const docRef = await window.db.collection('businessExpenses').add({
-                    ...newExp, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                this.data.businessExpenses.push({id:docRef.id,...newExp});
-                this.renderBusinessExpenses();
-            } catch(e) { alert('Error: '+e.message); }
-        },
-
-        async deleteBusinessExpense(id) {
-            if (!confirm('Delete?')) return;
-            try { await window.db.collection('businessExpenses').doc(id).delete(); this.data.businessExpenses=this.data.businessExpenses.filter(e=>e.id!==id); this.renderBusinessExpenses(); }
             catch(e) { alert('Error: '+e.message); }
         },
 
