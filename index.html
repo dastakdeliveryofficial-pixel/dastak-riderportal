@@ -3543,6 +3543,7 @@
                             <input type="text" id="cust-search" oninput="app.filterCustomers()" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm outline-none w-28">
                             <button onclick="app.toggleSelectAll()" id="select-all-btn" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg font-medium">Select All</button>
                             <button onclick="app.bulkDeleteCustomers()" id="bulk-delete-btn" class="hidden text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium"><i class="fas fa-trash mr-1"></i>Delete (<span id="selected-count">0</span>)</button>
+                            <button onclick="app.bulkGenerateCodes()" class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-medium"><i class="fas fa-id-badge mr-1"></i>Update All Codes</button>
                         </div>
                     </div>
                     <div id="customers-list" class="space-y-2">
@@ -3778,6 +3779,32 @@
                 this.data.customers=this.data.customers.filter(c=>!new Set(ids).has(c.id));
                 alert(`✅ ${ids.length} deleted!`); this._renderCustomersPage();
             } catch(e) { alert('Error: '+e.message); }
+        },
+
+        async bulkGenerateCodes() {
+            const noCode = this.data.customers.filter(c => !c.customerId);
+            const withCode = this.data.customers.filter(c => !!c.customerId);
+            if (noCode.length === 0) { alert('✅ Sare customers ke paas pehle se code hai!'); return; }
+            if (!confirm(`${noCode.length} customers ke paas code nahi hai.\nKya sab ke liye auto code generate karein?`)) return;
+            const existingIds = new Set(this.data.customers.map(c => c.customerId).filter(Boolean));
+            let updated = 0, failed = 0;
+            const BATCH_SIZE = 400;
+            try {
+                // Process in batches
+                for (let i = 0; i < noCode.length; i += BATCH_SIZE) {
+                    const batch = window.db.batch();
+                    noCode.slice(i, i + BATCH_SIZE).forEach(c => {
+                        const newId = this.generateCustomerId(c.name || '', c.phone || '', existingIds);
+                        existingIds.add(newId);
+                        c.customerId = newId;
+                        batch.update(window.db.collection('customers').doc(c.id), { customerId: newId });
+                        updated++;
+                    });
+                    await batch.commit();
+                }
+                alert(`✅ ${updated} customers ke codes update ho gaye!`);
+                this._renderCustomersPage();
+            } catch(e) { alert('Error: ' + e.message); }
         },
 
         editCustomer(id) {
