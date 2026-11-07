@@ -2297,9 +2297,9 @@
                 monthOptions += `<option value="${val}" ${this.data.paymentMonthFilter===val?'selected':''}>${fullMonthNames[d.getMonth()]} ${d.getFullYear()}</option>`;
             }
 
-            // Get all payments based on filter
+            // Get all payments based on filter (skip deleted reports)
             let allPendingPayments = [], allReceivedPayments = [];
-            this.data.reports.forEach(r => {
+            this.data.reports.filter(r => r.status !== 'deleted').forEach(r => {
                 let include = false;
                 if (activeFilter === 'all') include = true;
                 else if (this.data.paymentMonthFilter && activeFilter === 'month') {
@@ -2709,7 +2709,7 @@
         // Helper: get all pending payments of a customer (for statement)
         _getCustomerPending(customerDetail, customerPhone, matched, phoneInDetail) {
             const allPending = [];
-            this.data.reports.forEach(r => {
+            this.data.reports.filter(r => r.status !== 'deleted').forEach(r => {
                 (r.onlinePayments||[]).forEach(p => {
                     if (p.status !== 'pending') return;
                     if (this._paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail)) {
@@ -2723,7 +2723,7 @@
         // Helper: get all pending payments WITH report reference (for batch receive)
         _getCustomerPendingWithReport(customerDetail, customerPhone, matched, phoneInDetail) {
             const allPending = [];
-            this.data.reports.forEach(r => {
+            this.data.reports.filter(r => r.status !== 'deleted').forEach(r => {
                 (r.onlinePayments||[]).forEach((p, idx) => {
                     if (p.status !== 'pending') return;
                     if (this._paymentMatchesCustomer(p, customerDetail, customerPhone, matched, phoneInDetail)) {
@@ -3706,7 +3706,7 @@
             let total=0,pending=0,received=0,count=0;
             const custPhone=(c.phone||'').replace(/\D/g,'').slice(-10);
             const custName=(c.name||'').trim().toLowerCase();
-            this.data.reports.forEach(r => {
+            this.data.reports.filter(r => r.status !== 'deleted').forEach(r => {
                 (r.onlinePayments||[]).forEach(p => {
                     const detail=(p.detail||'').toLowerCase();
                     const dPhone=detail.replace(/\D/g,'').slice(-10);
